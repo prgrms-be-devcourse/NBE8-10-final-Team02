@@ -27,3 +27,8 @@ Thumbs.db
 **/logs/
 docs
 AGENTS.md
+
+docker-compose.prod-monitoring.yml
+docker-compose.prod.yml
+docker/nginx/prod.conf
+docker/prometheus-prod.yml
