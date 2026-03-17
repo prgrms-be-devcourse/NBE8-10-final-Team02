@@ -9,6 +9,10 @@ on:
       - ".github/workflows/**"
   workflow_dispatch: # 수동 배포 버튼
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   # 이미지 이름 설정
@@ -65,29 +69,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push
+      - name: 소문자 이미지 경로 설정
         run: |
-          BE_IMAGE_PATH=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_BE }}" | tr '[:upper:]' '[:lower:]')
-          FE_IMAGE_PATH=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_FE }}" | tr '[:upper:]' '[:lower:]')
-          TAG_NAME="${{ needs.calculate-tag.outputs.tag_name }}"
-          
-          # Backend 빌드 ( --context 삭제 )
-          docker buildx build --push \
-            --platform linux/arm64 \
-            --cache-from type=gha,scope=backend \
-            --cache-to type=gha,mode=max,scope=backend \
-            --tag ${BE_IMAGE_PATH}:${TAG_NAME} \
-            --tag ${BE_IMAGE_PATH}:latest \
-            ./backend
-          
-          # Frontend 빌드 ( --context 삭제 )
-          docker buildx build --push \
-            --platform linux/arm64 \
-            --cache-from type=gha,scope=frontend \
-            --cache-to type=gha,mode=max,scope=frontend \
-            --tag ${FE_IMAGE_PATH}:${TAG_NAME} \
-            --tag ${FE_IMAGE_PATH}:latest \
-            ./frontend
+          echo "BE_IMAGE_PATH=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_BE }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "FE_IMAGE_PATH=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_FE }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Build and Push Backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.BE_IMAGE_PATH }}:${{ needs.calculate-tag.outputs.tag_name }}
+            ${{ env.BE_IMAGE_PATH }}:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build and Push Frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.FE_IMAGE_PATH }}:${{ needs.calculate-tag.outputs.tag_name }}
+            ${{ env.FE_IMAGE_PATH }}:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
 
   # 3. Oracle Cloud SSH 배포 (Blue/Green)
   deploy:
