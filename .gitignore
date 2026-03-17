@@ -1,0 +1,29 @@
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment variables (Root level)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# Docker / Persistence Data
+# MinIO나 DB 데이터가 로컬에 저장될 경우를 대비
+**/data/
+**/logs/
+docs
+AGENTS.md
