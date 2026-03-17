@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # 1. 프로메테우스 자체 상태
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # 2. 운영 서버의 Spring Boot
+  - job_name: 'spring-app'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['prod-spring-app:8080'] # docker-compose.prod.yml의 container_name
+
+  # 3. 서버 리소스 모니터링 (Node Exporter)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['prod-node-exporter:9100']
+
+  # 4. DB 상태 모니터링 (Postgres Exporter)
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['prod-postgres-exporter:9187']

@@ -3,3 +3,15 @@ spring:
     name: backend
   profiles:
     active: dev
+
+# Actuator 설정 (Prometheus 수집을 위해 필수)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+    health:
+      show-details: always

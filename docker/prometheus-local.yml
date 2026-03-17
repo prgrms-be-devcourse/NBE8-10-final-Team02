@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s      # 15초마다 한 번씩 데이터를 긁어옵니다. (운영 표준)
+  evaluation_interval: 15s  # 15초마다 규칙(알람 등)을 평가합니다.
+
+scrape_configs:
+  # [1] Prometheus 자체 모니터링
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # [2] Spring Boot (Backend) 상태 수집
+  - job_name: 'spring-app'
+    metrics_path: '/actuator/prometheus' # Spring Boot Actuator 기본 경로
+    static_configs:
+      # docker-compose.yml에 정의된 서비스 이름 'app'을 그대로 사용합니다.
+      - targets: ['app:8080']
