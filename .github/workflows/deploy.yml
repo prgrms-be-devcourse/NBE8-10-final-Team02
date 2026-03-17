@@ -24,7 +24,7 @@ env:
   BE_PORT: 8080
   FE_PORT: 3000
 
-  NGINX_CONF: /home/ubuntu/my-project/docker/nginx/prod.conf
+  NGINX_CONF: /home/ubuntu/my-project/docker/npm/data/nginx/custom/upstreams.conf
 
 jobs:
   calculate-tag:
@@ -108,49 +108,69 @@ jobs:
           envs: IMAGE_TAG, GITHUB_TOKEN, OWNER_LC,NGINX_CONF
           script: |
             set -e
-            OWNER_LC_FINAL=$(echo "${OWNER_LC}" | tr '[:upper:]' '[:lower:]')
-            BE_IMAGE_NAME=$(echo "ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-backend" | tr '[:upper:]' '[:lower:]')
-            FE_IMAGE_NAME=$(echo "ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-frontend" | tr '[:upper:]' '[:lower:]')
-  
-            # 1. 현재 어떤 슬롯이 돌고 있는지 확인 (이름으로 판단)
-            # 만약 수동 배포 상태(prod-spring-app)라면 be_a를 Green으로 설정
+            
+            # --- 1. 변수 설정 ---
+            BE_DOMAIN="api.blog.jsh505.site"
+            FE_DOMAIN="www.blog.jsh505.site"
+            BE_IMAGE="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-backend"
+            FE_IMAGE="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-frontend"
+            
+            # --- 2. Blue/Green 판정 ---
             if docker ps --format '{{.Names}}' | grep -q "be_a"; then
               BLUE_BE="be_a"; GREEN_BE="be_b"; BLUE_FE="fe_a"; GREEN_FE="fe_b"
-            elif docker ps --format '{{.Names}}' | grep -q "be_b"; then
-              BLUE_BE="be_b"; GREEN_BE="be_a"; BLUE_FE="fe_b"; GREEN_FE="fe_a"
             else
-              BLUE_BE="prod-spring-app"; BLUE_FE="prod-next-app"; GREEN_BE="be_a"; GREEN_FE="fe_a"
+              BLUE_BE="be_b"; GREEN_BE="be_a"; BLUE_FE="fe_b"; GREEN_FE="fe_a"
+            fi
+            echo "🎨 Role -> Blue(now): $BLUE_BE, Green(next): $GREEN_BE"
+
+            # --- 3. 새 이미지 Pull 및 기동 ---
+            echo "${GITHUB_TOKEN}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull "${BE_IMAGE}:${IMAGE_TAG}"
+            docker pull "${FE_IMAGE}:${IMAGE_TAG}"
+            
+            docker rm -f $GREEN_BE $GREEN_FE >/dev/null 2>&1 || true
+            docker run -d --name $GREEN_BE --network global-net -e SPRING_PROFILES_ACTIVE=prod "${BE_IMAGE}:${IMAGE_TAG}"
+            docker run -d --name $GREEN_FE --network global-net "${FE_IMAGE}:${IMAGE_TAG}"
+
+            # --- 4. 헬스 체크 ---
+            echo "⏱ Waiting for Green to be healthy..."
+            sleep 20 # 앱이 완전히 켜질 시간 대기 (필요시 늘리세요)
+
+            # --- 5. NPM API 로그인 (토큰 발급) ---
+            TOKEN=$(curl -s -X POST "http://localhost:81/api/tokens" \
+              -H "Content-Type: application/json" \
+              -d "{\"identity\": \"${NPM_EMAIL}\", \"secret\": \"${NPM_PASSWORD}\"}" | jq -r .token)
+            
+            [[ -z "$TOKEN" || "$TOKEN" == "null" ]] && { echo "❌ NPM Login Failed"; exit 1; }
+
+            # --- 6. NPM API: 백엔드 타겟 변경 ---
+            echo "🔄 Updating NPM Proxy for Backend..."
+            BE_ID=$(curl -s -H "Authorization: Bearer $TOKEN" "http://localhost:81/api/nginx/proxy-hosts" | jq -r ".[] | select(.domain_names[] == \"$BE_DOMAIN\") | .id")
+            BE_CFG=$(curl -s -H "Authorization: Bearer $TOKEN" "http://localhost:81/api/nginx/proxy-hosts/$BE_ID")
+            
+            # 기존 설정에서 forward_host만 GREEN 컨테이너 이름으로 덮어씀 (불필요한 메타데이터 제거)
+            NEW_BE_CFG=$(echo "$BE_CFG" | jq --arg host "$GREEN_BE" '{domain_names, forward_scheme, forward_host: $host, forward_port, access_list_id, certificate_id, ssl_forced, caching_enabled, block_exploits, allow_websocket_upgrade, advanced_config, locations, meta}')
+            
+            curl -s -o /dev/null -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$NEW_BE_CFG" "http://localhost:81/api/nginx/proxy-hosts/$BE_ID"
+
+            # --- 7. NPM API: 프론트엔드 타겟 변경 ---
+            echo "🔄 Updating NPM Proxy for Frontend..."
+            FE_ID=$(curl -s -H "Authorization: Bearer $TOKEN" "http://localhost:81/api/nginx/proxy-hosts" | jq -r ".[] | select(.domain_names[] == \"$FE_DOMAIN\") | .id")
+            FE_CFG=$(curl -s -H "Authorization: Bearer $TOKEN" "http://localhost:81/api/nginx/proxy-hosts/$FE_ID")
+            
+            NEW_FE_CFG=$(echo "$FE_CFG" | jq --arg host "$GREEN_FE" '{domain_names, forward_scheme, forward_host: $host, forward_port, access_list_id, certificate_id, ssl_forced, caching_enabled, block_exploits, allow_websocket_upgrade, advanced_config, locations, meta}')
+            
+            curl -s -o /dev/null -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$NEW_FE_CFG" "http://localhost:81/api/nginx/proxy-hosts/$FE_ID"
+
+            echo "✅ NPM API Update Complete! Traffic switched."
+
+            # --- 8. 이전 Blue 제거 ---
+            if docker ps --format '{{.Names}}' | grep -q "$BLUE_BE"; then
+              docker stop $BLUE_BE $BLUE_FE >/dev/null 2>&1 || true
+              docker rm $BLUE_BE $BLUE_FE >/dev/null 2>&1 || true
+              echo "🧹 Removed old Blue: $BLUE_BE, $BLUE_FE"
             fi
             
-            echo "🔵 Blue: $BLUE_BE | 🟢 Green: $GREEN_BE"
-            
-            # 2. GHCR 로그인 및 새 이미지 Pull
-            echo "${GITHUB_TOKEN}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker pull "${BE_IMAGE_NAME}:${IMAGE_TAG}"
-            docker pull "${FE_IMAGE_NAME}:${IMAGE_TAG}"
-            
-            # 3. Green 컨테이너 기동
-            docker rm -f $GREEN_BE $GREEN_FE || true
-            docker run -d --name $GREEN_BE --network global-net -e SPRING_PROFILES_ACTIVE=prod \
-            "${BE_IMAGE_NAME}:${IMAGE_TAG}"
-            docker run -d --name $GREEN_FE --network global-net \
-            "${FE_IMAGE_NAME}:${IMAGE_TAG}"
-            
-            # 4. 헬스 체크 (Green이 살았는지 확인)
-            echo "⏱ Waiting for Green to be healthy..."
-            sleep 20 # 앱 구동 시간 확보
-            
-            # 5. Nginx 설정 파일 업데이트 및 Reload (핵심!)
-            # sed 명령어를 써서 기존 Blue 이름을 Green 이름으로 교체합니다.
-            sed -i "s/$BLUE_BE/$GREEN_BE/g" ${{ env.NGINX_CONF }}
-            sed -i "s/$BLUE_FE/$GREEN_FE/g" ${{ env.NGINX_CONF }}
-            
-            docker exec prod-nginx nginx -s reload
-            echo "✅ Nginx Reloaded! Traffic switched to $GREEN_BE"
-            
-            # 6. 이전 Blue 제거
-            docker stop $BLUE_BE $BLUE_FE || true
-            docker rm $BLUE_BE $BLUE_FE || true
             docker image prune -f
 
   # 4. 성공 시 태그/릴리즈 생성
