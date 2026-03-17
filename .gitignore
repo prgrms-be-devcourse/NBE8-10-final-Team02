@@ -27,6 +27,11 @@ Thumbs.db
 **/logs/
 docs
 AGENTS.md
+archive
+.editorconfig
+CONTRIBUTING.md
+manifest.json
+openapi.yaml
 
 docker-compose.prod-monitoring.yml
 docker-compose.prod.yml
