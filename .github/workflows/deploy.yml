@@ -71,17 +71,21 @@ jobs:
           FE_IMAGE_PATH=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_FE_NAME }}" | tr '[:upper:]' '[:lower:]')
           TAG_NAME="${{ needs.calculate-tag.outputs.tag_name }}"
           
-          docker buildx build --context ./backend --push \
+          # Backend 빌드 ( --context 삭제 )
+          docker buildx build --push \
             --cache-from type=gha \
             --cache-to type=gha,mode=max \
             --tag ${BE_IMAGE_PATH}:${TAG_NAME} \
-            --tag ${BE_IMAGE_PATH}:latest
+            --tag ${BE_IMAGE_PATH}:latest \
+            ./backend  # 폴더 경로를 맨 뒤에!
           
-          docker buildx build --context ./frontend --push \
+          # Frontend 빌드 ( --context 삭제 )
+          docker buildx build --push \
             --cache-from type=gha \
             --cache-to type=gha,mode=max \
             --tag ${FE_IMAGE_PATH}:${TAG_NAME} \
-            --tag ${FE_IMAGE_PATH}:latest 
+            --tag ${FE_IMAGE_PATH}:latest \
+            ./frontend # 폴더 경로를 맨 뒤에!
 
   # 3. Oracle Cloud SSH 배포 (Blue/Green)
   deploy:
