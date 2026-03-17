@@ -175,7 +175,7 @@ jobs:
 
   # 4. 성공 시 태그/릴리즈 생성
   make-tag-and-release:
-    needs: deploy
+    needs: [deploy, calculate-tag]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -184,3 +184,4 @@ jobs:
         with:
           tag_name: ${{ needs.calculate-tag.outputs.tag_name }}
           name: Release ${{ needs.calculate-tag.outputs.tag_name }}
+          generate_release_notes: true
