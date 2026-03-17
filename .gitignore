@@ -27,3 +27,8 @@ Thumbs.db
 **/logs/
 docs
 AGENTS.md
+archive
+.editorconfig
+CONTRIBUTING.md
+manifest.json
+openapi.yaml
