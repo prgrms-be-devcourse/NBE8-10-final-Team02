@@ -42,7 +42,7 @@ jobs:
 
   build-and-push:
     needs: calculate-tag
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
@@ -73,19 +73,21 @@ jobs:
           
           # Backend 빌드 ( --context 삭제 )
           docker buildx build --push \
+            --platform linux/arm64 \
             --cache-from type=gha \
             --cache-to type=gha,mode=max \
             --tag ${BE_IMAGE_PATH}:${TAG_NAME} \
             --tag ${BE_IMAGE_PATH}:latest \
-            ./backend  # 폴더 경로를 맨 뒤에!
+            ./backend
           
           # Frontend 빌드 ( --context 삭제 )
           docker buildx build --push \
+            --platform linux/arm64 \
             --cache-from type=gha \
             --cache-to type=gha,mode=max \
             --tag ${FE_IMAGE_PATH}:${TAG_NAME} \
             --tag ${FE_IMAGE_PATH}:latest \
-            ./frontend # 폴더 경로를 맨 뒤에!
+            ./frontend
 
   # 3. Oracle Cloud SSH 배포 (Blue/Green)
   deploy:
