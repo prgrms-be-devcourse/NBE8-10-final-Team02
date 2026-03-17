@@ -112,8 +112,8 @@ jobs:
             # --- 1. 변수 설정 ---
             BE_DOMAIN="api.blog.jsh505.site"
             FE_DOMAIN="www.blog.jsh505.site"
-            BE_IMAGE="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-backend"
-            FE_IMAGE="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-frontend"
+            BE_IMAGE=$(echo "ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-backend" | tr '[:upper:]' '[:lower:]')
+            FE_IMAGE=$(echo "ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-frontend" | tr '[:upper:]' '[:lower:]')
             
             # --- 2. Blue/Green 판정 ---
             if docker ps --format '{{.Names}}' | grep -q "be_a"; then
