@@ -67,8 +67,8 @@ jobs:
 
       - name: Build and Push
         run: |
-          BE_IMAGE_PATH=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_BE_NAME }}" | tr '[:upper:]' '[:lower:]')
-          FE_IMAGE_PATH=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_FE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          BE_IMAGE_PATH=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_BE }}" | tr '[:upper:]' '[:lower:]')
+          FE_IMAGE_PATH=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_FE }}" | tr '[:upper:]' '[:lower:]')
           TAG_NAME="${{ needs.calculate-tag.outputs.tag_name }}"
           
           # Backend 빌드 ( --context 삭제 )
