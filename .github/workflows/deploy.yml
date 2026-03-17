@@ -74,8 +74,8 @@ jobs:
           # Backend 빌드 ( --context 삭제 )
           docker buildx build --push \
             --platform linux/arm64 \
-            --cache-from type=gha, scope=backend \
-            --cache-to type=gha,mode=max, scope=backend \
+            --cache-from type=gha,scope=backend \
+            --cache-to type=gha,mode=max,scope=backend \
             --tag ${BE_IMAGE_PATH}:${TAG_NAME} \
             --tag ${BE_IMAGE_PATH}:latest \
             ./backend
@@ -83,8 +83,8 @@ jobs:
           # Frontend 빌드 ( --context 삭제 )
           docker buildx build --push \
             --platform linux/arm64 \
-            --cache-from type=gha, scope=backend \
-            --cache-to type=gha,mode=max, scope=backend \
+            --cache-from type=gha,scope=frontend \
+            --cache-to type=gha,mode=max,scope=frontend \
             --tag ${FE_IMAGE_PATH}:${TAG_NAME} \
             --tag ${FE_IMAGE_PATH}:latest \
             ./frontend
