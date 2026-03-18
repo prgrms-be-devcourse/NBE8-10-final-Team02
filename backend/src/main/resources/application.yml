@@ -15,3 +15,6 @@ management:
       enabled: true
     health:
       show-details: always
+  metrics:
+    tags:
+      application: spring-app # Prometheus 설정의 job_name과 맞춰주는 것이 좋습니다.
