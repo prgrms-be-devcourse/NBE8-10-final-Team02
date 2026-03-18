@@ -50,7 +50,7 @@ applies_to: conceptual-data-model
 ```mermaid
 erDiagram
     USERS ||--o{ AUTH_ACCOUNTS : has
-    USERS ||--o{ GITHUB_CONNECTIONS : links
+    USERS ||--o| GITHUB_CONNECTIONS : links
     GITHUB_CONNECTIONS ||--o{ GITHUB_REPOSITORIES : imports
     GITHUB_REPOSITORIES ||--o{ GITHUB_COMMITS : contains
     USERS ||--o{ DOCUMENTS : uploads
@@ -151,6 +151,7 @@ erDiagram
         bigint user_id FK
         varchar application_title
         varchar company_name
+        varchar application_type
         varchar job_role
         varchar status
         timestamptz created_at
@@ -192,7 +193,7 @@ erDiagram
         varchar title
         int question_count
         varchar difficulty_level
-        varchar question_types
+        text[] question_types
         timestamptz created_at
     }
 
@@ -213,7 +214,7 @@ erDiagram
         bigint user_id FK
         bigint question_set_id FK
         varchar status
-        numeric total_score
+        int total_score
         text summary_feedback
         timestamptz started_at
         timestamptz ended_at
@@ -226,7 +227,7 @@ erDiagram
         int answer_order
         text answer_text
         boolean is_skipped
-        numeric score
+        int score
         text evaluation_rationale
         timestamptz created_at
     }
@@ -357,6 +358,7 @@ MVP 기준 지원 형식은 PDF, DOCX, MD이고, 파일 1개당 최대 10MB, 사
 - `user_id`: users FK
 - `application_title`: 사용자가 구분하기 위한 제목
 - `company_name`: 회사명
+- `application_type`: 지원 유형 예: 신입, 인턴, 경력
 - `job_role`: 지원 직무
 - `status`: draft, ready
 - `created_at`, `updated_at`: 생성/수정 시각
@@ -420,6 +422,7 @@ MVP 기준 지원 형식은 PDF, DOCX, MD이고, 파일 1개당 최대 10MB, 사
 
 비고
 - 하나의 지원 단위에서 여러 질문 세트를 생성할 수 있다.
+- `question_types`는 PostgreSQL `text[]`로 저장한다.
 
 ### 5.12 interview_questions
 
@@ -444,7 +447,7 @@ MVP 기준 지원 형식은 PDF, DOCX, MD이고, 파일 1개당 최대 10MB, 사
 - `id`: PK
 - `user_id`: users FK
 - `question_set_id`: interview_question_sets FK
-- `status`: in_progress, completed, aborted
+- `status`: ready, in_progress, paused, completed, feedback_completed
 - `total_score`: 세션 총점
 - `summary_feedback`: 세션 요약 피드백
 - `started_at`, `ended_at`: 시작/종료 시각
@@ -498,7 +501,7 @@ MVP 기준 지원 형식은 PDF, DOCX, MD이고, 파일 1개당 최대 10MB, 사
 ## 6. 주요 관계 정리
 
 - 사용자 1명은 여러 개의 로그인 계정을 가질 수 있다.
-- 사용자 1명은 여러 개의 GitHub 연동 정보를 가질 수 있다.
+- 사용자 1명은 GitHub 연동 정보를 최대 1개 가진다.
 - GitHub 연동 1건은 여러 저장소를 가진다.
 - 저장소 1개는 여러 커밋을 가진다.
 - 사용자 1명은 여러 문서를 업로드할 수 있다.
@@ -550,4 +553,3 @@ MVP 기준 지원 형식은 PDF, DOCX, MD이고, 파일 1개당 최대 10MB, 사
 - 이 ERD 초안을 바탕으로 엔티티별 필수/선택 컬럼을 한 번 더 줄인다.
 - 이후 PostgreSQL 기준 DDL 초안으로 변환한다.
 - 그 다음 API 명세서에서 요청/응답 구조를 엔티티 기준으로 정리한다.
-

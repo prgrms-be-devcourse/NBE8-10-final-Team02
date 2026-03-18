@@ -298,8 +298,9 @@ applies_to: error-classification-and-response
 
 ### 10.2 interview session
 
-- `created` 또는 `in_progress` 상태의 세션만 답변 제출을 허용한다.
-- `completed` 또는 `abandoned` 상태 세션에는 추가 답변 저장을 허용하지 않는다.
+- `ready` 상태는 시작 전 상태이며 답변 제출을 허용하지 않는다.
+- `in_progress` 상태의 세션만 일반 답변 제출을 허용한다.
+- `paused`, `completed`, `feedback_completed` 상태 세션에는 추가 답변 저장을 허용하지 않는다.
 - 종료되지 않은 세션을 결과 확정 상태로 저장하면 안 된다.
 
 ### 10.3 document / repository
