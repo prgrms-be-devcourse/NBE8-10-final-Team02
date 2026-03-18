@@ -19,11 +19,11 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class FeedbackTag extends CreatedAtEntity {
 
-    @Column(name = "tag_name", nullable = false, unique = true)
+    @Column(name = "tag_name", nullable = false, unique = true, length = 100)
     private String tagName;
 
     @Convert(converter = FeedbackTagCategoryConverter.class)
-    @Column(name = "tag_category", nullable = false)
+    @Column(name = "tag_category", nullable = false, length = 20)
     private FeedbackTagCategory tagCategory;
 
     @Column(name = "description", columnDefinition = "text")

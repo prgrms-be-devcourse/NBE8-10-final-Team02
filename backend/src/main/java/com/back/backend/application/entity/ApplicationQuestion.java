@@ -45,13 +45,13 @@ public class ApplicationQuestion extends BaseTimeEntity {
     private String editedAnswer;
 
     @Convert(converter = ApplicationToneOptionConverter.class)
-    @Column(name = "tone_option")
+    @Column(name = "tone_option", length = 20)
     private ApplicationToneOption toneOption;
 
     @Convert(converter = ApplicationLengthOptionConverter.class)
-    @Column(name = "length_option")
+    @Column(name = "length_option", length = 20)
     private ApplicationLengthOption lengthOption;
 
-    @Column(name = "emphasis_point")
+    @Column(name = "emphasis_point", length = 255)
     private String emphasisPoint;
 }

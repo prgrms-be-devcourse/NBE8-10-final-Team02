@@ -34,17 +34,17 @@ public class InterviewQuestionSet extends CreatedAtEntity {
     @JoinColumn(name = "application_id", nullable = false)
     private Application application;
 
-    @Column(name = "title")
+    @Column(name = "title", length = 255)
     private String title;
 
     @Column(name = "question_count", nullable = false)
     private Integer questionCount;
 
     @Convert(converter = DifficultyLevelConverter.class)
-    @Column(name = "difficulty_level", nullable = false)
+    @Column(name = "difficulty_level", nullable = false, length = 20)
     private DifficultyLevel difficultyLevel;
 
     @JdbcTypeCode(SqlTypes.ARRAY)
-    @Column(name = "question_types")
+    @Column(name = "question_types", columnDefinition = "text[]")
     private String[] questionTypes;
 }

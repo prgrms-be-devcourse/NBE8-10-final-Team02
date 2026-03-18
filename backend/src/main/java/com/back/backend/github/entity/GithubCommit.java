@@ -33,16 +33,16 @@ public class GithubCommit extends BaseEntity {
     @JoinColumn(name = "repository_id", nullable = false)
     private GithubRepository repository;
 
-    @Column(name = "github_commit_sha", nullable = false)
+    @Column(name = "github_commit_sha", nullable = false, length = 64)
     private String githubCommitSha;
 
-    @Column(name = "author_login")
+    @Column(name = "author_login", length = 255)
     private String authorLogin;
 
-    @Column(name = "author_name")
+    @Column(name = "author_name", length = 255)
     private String authorName;
 
-    @Column(name = "author_email")
+    @Column(name = "author_email", length = 255)
     private String authorEmail;
 
     @Column(name = "commit_message", nullable = false, columnDefinition = "text")

@@ -36,13 +36,13 @@ public class AuthAccount extends BaseEntity {
     private User user;
 
     @Convert(converter = AuthProviderConverter.class)
-    @Column(name = "provider", nullable = false)
+    @Column(name = "provider", nullable = false, length = 20)
     private AuthProvider provider;
 
-    @Column(name = "provider_user_id", nullable = false)
+    @Column(name = "provider_user_id", nullable = false, length = 255)
     private String providerUserId;
 
-    @Column(name = "provider_email")
+    @Column(name = "provider_email", length = 255)
     private String providerEmail;
 
     @Column(name = "is_primary", nullable = false)
