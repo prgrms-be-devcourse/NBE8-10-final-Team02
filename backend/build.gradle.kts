@@ -53,7 +53,7 @@ dependencies {
     //testImplementation("org.springframework.security:spring-security-test")
 
     // API Docs
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.4.0")
 
     // Monitoring
     implementation ("org.springframework.boot:spring-boot-starter-actuator")
