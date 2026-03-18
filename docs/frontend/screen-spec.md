@@ -2,7 +2,7 @@
 owner: 면접 세션/서비스 흐름 + 대시보드/히스토리
 reviewer: 프론트 협업자
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-03-18
 linked_issue_or_pr: docs-sync-screen-wbs-v6
 applies_to: screen-state-route
 ---
@@ -701,6 +701,6 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 
 - 파일 업로드 제약은 프론트에서 1차 차단하고 서버 검증 결과도 그대로 노출한다.
 - 세션 상태 전이는 서버 응답을 기준으로 처리한다.
-- `건너뛰기`와 `일반 제출`은 다른 API 의도 또는 payload로 구분한다.
+- `건너뛰기`와 `일반 제출`은 동일한 answers API를 사용하되 `isSkipped`와 `answerText` 검증 규칙으로 구분한다.
 - 로그인 제공자 충돌 안내는 단순 에러 토스트가 아니라 다음 행동이 보이는 UI로 만든다.
 - 화면의 라벨은 내부 테이블명보다 사용자 용어를 우선 사용한다.
