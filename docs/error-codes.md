@@ -2,7 +2,7 @@
 owner: 플랫폼/공통 기반 + 인프라/배포/관측성
 reviewer: 프론트 협업자
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-03-18
 linked_issue_or_pr: docs-governance-v4
 applies_to: error-code-catalog
 ---
@@ -60,9 +60,11 @@ applies_to: error-code-catalog
 - `INTERVIEW_QUESTION_GENERATION_FAILED`
 - `INTERVIEW_QUESTION_RESULT_INVALID`
 - `INTERVIEW_SESSION_NOT_FOUND`
+- `INTERVIEW_SESSION_ALREADY_ACTIVE`
 - `INTERVIEW_SESSION_ALREADY_COMPLETED`
 - `INTERVIEW_SESSION_NOT_ACTIVE`
 - `INTERVIEW_ANSWER_REQUIRED`
+- `INTERVIEW_ANSWER_TOO_SHORT`
 - `INTERVIEW_RESULT_GENERATION_FAILED`
 - `INTERVIEW_RESULT_INCOMPLETE`
 

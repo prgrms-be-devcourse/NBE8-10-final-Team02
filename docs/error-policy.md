@@ -2,7 +2,7 @@
 owner: 플랫폼/공통 기반 + 인프라/배포/관측성
 reviewer: 프론트 협업자
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-03-18
 linked_issue_or_pr: docs-sync-requirements-v5
 applies_to: error-classification-and-response
 ---
@@ -524,9 +524,11 @@ applies_to: error-classification-and-response
 - `INTERVIEW_QUESTION_GENERATION_FAILED`
 - `INTERVIEW_QUESTION_RESULT_INVALID`
 - `INTERVIEW_SESSION_NOT_FOUND`
+- `INTERVIEW_SESSION_ALREADY_ACTIVE`
 - `INTERVIEW_SESSION_ALREADY_COMPLETED`
 - `INTERVIEW_SESSION_NOT_ACTIVE`
 - `INTERVIEW_ANSWER_REQUIRED`
+- `INTERVIEW_ANSWER_TOO_SHORT`
 - `INTERVIEW_RESULT_GENERATION_FAILED`
 - `INTERVIEW_RESULT_INCOMPLETE`
 
@@ -551,6 +553,8 @@ applies_to: error-classification-and-response
 | 문서 추출 실패 | 502 | DOCUMENT_EXTRACT_FAILED | 문서 내용 추출에 실패했습니다. | true |
 | 포트폴리오 데이터 없음 | 422 | APPLICATION_SOURCE_REQUIRED | 포트폴리오 데이터를 먼저 등록해주세요. | false |
 | 자소서 생성 timeout | 503 | SELF_INTRO_GENERATION_TIMEOUT | 생성 시간이 길어지고 있습니다. 잠시 후 다시 시도해주세요. | true |
+| 활성 세션이 이미 존재함 | 409 | INTERVIEW_SESSION_ALREADY_ACTIVE | 이미 진행 중인 면접 세션이 있습니다. | false |
+| 면접 답변이 50자 미만 | 400 | INTERVIEW_ANSWER_TOO_SHORT | 답변은 50자 이상 입력해주세요. | false |
 | 완료된 세션에 재답변 요청 | 409 | INTERVIEW_SESSION_ALREADY_COMPLETED | 이미 종료된 면접 세션입니다. | false |
 | 면접 결과 생성 실패 | 502 | INTERVIEW_RESULT_GENERATION_FAILED | 면접 결과 생성 중 오류가 발생했습니다. | true |
 | 예기치 못한 서버 오류 | 500 | INTERNAL_SERVER_ERROR | 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요. | true |
