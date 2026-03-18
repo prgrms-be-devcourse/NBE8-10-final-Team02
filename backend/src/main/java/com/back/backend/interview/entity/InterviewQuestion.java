@@ -45,11 +45,11 @@ public class InterviewQuestion extends CreatedAtEntity {
     private Integer questionOrder;
 
     @Convert(converter = InterviewQuestionTypeConverter.class)
-    @Column(name = "question_type", nullable = false)
+    @Column(name = "question_type", nullable = false, length = 30)
     private InterviewQuestionType questionType;
 
     @Convert(converter = DifficultyLevelConverter.class)
-    @Column(name = "difficulty_level", nullable = false)
+    @Column(name = "difficulty_level", nullable = false, length = 20)
     private DifficultyLevel difficultyLevel;
 
     @Column(name = "question_text", nullable = false, columnDefinition = "text")

@@ -1,5 +1,6 @@
 package com.back.backend.global;
 
+import com.back.backend.TestcontainersConfiguration;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import com.back.backend.global.request.RequestIdContext;
@@ -34,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(ApiContractTest.ContractTestController.class)
+@Import({TestcontainersConfiguration.class, ApiContractTest.ContractTestController.class})
 class ApiContractTest {
 
     @Autowired

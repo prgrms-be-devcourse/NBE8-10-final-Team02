@@ -2,7 +2,7 @@
 owner: 팀 전체
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-03-18
 linked_issue_or_pr: docs-sync-screen-wbs-v6
 applies_to: project-plan
 ---
@@ -107,7 +107,7 @@ applies_to: project-plan
 
 | 5.1 | 면접 | 질문 세트 생성 구현 | 자소서 기반 질문 생성, 최대 20개 검증 | 4.4 | question-set API | AI | 1.0 | 질문 세트 저장 성공 |
 | 5.2 | 면접 | 질문 세트 편집 구현 | 개별 삭제, 수동 추가, 세션용 질문 수 검증 | 5.1 | question-set 수정 API | 서비스 흐름 | 0.5 | 3~20개 검증 통과 |
-| 5.3 | 면접 | 세션 생성 구현 | 활성 세션 1개 제한, 상태 ready 생성 | 5.2 | session 생성 API | 서비스 흐름 | 1.0 | 중복 세션 차단 |
+| 5.3 | 면접 | 세션 생성 구현 | 활성 세션 1개 제한, 세션 시작 시 상태 in_progress 진입 | 5.2 | session 생성 API | 서비스 흐름 | 1.0 | 중복 세션 차단 |
 | 5.4 | 면접 | 답변 제출/건너뛰기 구현 | 50~1000자 검증, skip 분기 처리 | 5.3 | answers API | 서비스 흐름 | 1.0 | 일반 제출/skip 구분 |
 | 5.5 | 면접 | 세션 복원/자동 일시정지 구현 | 30분 미입력 pause, 복원 조회 | 5.3, 5.4 | 상태 전이 로직 | 서비스 흐름 | 0.5 | pause/resume 동작 |
 | 5.6 | 면접 | 세션 완료 및 결과 생성 | complete 처리, 피드백 생성 큐 또는 동기 처리 | 5.4 | complete/result API | AI+서비스 흐름 | 1.0 | 결과 조회 가능 |

@@ -2,7 +2,7 @@
 owner: 플랫폼/공통 기반 + 인프라/배포/관측성
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-03-18
 linked_issue_or_pr: docs-sync-product-nfr-v8
 applies_to: quality-and-ops
 ---
@@ -122,7 +122,8 @@ applies_to: quality-and-ops
 - 사용자당 동시에 진행 가능한 활성 면접 세션은 1개다.
 - 일반 답변 길이는 50자 이상 1000자 이하로 제한한다.
 - 30분 이상 답변이 없으면 세션을 자동 일시정지하고 재개 가능해야 한다.
-- 생성 작업과 세션 상태는 `pending`, `in_progress`, `paused`, `completed`, `failed`처럼 화면과 API에서 일관되게 보이도록 관리한다.
+- 생성 작업과 세션 상태는 도메인별 canonical enum을 그대로 사용한다.
+- 예: GitHub 연결/동기화 저장 상태 `pending | success | failed`, 문서 추출 상태 `pending | success | failed`, 면접 세션 상태 `ready | in_progress | paused | completed | feedback_completed`
 
 ## 9. 테스트와 품질 게이트
 

@@ -2,7 +2,7 @@
 owner: 플랫폼/공통 기반 + 인프라/배포/관측성
 reviewer: 프론트 협업자
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-03-18
 linked_issue_or_pr: -
 applies_to: api-request-response-reference
 ---
@@ -11,7 +11,6 @@ applies_to: api-request-response-reference
 
 > 이 문서는 `openapi.yaml`을 빠르게 확인하기 위한 파생 참조 문서다.
 > HTTP 계약의 최종 원본은 `openapi.yaml`이고, 운영 규칙 원본은 `docs/api-guidelines.md`다.
-> 그룹 구조와 용어는 `archive/synced/AI_기술_면접_연습_플랫폼_API_명세서_v1.0.md`를 참고해 재정리했다.
 > 값이 충돌하면 항상 `openapi.yaml`을 우선한다.
 
 ## 1. 문서 목적
@@ -163,6 +162,7 @@ applies_to: api-request-response-reference
 참고:
 - private repository는 GitHub OAuth 추가 동의와 적절한 scope가 있을 때만 지원한다.
 - 현재 MVP 수집 범위는 repository와 사용자 본인 commit이다.
+- 여기의 `syncStatus`는 동기화 시작 요청의 처리 상태이며, 저장되는 `github_connections.sync_status(pending, success, failed)`와는 별개다.
 
 ### 3.3 문서 업로드
 
@@ -290,7 +290,7 @@ applies_to: api-request-response-reference
 | 설명 | 자소서 문항 일괄 저장 |
 | Path | `applicationId` required, int64 |
 | Query | 없음 |
-| Body | `application/json`<br>`questions` required, array, max `10`<br>각 항목: `questionOrder` required, `questionText` required, `toneOption?` `enum(formal, balanced, casual)`, `lengthOption?` `enum(short, medium, long)`, `emphasisPoint?`, `templateSource?` `role_template | company_input | custom` |
+| Body | `application/json`<br>`questions` required, array, max `10`<br>각 항목: `questionOrder` required, `questionText` required, `toneOption?` `enum(formal, balanced, casual)`, `lengthOption?` `enum(short, medium, long)`, `emphasisPoint?` |
 | Success | `200`<br>`data[] { id, questionOrder, questionText, generatedAnswer?, editedAnswer?, toneOption?, lengthOption?, emphasisPoint? }` |
 | Error | openapi에 별도 오류 응답 미기재 |
 
@@ -442,4 +442,4 @@ applies_to: api-request-response-reference
 - 이 문서는 `request`와 `response` 빠른 확인용 참조 문서다.
 - 최종 계약 검증, example, nullable, enum, 상태코드 상세는 `openapi.yaml`을 다시 확인한다.
 - 공통 응답 규칙은 `docs/api-guidelines.md`, 상세 오류 정책은 `docs/error-policy.md`를 따른다.
-- `archive/synced` 문서는 비교 참고용이고, 현재 문서의 실제 기준 값은 `openapi.yaml`과 최신 project 문서다.
+- 현재 문서의 실제 기준 값은 `openapi.yaml`과 최신 project 문서다.

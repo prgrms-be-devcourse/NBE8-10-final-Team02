@@ -39,14 +39,14 @@ public class GithubConnection extends BaseEntity {
     @Column(name = "github_user_id", nullable = false)
     private Long githubUserId;
 
-    @Column(name = "github_login", nullable = false)
+    @Column(name = "github_login", nullable = false, length = 255)
     private String githubLogin;
 
-    @Column(name = "access_scope")
+    @Column(name = "access_scope", columnDefinition = "text")
     private String accessScope;
 
     @Convert(converter = GithubSyncStatusConverter.class)
-    @Column(name = "sync_status", nullable = false)
+    @Column(name = "sync_status", nullable = false, length = 20)
     private GithubSyncStatus syncStatus;
 
     @Column(name = "connected_at", nullable = false)

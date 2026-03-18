@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: AI 기술 면접 연습 플랫폼 API
-  version: 0.4.0
+  version: 0.4.1
   description: 핵심 사용자 흐름과 최신 요구사항 변경안을 반영한 OpenAPI 계약. API 변경 시 docs/requirements.md,
     docs/project/open-items.md와 함께 수정한다. 핵심 성공 응답은 success/data/meta 형태와 예시 응답을 포함한다.
 servers:
@@ -441,6 +441,7 @@ components:
           type: string
           enum:
           - completed
+          - feedback_completed
         totalScore:
           type: integer
           minimum: 0
@@ -549,6 +550,7 @@ components:
           format: int64
         syncStatus:
           type: string
+          description: 동기화 시작 요청의 처리 상태. 저장되는 github_connections.sync_status(pending/success/failed)와는 별개다.
           enum:
           - queued
           - running
@@ -801,7 +803,7 @@ paths:
                   value:
                     success: false
                     error:
-                      code: OAUTH_PROVIDER_UNSUPPORTED
+                      code: AUTH_UNSUPPORTED_PROVIDER
                       message: 지원하지 않는 로그인 제공자입니다.
                       retryable: false
                     meta: *id001
@@ -879,9 +881,9 @@ paths:
                   value:
                     success: false
                     error:
-                      code: OAUTH_AUTHENTICATION_FAILED
-                      message: 소셜 로그인 인증에 실패했습니다.
-                      retryable: true
+                      code: AUTH_PROVIDER_RESPONSE_INVALID
+                      message: 소셜 로그인 인증 처리에 실패했습니다.
+                      retryable: false
                     meta: *id001
   /users/me:
     get:
@@ -1698,10 +1700,6 @@ paths:
                           chars
                       emphasisPoint:
                         type: string
-                      templateSource:
-                        type: string
-                        nullable: true
-                        description: role_template | company_input | custom
                     required:
                     - questionOrder
                     - questionText
@@ -1849,7 +1847,7 @@ paths:
                   value:
                     success: false
                     error:
-                      code: AI_RESPONSE_INVALID
+                      code: SELF_INTRO_RESULT_INVALID
                       message: AI 응답 형식이 올바르지 않습니다.
                       retryable: true
                     meta: *id001
@@ -1864,7 +1862,7 @@ paths:
                   value: &id007
                     success: false
                     error:
-                      code: AI_TIMEOUT
+                      code: SELF_INTRO_GENERATION_TIMEOUT
                       message: AI 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.
                       retryable: true
                     meta: *id001
@@ -2319,8 +2317,8 @@ paths:
                   value:
                     success: false
                     error:
-                      code: INTERVIEW_RESULT_INVALID
-                      message: 면접 결과 생성 형식이 올바르지 않습니다.
+                      code: INTERVIEW_RESULT_INCOMPLETE
+                      message: 면접 결과 생성 결과가 완전하지 않습니다.
                       retryable: true
                     meta: *id001
         '503':
@@ -2372,7 +2370,7 @@ paths:
                     data:
                       sessionId: 901
                       questionSetId: 701
-                      status: completed
+                      status: feedback_completed
                       totalScore: 84
                       summaryFeedback: 구조는 좋았고 경험 기반 근거를 더 구체화하면 좋습니다.
                       answers:

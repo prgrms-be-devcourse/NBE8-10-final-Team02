@@ -25,16 +25,16 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class User extends BaseTimeEntity {
 
-    @Column(name = "email", unique = true)
+    @Column(name = "email", length = 255)
     private String email;
 
-    @Column(name = "display_name", nullable = false)
+    @Column(name = "display_name", nullable = false, length = 255)
     private String displayName;
 
-    @Column(name = "profile_image_url")
+    @Column(name = "profile_image_url", length = 1000)
     private String profileImageUrl;
 
     @Convert(converter = UserStatusConverter.class)
-    @Column(name = "status", nullable = false)
+    @Column(name = "status", nullable = false, length = 20)
     private UserStatus status;
 }
