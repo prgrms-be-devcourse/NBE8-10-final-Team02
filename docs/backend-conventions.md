@@ -219,6 +219,8 @@ github
 
 ### 7.1 URL 규칙
 - Base URL은 `/api/v1`을 사용한다.
+- 보안 필터의 기본 보호 대상은 `/api/**`이며, 현재 버전의 business API는 `/api/v1` 하위에 둔다.
+- 단, 런타임에서 `/api/v1` base path가 전역 적용되기 전까지는 `/users/**`, `/github/**`, `/documents/**`, `/applications/**`, `/interview/**`, `/auth/logout` 같은 business path도 함께 보호한다.
 - 세부 endpoint 정의는 `openapi.yaml`을 기준으로 본다.
 - 리소스명은 복수형 kebab-case 또는 현재 API 명세 기준 복수형 영문을 사용한다.
 - 동사는 가능한 한 HTTP Method로 표현하고, 정말 필요한 동작만 하위 path에 둔다.
@@ -241,6 +243,9 @@ github
 
 ### 7.4 인증 사용자 처리
 - 현재 로그인 사용자의 식별자는 Security Context에서 가져온다.
+- 인증이 필요한 business API는 `/api/**` 하위 path를 기본값으로 사용한다.
+- 전역 base path가 아직 강제되지 않았다면 business resource root를 개별 matcher로도 함께 보호한다.
+- OAuth2 인가 시작/콜백, actuator, swagger 문서는 allowlist로 예외 처리할 수 있다.
 - 요청 본문이나 query로 `userId`를 받지 않는다.
 - 사용자 소유 리소스 조회 시 path id만 믿지 말고 소유권을 검증한다.
 

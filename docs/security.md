@@ -34,6 +34,9 @@ applies_to: security-policy
 ### 2.2 인증 수단 우선순위
 
 - 보호 API는 인증된 사용자만 접근 가능해야 한다.
+- 보호 API의 기본 경로 범위는 `/api/**`로 두고, 현재 canonical base URL은 `/api/v1`을 사용한다.
+- 런타임에서 `/api/v1` base path가 전역 적용되지 않았다면 `/users/**`, `/github/**`, `/documents/**`, `/applications/**`, `/interview/**`, `/auth/logout`도 함께 보호해야 한다.
+- OAuth2 인가 시작/콜백, actuator, swagger 문서는 보호 범위 예외로 둘 수 있다.
 - 인증 정보는 아래 우선순위를 따른다.
   1. `Authorization` 헤더
   2. 헤더가 없을 때만 쿠키 `apiKey`, `accessToken`
