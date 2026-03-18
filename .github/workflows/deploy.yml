@@ -126,11 +126,13 @@ jobs:
             
             # --- 2. Blue/Green 판정 ---
             if docker ps --format '{{.Names}}' | grep -q "be_a"; then
-              BLUE_BE="be_a"; GREEN_BE="be_b"; BLUE_FE="fe_a"; GREEN_FE="fe_b"
+            BLUE_BE="be_a"; GREEN_BE="be_b"; BLUE_FE="fe_a"; GREEN_FE="fe_b"
+            GREEN_BE_PORT="8081" # 구버전(A)이 8080이므로 새버전(B)은 8081 사용
             else
-              BLUE_BE="be_b"; GREEN_BE="be_a"; BLUE_FE="fe_b"; GREEN_FE="fe_a"
+            BLUE_BE="be_b"; GREEN_BE="be_a"; BLUE_FE="fe_b"; GREEN_FE="fe_a"
+            GREEN_BE_PORT="8080" # 구버전(B)이 8081이므로 새버전(A)은 8080 사용
             fi
-            echo "🎨 Role -> Blue(now): $BLUE_BE, Green(next): $GREEN_BE"
+            echo "🎨 Role -> Blue(now): $BLUE_BE, Green(next): $GREEN_BE on Port: $GREEN_BE_PORT"
 
             # --- 3. 새 이미지 Pull 및 기동 ---
             echo "${GITHUB_TOKEN}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -138,9 +140,9 @@ jobs:
             docker pull "${FE_IMAGE}:${IMAGE_TAG}"
             
             docker rm -f $GREEN_BE $GREEN_FE >/dev/null 2>&1 || true
-            docker run -d --name $GREEN_BE --network global-net -e SPRING_PROFILES_ACTIVE=prod "${BE_IMAGE}:${IMAGE_TAG}"
+            docker run -d --name $GREEN_BE -p $GREEN_BE_PORT:8080 --network global-net -e SPRING_PROFILES_ACTIVE=prod "${BE_IMAGE}:${IMAGE_TAG}"
             docker run -d --name $GREEN_FE --network global-net "${FE_IMAGE}:${IMAGE_TAG}"
-
+            
             # --- 4. 헬스 체크 ---
             echo "⏱ Waiting for Green to be healthy..."
             sleep 20 # 앱이 완전히 켜질 시간 대기 (필요시 늘리세요)
