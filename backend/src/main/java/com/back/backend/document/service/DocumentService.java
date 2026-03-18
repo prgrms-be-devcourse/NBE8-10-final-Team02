@@ -27,21 +27,21 @@ public class DocumentService {
         if (!ALLOWED_MIME_TYPES.contains(mimeType)) {
             throw new ServiceException(
                     ErrorCode.DOCUMENT_INVALID_TYPE,
-                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    HttpStatus.UNPROCESSABLE_CONTENT,
                     "지원하지 않는 파일 형식입니다."
             );
         }
         if (fileSizeBytes > MAX_FILE_SIZE_BYTES) {
             throw new ServiceException(
                     ErrorCode.DOCUMENT_FILE_TOO_LARGE,
-                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    HttpStatus.UNPROCESSABLE_CONTENT,
                     "파일 크기는 10MB를 초과할 수 없습니다."
             );
         }
         if (documentRepository.countByUserId(userId) >= MAX_DOCUMENT_COUNT) {
             throw new ServiceException(
                     ErrorCode.DOCUMENT_UPLOAD_FAILED,
-                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    HttpStatus.UNPROCESSABLE_CONTENT,
                     "문서는 최대 5개까지 업로드할 수 있습니다."
             );
         }
