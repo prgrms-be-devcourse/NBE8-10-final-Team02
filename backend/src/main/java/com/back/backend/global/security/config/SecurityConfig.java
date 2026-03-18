@@ -1,10 +1,13 @@
 package com.back.backend.global.security.config;
 
+import com.back.backend.global.request.RequestIdFilter;
+import com.back.backend.global.security.handler.ApiAuthenticationEntryPoint;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -16,6 +19,14 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    private final RequestIdFilter requestIdFilter;
+    private final ApiAuthenticationEntryPoint apiAuthenticationEntryPoint;
+
+    public SecurityConfig(RequestIdFilter requestIdFilter, ApiAuthenticationEntryPoint apiAuthenticationEntryPoint) {
+        this.requestIdFilter = requestIdFilter;
+        this.apiAuthenticationEntryPoint = apiAuthenticationEntryPoint;
+    }
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
@@ -24,11 +35,18 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
+                .exceptionHandling(exceptionHandling -> exceptionHandling
+                        .authenticationEntryPoint(apiAuthenticationEntryPoint)
+                )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/**").permitAll() // 모니터링 허용
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers("/auth/oauth2/**", "/api/v1/auth/oauth2/**").permitAll()
+                        .requestMatchers("/users/**", "/github/**", "/documents/**", "/applications/**", "/interview/**", "/auth/logout").authenticated()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
-                );
+                )
+                .addFilterBefore(requestIdFilter, SecurityContextHolderFilter.class);
         return http.build();
     }
 
