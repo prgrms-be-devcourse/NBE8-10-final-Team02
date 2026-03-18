@@ -1,0 +1,2392 @@
+openapi: 3.0.3
+info:
+  title: AI 기술 면접 연습 플랫폼 API
+  version: 0.4.0
+  description: 핵심 사용자 흐름과 최신 요구사항 변경안을 반영한 OpenAPI 계약. API 변경 시 docs/requirements.md,
+    docs/project/open-items.md와 함께 수정한다. 핵심 성공 응답은 success/data/meta 형태와 예시 응답을 포함한다.
+servers:
+- url: /api/v1
+tags:
+- name: Auth
+- name: GitHub
+- name: Documents
+- name: Applications
+- name: Interview
+components:
+  securitySchemes:
+    AuthorizationHeader:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: '형식: Bearer {apiKey} {accessToken}'
+  schemas:
+    Meta:
+      type: object
+      properties:
+        requestId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            retryable:
+              type: boolean
+            fieldErrors:
+              type: array
+              items:
+                $ref: '#/components/schemas/ErrorDetail'
+          required:
+          - code
+          - message
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - success
+      - error
+      - meta
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        displayName:
+          type: string
+        email:
+          type: string
+          nullable: true
+        profileImageUrl:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+          - active
+          - withdrawn
+      required:
+      - id
+      - displayName
+      - status
+    GithubConnection:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        githubUserId:
+          type: integer
+          format: int64
+        githubLogin:
+          type: string
+        accessScope:
+          type: string
+          nullable: true
+          description: OAuth 동의 범위. private repository 조회가 필요한 경우 추가 scope가 포함될 수
+            있다.
+        syncStatus:
+          type: string
+          enum:
+          - pending
+          - success
+          - failed
+        connectedAt:
+          type: string
+          format: date-time
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - id
+      - userId
+      - githubUserId
+      - githubLogin
+      - syncStatus
+      - connectedAt
+    Repository:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        githubRepoId:
+          type: integer
+          format: int64
+        ownerLogin:
+          type: string
+        repoName:
+          type: string
+        fullName:
+          type: string
+        htmlUrl:
+          type: string
+        visibility:
+          type: string
+          enum:
+          - public
+          - private
+          - internal
+        defaultBranch:
+          type: string
+          nullable: true
+        isSelected:
+          type: boolean
+      required:
+      - id
+      - githubRepoId
+      - fullName
+      - htmlUrl
+      - visibility
+      - isSelected
+    Document:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        documentType:
+          type: string
+          enum:
+          - resume
+          - award
+          - certificate
+          - other
+        originalFileName:
+          type: string
+        mimeType:
+          type: string
+          description: '허용 MIME type: application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document,
+            text/markdown'
+        fileSizeBytes:
+          type: integer
+          format: int64
+          description: 최대 10485760 bytes (10MB)
+        extractStatus:
+          type: string
+          enum:
+          - pending
+          - success
+          - failed
+        uploadedAt:
+          type: string
+          format: date-time
+        extractedAt:
+          type: string
+          format: date-time
+          nullable: true
+        extractedText:
+          type: string
+          nullable: true
+      required:
+      - id
+      - documentType
+      - originalFileName
+      - mimeType
+      - fileSizeBytes
+      - extractStatus
+      - uploadedAt
+    Application:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        applicationTitle:
+          type: string
+          nullable: true
+        companyName:
+          type: string
+          nullable: true
+        jobRole:
+          type: string
+        status:
+          type: string
+          enum:
+          - draft
+          - ready
+          description: 'draft: 작업 중, ready: 면접 질문 생성과 이후 흐름에 사용할 기준 데이터 준비 완료'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        applicationType:
+          type: string
+          nullable: true
+          description: '지원 유형 예: 신입, 인턴, 경력'
+      required:
+      - id
+      - jobRole
+      - status
+      - createdAt
+      - updatedAt
+    ApplicationQuestion:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        questionOrder:
+          type: integer
+        questionText:
+          type: string
+        generatedAnswer:
+          type: string
+          nullable: true
+        editedAnswer:
+          type: string
+          nullable: true
+        toneOption:
+          type: string
+          nullable: true
+          enum:
+          - formal
+          - balanced
+          - casual
+        lengthOption:
+          type: string
+          nullable: true
+          enum:
+          - short
+          - medium
+          - long
+          description: short<=700 chars, medium<=1200 chars, long<=1800 chars
+        emphasisPoint:
+          type: string
+          nullable: true
+      required:
+      - id
+      - questionOrder
+      - questionText
+    InterviewQuestion:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        questionOrder:
+          type: integer
+        questionType:
+          type: string
+          enum:
+          - experience
+          - project
+          - technical_cs
+          - technical_stack
+          - behavioral
+          - follow_up
+        difficultyLevel:
+          type: string
+          enum:
+          - easy
+          - medium
+          - hard
+        questionText:
+          type: string
+        parentQuestionId:
+          type: integer
+          format: int64
+          nullable: true
+        sourceApplicationQuestionId:
+          type: integer
+          format: int64
+          nullable: true
+      required:
+      - id
+      - questionOrder
+      - questionType
+      - difficultyLevel
+      - questionText
+    InterviewSession:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        questionSetId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+          - ready
+          - in_progress
+          - paused
+          - completed
+          - feedback_completed
+          description: 'ready: 시작 전, in_progress: 진행 중, paused: 일시중지, completed: 종료,
+            feedback_completed: 피드백 완료'
+        totalScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+        summaryFeedback:
+          type: string
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - id
+      - questionSetId
+      - status
+    ErrorDetail:
+      type: object
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+      required:
+      - field
+      - reason
+    FeedbackTag:
+      type: object
+      properties:
+        tagId:
+          type: integer
+          format: int64
+        tagName:
+          type: string
+          enum:
+          - 질문 의도 미충족
+          - 답변 미완
+          - 구체성 부족
+          - 문제 해결 설명 부족
+          - 답변 구조 미흡
+          - 근거 부족
+          - 기술 정확도 부족
+          - 기술 깊이 부족
+          - 선택 근거 부족
+          - 표현 명확성 부족
+        tagCategory:
+          type: string
+          enum:
+          - content
+          - structure
+          - evidence
+          - communication
+          - technical
+          - other
+      required:
+      - tagId
+      - tagName
+      - tagCategory
+    InterviewAnswerResult:
+      type: object
+      properties:
+        answerId:
+          type: integer
+          format: int64
+        questionId:
+          type: integer
+          format: int64
+        questionText:
+          type: string
+        answerText:
+          type: string
+          nullable: true
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        evaluationRationale:
+          type: string
+        tags:
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/FeedbackTag'
+      required:
+      - answerId
+      - questionId
+      - questionText
+      - score
+      - evaluationRationale
+      - tags
+    InterviewResult:
+      type: object
+      properties:
+        sessionId:
+          type: integer
+          format: int64
+        questionSetId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+          - completed
+        totalScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        summaryFeedback:
+          type: string
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/InterviewAnswerResult'
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - sessionId
+      - questionSetId
+      - status
+      - totalScore
+      - summaryFeedback
+      - answers
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        size:
+          type: integer
+          example: 20
+        totalElements:
+          type: integer
+          example: 1
+        totalPages:
+          type: integer
+          example: 1
+      required:
+      - page
+      - size
+      - totalElements
+      - totalPages
+    AuthorizationStartData:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum:
+          - github
+          - google
+          - kakao
+        authorizationUrl:
+          type: string
+        state:
+          type: string
+      required:
+      - provider
+      - authorizationUrl
+      - state
+    OAuthCallbackData:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum:
+          - github
+          - google
+          - kakao
+        isNewUser:
+          type: boolean
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+      - provider
+      - isNewUser
+      - user
+    LogoutData:
+      type: object
+      properties:
+        loggedOut:
+          type: boolean
+          example: true
+      required:
+      - loggedOut
+    RepositorySelectionData:
+      type: object
+      properties:
+        selectedRepositoryIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        selectedCount:
+          type: integer
+      required:
+      - selectedRepositoryIds
+      - selectedCount
+    RepositorySyncData:
+      type: object
+      properties:
+        repositoryId:
+          type: integer
+          format: int64
+        syncStatus:
+          type: string
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+        queuedAt:
+          type: string
+          format: date-time
+      required:
+      - repositoryId
+      - syncStatus
+      - queuedAt
+    ApplicationSourceBindingData:
+      type: object
+      properties:
+        applicationId:
+          type: integer
+          format: int64
+        repositoryIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        documentIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        sourceCount:
+          type: integer
+      required:
+      - applicationId
+      - repositoryIds
+      - documentIds
+      - sourceCount
+    GeneratedApplicationAnswer:
+      type: object
+      properties:
+        questionId:
+          type: integer
+          format: int64
+        questionText:
+          type: string
+        generatedAnswer:
+          type: string
+        toneOption:
+          type: string
+          nullable: true
+          enum:
+          - formal
+          - balanced
+          - casual
+        lengthOption:
+          type: string
+          nullable: true
+          enum:
+          - short
+          - medium
+          - long
+      required:
+      - questionId
+      - questionText
+      - generatedAnswer
+    ApplicationAnswerGenerationData:
+      type: object
+      properties:
+        applicationId:
+          type: integer
+          format: int64
+        generatedCount:
+          type: integer
+        regenerate:
+          type: boolean
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/GeneratedApplicationAnswer'
+      required:
+      - applicationId
+      - generatedCount
+      - regenerate
+      - answers
+    InterviewQuestionSetSummary:
+      type: object
+      properties:
+        questionSetId:
+          type: integer
+          format: int64
+        applicationId:
+          type: integer
+          format: int64
+        title:
+          type: string
+        questionCount:
+          type: integer
+        difficultyLevel:
+          type: string
+          enum:
+          - easy
+          - medium
+          - hard
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - questionSetId
+      - applicationId
+      - title
+      - questionCount
+      - difficultyLevel
+      - createdAt
+    InterviewQuestionSetDetail:
+      type: object
+      properties:
+        questionSetId:
+          type: integer
+          format: int64
+        applicationId:
+          type: integer
+          format: int64
+        title:
+          type: string
+        questionCount:
+          type: integer
+        difficultyLevel:
+          type: string
+          enum:
+          - easy
+          - medium
+          - hard
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/InterviewQuestion'
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - questionSetId
+      - applicationId
+      - title
+      - questionCount
+      - difficultyLevel
+      - questions
+      - createdAt
+    SessionAnswerSubmitData:
+      type: object
+      properties:
+        sessionId:
+          type: integer
+          format: int64
+        questionId:
+          type: integer
+          format: int64
+        answerOrder:
+          type: integer
+        isSkipped:
+          type: boolean
+        submittedAt:
+          type: string
+          format: date-time
+      required:
+      - sessionId
+      - questionId
+      - answerOrder
+      - isSkipped
+      - submittedAt
+    SessionCompletionData:
+      type: object
+      properties:
+        sessionId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+          - completed
+          - feedback_completed
+        totalScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        summaryFeedback:
+          type: string
+        endedAt:
+          type: string
+          format: date-time
+      required:
+      - sessionId
+      - status
+      - totalScore
+      - summaryFeedback
+      - endedAt
+security:
+- AuthorizationHeader: []
+paths:
+  /auth/oauth2/{provider}/authorize:
+    get:
+      tags:
+      - Auth
+      summary: OAuth2 로그인 시작
+      parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - github
+          - google
+          - kakao
+      responses:
+        '200':
+          description: 인증 URL 반환
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/AuthorizationStartData'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                authorizationStartExample:
+                  value:
+                    success: true
+                    data:
+                      provider: github
+                      authorizationUrl: https://github.com/login/oauth/authorize?client_id=example&state=st_123
+                      state: st_123
+                    meta: &id001
+                      requestId: req_20260317_0001
+                      timestamp: '2026-03-17T10:30:00Z'
+        '400':
+          description: 지원하지 않는 provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidProvider:
+                  value:
+                    success: false
+                    error:
+                      code: OAUTH_PROVIDER_UNSUPPORTED
+                      message: 지원하지 않는 로그인 제공자입니다.
+                      retryable: false
+                    meta: *id001
+  /auth/oauth2/{provider}/callback:
+    get:
+      tags:
+      - Auth
+      summary: OAuth2 콜백 처리
+      parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - github
+          - google
+          - kakao
+      - name: code
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: error
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 로그인 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/OAuthCallbackData'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                oauthCallbackSuccess:
+                  value:
+                    success: true
+                    data:
+                      provider: github
+                      isNewUser: false
+                      user:
+                        id: 1
+                        displayName: q q
+                        email: user@example.com
+                        profileImageUrl: https://avatars.githubusercontent.com/u/1?v=4
+                        status: active
+                    meta: *id001
+        '401':
+          description: 인증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                oauthFailure:
+                  value:
+                    success: false
+                    error:
+                      code: OAUTH_AUTHENTICATION_FAILED
+                      message: 소셜 로그인 인증에 실패했습니다.
+                      retryable: true
+                    meta: *id001
+  /users/me:
+    get:
+      tags:
+      - Auth
+      summary: 내 정보 조회
+      responses:
+        '200':
+          description: 내 정보
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/User'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                userMeSuccess:
+                  value:
+                    success: true
+                    data:
+                      id: 1
+                      displayName: q q
+                      email: user@example.com
+                      profileImageUrl: https://avatars.githubusercontent.com/u/1?v=4
+                      status: active
+                    meta: *id001
+        '401':
+          description: 인증 필요
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                authRequired:
+                  value:
+                    success: false
+                    error:
+                      code: AUTH_REQUIRED
+                      message: 로그인이 필요합니다.
+                      retryable: false
+                    meta: *id001
+  /auth/logout:
+    post:
+      tags:
+      - Auth
+      summary: 로그아웃
+      responses:
+        '200':
+          description: 로그아웃 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/LogoutData'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                logoutSuccess:
+                  value:
+                    success: true
+                    data:
+                      loggedOut: true
+                    meta: *id001
+  /github/connections:
+    post:
+      tags:
+      - GitHub
+      summary: GitHub 연결 생성 또는 갱신
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+                  enum:
+                  - oauth
+                  - url
+                githubLogin:
+                  type: string
+                githubUserId:
+                  type: integer
+                  format: int64
+                accessScope:
+                  type: string
+                  description: private repository 접근이 필요한 경우 provider 동의로 획득한 scope
+                    문자열
+                githubProfileUrl:
+                  type: string
+              required:
+              - mode
+      responses:
+        '201':
+          description: 연결 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/GithubConnection'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                githubConnectionSuccess:
+                  value:
+                    success: true
+                    data:
+                      id: 10
+                      userId: 1
+                      githubUserId: 123456
+                      githubLogin: octocat
+                      accessScope: read:user repo
+                      syncStatus: success
+                      connectedAt: '2026-03-17T10:29:30Z'
+                      lastSyncedAt: '2026-03-17T10:29:50Z'
+                    meta: *id001
+  /github/repositories:
+    get:
+      tags:
+      - GitHub
+      summary: 저장소 목록 조회
+      parameters:
+      - name: selected
+        in: query
+        required: false
+        schema:
+          type: boolean
+      - name: visibility
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - public
+          - private
+          - internal
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 1
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+      responses:
+        '200':
+          description: 저장소 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Repository'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                repositoryListSuccess:
+                  value:
+                    success: true
+                    data:
+                    - id: 101
+                      githubRepoId: 987654
+                      ownerLogin: octocat
+                      repoName: ai-interview-platform
+                      fullName: octocat/ai-interview-platform
+                      htmlUrl: https://github.com/octocat/ai-interview-platform
+                      visibility: public
+                      defaultBranch: main
+                      isSelected: true
+                    meta: &id002
+                      requestId: req_20260317_0002
+                      timestamp: '2026-03-17T10:30:05Z'
+                      pagination:
+                        page: 1
+                        size: 20
+                        totalElements: 1
+                        totalPages: 1
+  /github/repositories/selection:
+    put:
+      tags:
+      - GitHub
+      summary: 저장소 선택 상태 저장
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                repositoryIds:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+              required:
+              - repositoryIds
+      responses:
+        '200':
+          description: 저장 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/RepositorySelectionData'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                repositorySelectionSuccess:
+                  value:
+                    success: true
+                    data:
+                      selectedRepositoryIds:
+                      - 101
+                      selectedCount: 1
+                    meta: *id001
+  /github/repositories/{repositoryId}/sync-commits:
+    post:
+      tags:
+      - GitHub
+      summary: 저장소 커밋 동기화 시작
+      parameters:
+      - name: repositoryId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '202':
+          description: 동기화 시작
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/RepositorySyncData'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                repositorySyncQueued:
+                  value:
+                    success: true
+                    data:
+                      repositoryId: 101
+                      syncStatus: queued
+                      queuedAt: '2026-03-17T10:31:00Z'
+                    meta: *id001
+        '403':
+          description: private/internal repository 접근 scope 부족
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                privateScopeError:
+                  value:
+                    success: false
+                    error:
+                      code: GITHUB_SCOPE_INSUFFICIENT
+                      message: private repository 조회 권한이 부족합니다.
+                      retryable: false
+                      fieldErrors:
+                      - field: accessScope
+                        reason: missing_private_repo_scope
+                    meta: *id001
+      description: 선택한 repository의 사용자 본인 commit 동기화를 시작한다. private repository는 GitHub
+        OAuth 추가 동의가 있는 경우에만 지원한다.
+  /documents:
+    post:
+      tags:
+      - Documents
+      summary: 문서 업로드
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                documentType:
+                  type: string
+                  enum:
+                  - resume
+                  - award
+                  - certificate
+                  - other
+                  description: resume | award | certificate | other
+                file:
+                  type: string
+                  format: binary
+                  description: '허용 형식: PDF, DOCX, MD / 최대 10MB / 기본 최대 5개'
+              required:
+              - documentType
+              - file
+      responses:
+        '201':
+          description: 업로드 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Document'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                documentUploadSuccess:
+                  value:
+                    success: true
+                    data:
+                      id: 301
+                      documentType: resume
+                      originalFileName: resume_2026.pdf
+                      mimeType: application/pdf
+                      fileSizeBytes: 834221
+                      extractStatus: pending
+                      uploadedAt: '2026-03-17T10:31:10Z'
+                      extractedAt: null
+                      extractedText: null
+                    meta: *id001
+        '400':
+          description: 지원하지 않는 파일 형식 또는 최대 용량 초과
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                documentTooLargeError:
+                  value:
+                    success: false
+                    error:
+                      code: DOCUMENT_FILE_TOO_LARGE
+                      message: 파일 크기는 10MB를 초과할 수 없습니다.
+                      retryable: false
+                      fieldErrors:
+                      - field: file
+                        reason: max_10mb
+                    meta: *id001
+      description: 이력서, 수상기록 등 문서를 업로드하고 텍스트 추출을 시작한다. 허용 형식은 PDF, DOCX, MD이고 파일 1개당
+        최대 10MB다. 기본 업로드 수는 5개다.
+    get:
+      tags:
+      - Documents
+      summary: 문서 목록 조회
+      responses:
+        '200':
+          description: 문서 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Document'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                documentListSuccess:
+                  value:
+                    success: true
+                    data:
+                    - &id003
+                      id: 301
+                      documentType: resume
+                      originalFileName: resume_2026.pdf
+                      mimeType: application/pdf
+                      fileSizeBytes: 834221
+                      extractStatus: success
+                      uploadedAt: '2026-03-17T10:31:10Z'
+                      extractedAt: '2026-03-17T10:31:12Z'
+                      extractedText: Spring Boot 기반 프로젝트 경험 ...
+                    meta: *id002
+  /documents/{documentId}:
+    get:
+      tags:
+      - Documents
+      summary: 문서 상세 조회
+      parameters:
+      - name: documentId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: 문서 상세
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Document'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                documentDetailSuccess:
+                  value:
+                    success: true
+                    data: *id003
+                    meta: *id001
+    delete:
+      tags:
+      - Documents
+      summary: 문서 삭제
+      parameters:
+      - name: documentId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '204':
+          description: 삭제 성공
+        '409':
+          description: 참조 중 문서
+  /applications:
+    post:
+      tags:
+      - Applications
+      summary: 지원 단위 생성
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                applicationTitle:
+                  type: string
+                companyName:
+                  type: string
+                jobRole:
+                  type: string
+                applicationType:
+                  type: string
+                  description: '지원 유형 예: 신입, 인턴, 경력'
+              required:
+              - jobRole
+      responses:
+        '201':
+          description: 생성 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Application'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                applicationCreateSuccess:
+                  value:
+                    success: true
+                    data: &id004
+                      id: 401
+                      applicationTitle: 네이버 백엔드 신입 지원
+                      companyName: 네이버
+                      jobRole: Backend Engineer
+                      status: draft
+                      createdAt: '2026-03-17T10:32:00Z'
+                      updatedAt: '2026-03-17T10:32:00Z'
+                      applicationType: 신입
+                    meta: *id001
+    get:
+      tags:
+      - Applications
+      summary: 지원 단위 목록 조회
+      responses:
+        '200':
+          description: 목록 조회
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Application'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                applicationListSuccess:
+                  value:
+                    success: true
+                    data:
+                    - id: 401
+                      applicationTitle: 네이버 백엔드 신입 지원
+                      companyName: 네이버
+                      jobRole: Backend Engineer
+                      status: ready
+                      createdAt: '2026-03-17T10:32:00Z'
+                      updatedAt: '2026-03-17T10:33:10Z'
+                      applicationType: 신입
+                    meta: *id002
+  /applications/{applicationId}:
+    get:
+      tags:
+      - Applications
+      summary: 지원 단위 상세 조회
+      parameters:
+      - name: applicationId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: 상세 조회
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Application'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                applicationDetailSuccess:
+                  value:
+                    success: true
+                    data: *id004
+                    meta: *id001
+    patch:
+      tags:
+      - Applications
+      summary: 지원 단위 수정
+      parameters:
+      - name: applicationId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                applicationTitle:
+                  type: string
+                companyName:
+                  type: string
+                jobRole:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                  - draft
+                  - ready
+                applicationType:
+                  type: string
+      responses:
+        '200':
+          description: 수정 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Application'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                applicationUpdateSuccess:
+                  value:
+                    success: true
+                    data:
+                      id: 401
+                      applicationTitle: 네이버 백엔드 신입 지원
+                      companyName: 네이버
+                      jobRole: Backend Engineer
+                      status: ready
+                      createdAt: '2026-03-17T10:32:00Z'
+                      updatedAt: '2026-03-17T10:33:10Z'
+                      applicationType: 신입
+                    meta: *id001
+    delete:
+      tags:
+      - Applications
+      summary: 지원 단위 삭제
+      parameters:
+      - name: applicationId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '204':
+          description: 삭제 성공
+  /applications/{applicationId}/sources:
+    put:
+      tags:
+      - Applications
+      summary: 지원 단위 source 저장
+      parameters:
+      - name: applicationId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                repositoryIds:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+                documentIds:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+      responses:
+        '200':
+          description: 저장 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/ApplicationSourceBindingData'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                applicationSourcesSuccess:
+                  value:
+                    success: true
+                    data:
+                      applicationId: 401
+                      repositoryIds:
+                      - 101
+                      documentIds:
+                      - 301
+                      sourceCount: 2
+                    meta: *id001
+  /applications/{applicationId}/questions:
+    post:
+      tags:
+      - Applications
+      summary: 자소서 문항 일괄 저장
+      parameters:
+      - name: applicationId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                questions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      questionOrder:
+                        type: integer
+                      questionText:
+                        type: string
+                      toneOption:
+                        type: string
+                        enum:
+                        - formal
+                        - balanced
+                        - casual
+                      lengthOption:
+                        type: string
+                        enum:
+                        - short
+                        - medium
+                        - long
+                        description: short<=700 chars, medium<=1200 chars, long<=1800
+                          chars
+                      emphasisPoint:
+                        type: string
+                      templateSource:
+                        type: string
+                        nullable: true
+                        description: role_template | company_input | custom
+                    required:
+                    - questionOrder
+                    - questionText
+                  maxItems: 10
+              required:
+              - questions
+      responses:
+        '200':
+          description: 저장 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApplicationQuestion'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                applicationQuestionsSaveSuccess:
+                  value: &id005
+                    success: true
+                    data:
+                    - id: 501
+                      questionOrder: 1
+                      questionText: 지원 동기를 작성해주세요.
+                      generatedAnswer: null
+                      editedAnswer: null
+                      toneOption: formal
+                      lengthOption: medium
+                      emphasisPoint: 협업 경험 강조
+                    meta: *id002
+    get:
+      tags:
+      - Applications
+      summary: 자소서 문항 목록 조회
+      parameters:
+      - name: applicationId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: 문항 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApplicationQuestion'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                applicationQuestionsSuccess:
+                  value: *id005
+  /applications/{applicationId}/questions/generate-answers:
+    post:
+      tags:
+      - Applications
+      summary: 자소서 초안 생성
+      parameters:
+      - name: applicationId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                useTemplate:
+                  type: boolean
+                  default: true
+                regenerate:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: 생성 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/ApplicationAnswerGenerationData'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                generateAnswersSuccess:
+                  value:
+                    success: true
+                    data:
+                      applicationId: 401
+                      generatedCount: 1
+                      regenerate: false
+                      answers:
+                      - questionId: 501
+                        questionText: 지원 동기를 작성해주세요.
+                        generatedAnswer: 사용자 포트폴리오를 기반으로 협업 경험과 기술 선택 이유를 연결해 작성한
+                          자소서 초안입니다.
+                        toneOption: formal
+                        lengthOption: medium
+                    meta: *id001
+        '502':
+          description: AI 생성 실패 또는 결과 형식 불일치
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                aiSchemaError:
+                  value:
+                    success: false
+                    error:
+                      code: AI_RESPONSE_INVALID
+                      message: AI 응답 형식이 올바르지 않습니다.
+                      retryable: true
+                    meta: *id001
+        '503':
+          description: AI 생성 timeout 또는 일시 장애
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                aiTimeoutError:
+                  value: &id007
+                    success: false
+                    error:
+                      code: AI_TIMEOUT
+                      message: AI 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.
+                      retryable: true
+                    meta: *id001
+      description: 지원 단위의 문항들에 대해 자소서 초안을 생성한다. 문항 수는 최대 10개이며 직무 기본 템플릿을 우선 적용한다.
+        서버는 timeout, malformed JSON, schema violation에 대해 최대 2회 재시도한다.
+  /interview/question-sets:
+    post:
+      tags:
+      - Interview
+      summary: 면접 질문 세트 생성
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                applicationId:
+                  type: integer
+                  format: int64
+                title:
+                  type: string
+                questionCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 20
+                  description: 1회 최대 20개
+                difficultyLevel:
+                  type: string
+                  enum:
+                  - easy
+                  - medium
+                  - hard
+                questionTypes:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                    - experience
+                    - project
+                    - technical_cs
+                    - technical_stack
+                    - behavioral
+                    - follow_up
+              required:
+              - applicationId
+              - questionCount
+              - difficultyLevel
+              - questionTypes
+      responses:
+        '201':
+          description: 생성 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/InterviewQuestionSetSummary'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                questionSetCreateSuccess:
+                  value:
+                    success: true
+                    data:
+                      questionSetId: 701
+                      applicationId: 401
+                      title: 네이버 백엔드 예상 질문 세트
+                      questionCount: 5
+                      difficultyLevel: medium
+                      createdAt: '2026-03-17T10:34:00Z'
+                    meta: *id001
+      description: 지원 단위를 기준으로 면접 질문 세트를 생성한다. 서버는 질문 수 불일치, schema violation, malformed
+        JSON에 대해 최대 2회 재시도한다. 질문 수는 최대 20개다.
+    get:
+      tags:
+      - Interview
+      summary: 면접 질문 세트 목록 조회
+      responses:
+        '200':
+          description: 질문 세트 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InterviewQuestionSetSummary'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                questionSetListSuccess:
+                  value:
+                    success: true
+                    data:
+                    - questionSetId: 701
+                      applicationId: 401
+                      title: 네이버 백엔드 예상 질문 세트
+                      questionCount: 5
+                      difficultyLevel: medium
+                      createdAt: '2026-03-17T10:34:00Z'
+                    meta: *id002
+  /interview/question-sets/{questionSetId}:
+    get:
+      tags:
+      - Interview
+      summary: 면접 질문 세트 상세 조회
+      parameters:
+      - name: questionSetId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: 질문 세트 상세
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/InterviewQuestionSetDetail'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                questionSetDetailSuccess:
+                  value:
+                    success: true
+                    data:
+                      questionSetId: 701
+                      applicationId: 401
+                      title: 네이버 백엔드 예상 질문 세트
+                      questionCount: 2
+                      difficultyLevel: medium
+                      questions:
+                      - id: 801
+                        questionOrder: 1
+                        questionType: project
+                        difficultyLevel: medium
+                        questionText: 프로젝트에서 가장 어려웠던 장애 대응 경험을 설명해주세요.
+                        parentQuestionId: null
+                        sourceApplicationQuestionId: 501
+                      - id: 802
+                        questionOrder: 2
+                        questionType: follow_up
+                        difficultyLevel: medium
+                        questionText: 그때 어떤 근거로 해결 방안을 선택했나요?
+                        parentQuestionId: 801
+                        sourceApplicationQuestionId: null
+                      createdAt: '2026-03-17T10:34:00Z'
+                    meta: *id001
+  /interview/sessions:
+    post:
+      tags:
+      - Interview
+      summary: 모의 면접 세션 시작
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                questionSetId:
+                  type: integer
+                  format: int64
+              required:
+              - questionSetId
+      responses:
+        '201':
+          description: 세션 생성
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/InterviewSession'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                sessionStartSuccess:
+                  value:
+                    success: true
+                    data: &id006
+                      id: 901
+                      questionSetId: 701
+                      status: in_progress
+                      totalScore: null
+                      summaryFeedback: null
+                      startedAt: '2026-03-17T10:35:00Z'
+                      endedAt: null
+                    meta: *id001
+        '409':
+          description: 이미 진행 중인 세션이 존재함
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                sessionConflictError:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_SESSION_ALREADY_ACTIVE
+                      message: 이미 진행 중인 면접 세션이 있습니다.
+                      retryable: false
+                    meta: *id001
+      description: 면접 세션을 시작한다. 사용자당 동시에 진행 가능한 활성 세션은 1개다.
+    get:
+      tags:
+      - Interview
+      summary: 면접 세션 목록 조회
+      responses:
+        '200':
+          description: 세션 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InterviewSession'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                sessionListSuccess:
+                  value:
+                    success: true
+                    data:
+                    - id: 901
+                      questionSetId: 701
+                      status: paused
+                      totalScore: null
+                      summaryFeedback: null
+                      startedAt: '2026-03-17T10:35:00Z'
+                      endedAt: null
+                    meta: *id002
+  /interview/sessions/{sessionId}:
+    get:
+      tags:
+      - Interview
+      summary: 세션 상세 조회
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: 세션 상세
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/InterviewSession'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                sessionDetailSuccess:
+                  value:
+                    success: true
+                    data: *id006
+                    meta: *id001
+  /interview/sessions/{sessionId}/answers:
+    post:
+      tags:
+      - Interview
+      summary: 세션 답변 제출
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                questionId:
+                  type: integer
+                  format: int64
+                answerOrder:
+                  type: integer
+                answerText:
+                  type: string
+                  minLength: 50
+                  maxLength: 1000
+                  description: 건너뛰기 아닌 일반 답변은 50자 이상 1000자 이하
+                isSkipped:
+                  type: boolean
+              required:
+              - questionId
+              - answerOrder
+              - isSkipped
+              description: isSkipped=false인 경우 answerText는 최소 50자 이상이어야 한다.
+      responses:
+        '201':
+          description: 답변 저장
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/SessionAnswerSubmitData'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                sessionAnswerSubmitSuccess:
+                  value:
+                    success: true
+                    data:
+                      sessionId: 901
+                      questionId: 801
+                      answerOrder: 1
+                      isSkipped: false
+                      submittedAt: '2026-03-17T10:36:00Z'
+                    meta: *id001
+        '400':
+          description: 답변 길이 검증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                answerTooShort:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_ANSWER_TOO_SHORT
+                      message: 답변은 50자 이상 입력해주세요.
+                      retryable: false
+                      fieldErrors:
+                      - field: answerText
+                        reason: min_50
+                    meta: *id001
+  /interview/sessions/{sessionId}/complete:
+    post:
+      tags:
+      - Interview
+      summary: 세션 종료 및 결과 생성
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: 세션 완료
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/SessionCompletionData'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                sessionCompleteSuccess:
+                  value:
+                    success: true
+                    data:
+                      sessionId: 901
+                      status: feedback_completed
+                      totalScore: 84
+                      summaryFeedback: 기술 선택 근거는 좋았지만 문제 해결 과정의 수치 근거를 더 보강하면 좋습니다.
+                      endedAt: '2026-03-17T10:40:00Z'
+                    meta: *id001
+        '502':
+          description: 면접 결과 생성 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                aiSchemaError:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_RESULT_INVALID
+                      message: 면접 결과 생성 형식이 올바르지 않습니다.
+                      retryable: true
+                    meta: *id001
+        '503':
+          description: 면접 결과 생성 timeout 또는 일시 장애
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                aiTimeoutError:
+                  value: *id007
+      description: 세션을 종료하고 피드백 결과 생성을 시작한다. 피드백이 즉시 생성되면 feedback_completed 상태로 응답할
+        수 있다.
+  /interview/sessions/{sessionId}/result:
+    get:
+      tags:
+      - Interview
+      summary: 면접 결과 상세 조회
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: 결과 조회
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/InterviewResult'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                interviewResultSuccess:
+                  value:
+                    success: true
+                    data:
+                      sessionId: 901
+                      questionSetId: 701
+                      status: completed
+                      totalScore: 84
+                      summaryFeedback: 구조는 좋았고 경험 기반 근거를 더 구체화하면 좋습니다.
+                      answers:
+                      - answerId: 1001
+                        questionId: 801
+                        questionText: 프로젝트에서 가장 어려웠던 장애 대응 경험을 설명해주세요.
+                        answerText: Redis 캐시 장애 상황에서 DB 부하를 줄이기 위해 읽기 경로를 단계적으로 우회했습니다.
+                        score: 86
+                        evaluationRationale: 문제-원인-해결 흐름이 비교적 명확하다.
+                        tags:
+                        - tagId: 4
+                          tagName: 문제 해결 설명 부족
+                          tagCategory: content
+                      startedAt: '2026-03-17T10:35:00Z'
+                      endedAt: '2026-03-17T10:40:00Z'
+                    meta: *id001
+      description: 세션 결과와 피드백 리포트를 조회한다. 완료 직후에는 결과 생성 지연이 있을 수 있다.

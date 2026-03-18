@@ -25,13 +25,15 @@ Thumbs.db
 # MinIO나 DB 데이터가 로컬에 저장될 경우를 대비
 **/data/
 **/logs/
-docs
-AGENTS.md
-archive
-.editorconfig
-CONTRIBUTING.md
-manifest.json
-openapi.yaml
+
+# AI 문서
+# docs
+# AGENTS.md
+# archive
+# .editorconfig
+# CONTRIBUTING.md
+# manifest.json
+# openapi.yaml
 
 docker-compose.prod-monitoring.yml
 docker-compose.prod.yml

@@ -1,0 +1,52 @@
+{
+  "created_at": "2026-03-17",
+  "project": "AI 기술 면접 연습 플랫폼",
+  "purpose": "AI 문서 주도 개발용 문서 구조 정리 v9",
+  "version": "v9",
+  "root_files": [
+    "README.md",
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "PLANS.md",
+    "openapi.yaml",
+    ".editorconfig",
+    "manifest.json"
+  ],
+  "canonical_paths": [
+    "docs/product.md",
+    "docs/requirements.md",
+    "docs/project/open-items.md",
+    "docs/api-guidelines.md",
+    "docs/non-functional.md",
+    "docs/error-policy.md",
+    "docs/backend-conventions.md",
+    "docs/db/erd.md",
+    "docs/db/schema.md",
+    "docs/frontend/screen-spec.md",
+    "docs/frontend/wireframes.md",
+    "docs/ai/prompt-templates.md",
+    "docs/project/document-status.md",
+    "docs/project/wbs.md",
+    "docs/ai-collaboration.md",
+    "docs/security.md",
+    "docs/testing.md",
+    "docs/observability.md"
+  ],
+  "reference_only_paths": [
+    "archive/originals/",
+    "docs/*.md with status: deprecated"
+  ],
+  "compatibility_redirect_paths": [
+    "docs/erd.md",
+    "docs/db-schema.md",
+    "docs/error-handling.md",
+    "docs/non-functional-requirements.md",
+    "docs/ai-prompt-templates.md",
+    "docs/screen-definition.md",
+    "docs/wireframes.md",
+    "docs/api-spec.md",
+    "docs/wbs.md"
+  ],
+  "docs_count": 41,
+  "total_files": 71
+}
