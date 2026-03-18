@@ -37,23 +37,23 @@ public class GithubRepository extends BaseEntity {
     @Column(name = "github_repo_id", nullable = false)
     private Long githubRepoId;
 
-    @Column(name = "owner_login", nullable = false)
+    @Column(name = "owner_login", nullable = false, length = 255)
     private String ownerLogin;
 
-    @Column(name = "repo_name", nullable = false)
+    @Column(name = "repo_name", nullable = false, length = 255)
     private String repoName;
 
-    @Column(name = "full_name", nullable = false)
+    @Column(name = "full_name", nullable = false, length = 255)
     private String fullName;
 
-    @Column(name = "html_url", nullable = false)
+    @Column(name = "html_url", nullable = false, length = 1000)
     private String htmlUrl;
 
     @Convert(converter = RepositoryVisibilityConverter.class)
-    @Column(name = "visibility", nullable = false)
+    @Column(name = "visibility", nullable = false, length = 20)
     private RepositoryVisibility visibility;
 
-    @Column(name = "default_branch")
+    @Column(name = "default_branch", length = 255)
     private String defaultBranch;
 
     @Column(name = "is_selected", nullable = false)

@@ -34,7 +34,7 @@ public class InterviewSession extends BaseEntity {
     private InterviewQuestionSet questionSet;
 
     @Convert(converter = InterviewSessionStatusConverter.class)
-    @Column(name = "status", nullable = false)
+    @Column(name = "status", nullable = false, length = 30)
     private InterviewSessionStatus status;
 
     @Column(name = "total_score")

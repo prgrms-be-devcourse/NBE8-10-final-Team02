@@ -18,7 +18,7 @@ import org.hibernate.annotations.Check;
 @Getter
 @Entity
 @Builder
-@Check(constraints = "is_skipped or nullif(trim(answer_text), '') is not null")
+@Check(constraints = "is_skipped or nullif(btrim(answer_text), '') is not null")
 @Table(
         name = "interview_answers",
         uniqueConstraints = {

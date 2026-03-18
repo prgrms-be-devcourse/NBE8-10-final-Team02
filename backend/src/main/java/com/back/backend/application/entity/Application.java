@@ -27,19 +27,19 @@ public class Application extends BaseTimeEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "application_title")
+    @Column(name = "application_title", length = 255)
     private String applicationTitle;
 
-    @Column(name = "company_name")
+    @Column(name = "company_name", length = 255)
     private String companyName;
 
-    @Column(name = "application_type")
+    @Column(name = "application_type", length = 100)
     private String applicationType;
 
-    @Column(name = "job_role", nullable = false)
+    @Column(name = "job_role", nullable = false, length = 255)
     private String jobRole;
 
     @Convert(converter = ApplicationStatusConverter.class)
-    @Column(name = "status", nullable = false)
+    @Column(name = "status", nullable = false, length = 20)
     private ApplicationStatus status;
 }
