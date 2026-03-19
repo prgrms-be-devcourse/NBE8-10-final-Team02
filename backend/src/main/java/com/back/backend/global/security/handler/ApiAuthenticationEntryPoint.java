@@ -15,6 +15,11 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+/**
+ * JWT 인증 실패 시 에러 응답을 처리하는 EntryPoint.
+ * 필터 체인에서 인증 관련 예외(AuthenticationException)가 발생했을 때
+ * 클라이언트에게 규격화된 JSON 에러 메시지를 전달합니다.
+ */
 @Component
 public class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
