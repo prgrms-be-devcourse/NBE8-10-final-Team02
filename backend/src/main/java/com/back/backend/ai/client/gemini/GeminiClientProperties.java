@@ -1,4 +1,4 @@
-package com.back.backend.ai.client;
+package com.back.backend.ai.client.gemini;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
