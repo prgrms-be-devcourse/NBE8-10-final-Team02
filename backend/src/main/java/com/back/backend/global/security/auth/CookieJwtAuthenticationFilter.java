@@ -1,5 +1,6 @@
 package com.back.backend.global.security.auth;
 
+import com.back.backend.global.security.apikey.ApiKeyService;
 import com.back.backend.global.security.handler.ApiAuthenticationEntryPoint;
 import com.back.backend.global.security.jwt.JwtTokenService;
 import io.jsonwebtoken.Claims;
@@ -30,15 +31,18 @@ public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
     public static final String COOKIE_REFRESH_TOKEN = "refreshToken";
 
     private final JwtTokenService jwtTokenService;
+    private final ApiKeyService apiKeyService;
     private final ApiAuthenticationEntryPoint apiAuthenticationEntryPoint;
     private final boolean cookieSecure;
 
     public CookieJwtAuthenticationFilter(
             JwtTokenService jwtTokenService,
+            ApiKeyService apiKeyService,
             ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
             @Value("${security.cookie.secure:false}") boolean cookieSecure
     ) {
         this.jwtTokenService = jwtTokenService;
+        this.apiKeyService = apiKeyService;
         this.apiAuthenticationEntryPoint = apiAuthenticationEntryPoint;
         this.cookieSecure = cookieSecure;
     }
@@ -79,11 +83,21 @@ public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        // String apiKey검증로직
-
+        // API Key 검증 (Redis)
+        Long apiKeyUserId = apiKeyService.validateAndGetUserId(apiKey);
+        if (apiKeyUserId == null) {
+            apiAuthenticationEntryPoint.commence(request, response, new AuthenticationInvalidTokenException("유효하지 않은 API Key입니다."));
+            return;
+        }
 
         try {
-            authenticateWithAccessToken(accessToken);
+            long accessTokenUserId = authenticateWithAccessToken(accessToken);
+
+            // API Key의 userId와 Access Token의 userId가 일치하는지 검증
+            if (!apiKeyUserId.equals(accessTokenUserId)) {
+                apiAuthenticationEntryPoint.commence(request, response, new AuthenticationInvalidTokenException("API Key와 토큰이 일치하지 않습니다."));
+                return;
+            }
             filterChain.doFilter(request, response);
             return;
         } catch (AuthenticationExpiredTokenException expired) {
@@ -107,14 +121,16 @@ public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
     /**
      * Access Token을 검증하고 Spring Security Context에 인증 정보를 등록합니다.
      * * @param accessToken 검증할 JWT 액세스 토큰
+     * @return userId 토큰에서 추출한 사용자 ID
      * @throws AuthenticationExpiredTokenException 토큰이 만료된 경우 발생
      * @throws AuthenticationInvalidTokenException 토큰이 변조되었거나 형식이 잘못된 경우 발생
      */
-    private void authenticateWithAccessToken(String accessToken) {
+    private long authenticateWithAccessToken(String accessToken) {
         try {
             Jws<Claims> parsed = jwtTokenService.parseAccessToken(accessToken);
             long userId = Long.parseLong(parsed.getBody().getSubject());
             SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(userId, List.of()));
+            return userId;
         } catch (ExpiredJwtException e) {
             throw new AuthenticationExpiredTokenException("세션이 만료되었습니다. 다시 로그인해주세요.", e);
         } catch (JwtException e) {
