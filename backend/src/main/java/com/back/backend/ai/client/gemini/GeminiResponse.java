@@ -4,6 +4,7 @@ import com.back.backend.ai.client.AiResponse;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Gemini API 응답 DTO
@@ -37,17 +38,28 @@ public record GeminiResponse(
     }
 
     /**
-     * Gemini 응답 → 공통 AiResponse로 변환
+     * 첫 번째 candidate의 텍스트를 추출
+     * 유효한 응답이 없으면 빈 Optional을 반환
      */
-    public AiResponse toAiResponse() {
-        String content = candidates.getFirst().content().parts().getFirst().text();
+    public Optional<String> extractText() {
+        if (candidates == null || candidates.isEmpty()) {
+            return Optional.empty();
+        }
+        Content content = candidates.getFirst().content();
+        if (content == null || content.parts() == null || content.parts().isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(content.parts().getFirst().text());
+    }
 
-        AiResponse.TokenUsage tokenUsage = new AiResponse.TokenUsage(
+    /**
+     * Gemini 토큰 사용량 → 공통 TokenUsage로 변환
+     */
+    public AiResponse.TokenUsage toTokenUsage() {
+        return new AiResponse.TokenUsage(
             usageMetadata.promptTokenCount(),
             usageMetadata.candidatesTokenCount(),
             usageMetadata.totalTokenCount()
         );
-
-        return new AiResponse(content, tokenUsage);
     }
 }

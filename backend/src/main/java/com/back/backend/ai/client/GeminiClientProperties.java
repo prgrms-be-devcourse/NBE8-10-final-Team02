@@ -4,10 +4,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
 
-/*
-Gemini API 연동 설정
-application.yml의 ai.gemini 속성과 바인딩
-새 AI 모델 추가 시 이 클래스를 복제하면 됨
+/**
+ * Gemini API 연동 설정
+ * application.yml의 ai.gemini 속성과 바인딩
+ * 새 AI 모델 추가 시 이 클래스를 복제하면 됨
  */
 @ConfigurationProperties(prefix = "ai.gemini")
 public record GeminiClientProperties(
