@@ -18,3 +18,15 @@ management:
   metrics:
     tags:
       application: spring-app # Prometheus 설정의 job_name과 맞춰주는 것이 좋습니다.
+
+ai:
+  provider: gemini
+  gemini:
+    api-key: ${GEMINI_API_KEY}
+    base-url: https://generativelanguage.googleapis.com/v1beta
+    model: gemini-2.5-flash
+    timeout:
+      connect: 5s
+      read: 60s
+    retry:
+      max-attempts: 1
