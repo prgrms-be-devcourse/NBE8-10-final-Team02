@@ -109,6 +109,19 @@ class ApiContractTest {
                 .andExpect(jsonPath("$.meta.requestId").isNotEmpty());
     }
 
+
+    // Domain/Controller
+    // 저희 프로제긑 규칙이 잘 되나?
+    @RestController
+    @RequestMapping("/contract-test")
+    static class sfdsdfdContoller {
+
+        @GetMapping("/success")
+        ApiResponse<Map<String, String>> success() {
+            return ResnposiEntitty.success(Map.of("status", "ok"));
+        }
+    }
+
     @RestController
     @RequestMapping("/contract-test")
     static class ContractTestController {
