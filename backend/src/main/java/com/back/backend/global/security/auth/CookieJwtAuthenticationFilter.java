@@ -150,7 +150,7 @@ public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
         } catch (ExpiredJwtException e) {
             throw new AuthenticationExpiredTokenException("세션이 만료되었습니다. 다시 로그인해주세요.", e);
         } catch (JwtException e) {
-            throw new AuthenticationExpiredTokenException("세션이 만료되었습니다. 다시 로그인해주세요.", e);
+            throw new AuthenticationInvalidTokenException("유효하지 않은 리프레시 토큰입니다.", e);
         }
     }
 

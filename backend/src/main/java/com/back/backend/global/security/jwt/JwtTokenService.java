@@ -24,8 +24,6 @@ import java.util.Date;
 @Service
 public class JwtTokenService {
 
-    public static final String CLAIM_USER_ID = "sub";
-
     private final String jwtSecret;
     private final Duration accessTtl;
     private final Duration refreshTtl;

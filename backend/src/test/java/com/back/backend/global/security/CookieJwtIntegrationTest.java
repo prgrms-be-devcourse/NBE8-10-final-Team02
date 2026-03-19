@@ -29,8 +29,7 @@ class CookieJwtIntegrationTest {
 
     @Test
     void cookieJwtAuthFlowWorksEndToEnd() throws Exception {
-        // TODO: @SpringBootTest가 무거워서 다이어트시킨 버전
-        // Testcontinaer와 통합테스트로 수정필요
+        // TODO: @SpringBootTest가 무거워서 다이어트시킨 버전. Testcontinaer와 통합테스트로 수정필요.
         try (AnnotationConfigWebApplicationContext ctx = new AnnotationConfigWebApplicationContext()) {
             ctx.setServletContext(new MockServletContext());
             ctx.register(
