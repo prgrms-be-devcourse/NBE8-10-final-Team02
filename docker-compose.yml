@@ -25,13 +25,6 @@ services:
       - ./docker/db.init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     restart: always
 
-  redis:
-    image: redis:alpine
-    container_name: local-redis
-    ports:
-      - "6379:6379"
-    restart: always
-
   prometheus:
     image: prom/prometheus:latest
     container_name: local-prometheus
