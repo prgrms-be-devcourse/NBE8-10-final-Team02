@@ -45,3 +45,4 @@ docker/prometheus-prod.yml
 
 # Personal design docs (work-in-progress; not for team canonical)
 docs/personal-design/
+.claude
