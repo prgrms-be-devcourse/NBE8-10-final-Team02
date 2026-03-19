@@ -53,9 +53,13 @@ public record GeminiResponse(
     }
 
     /**
-     * Gemini 토큰 사용량 → 공통 TokenUsage로 변환
+     * Gemini 토큰 사용량 → 공통 TokenUsage로 변환한다.
+     * usageMetadata가 없으면 0으로 채운다 — 토큰 집계 누락은 허용하되 요청 실패는 방지
      */
     public AiResponse.TokenUsage toTokenUsage() {
+        if (usageMetadata == null) {
+            return new AiResponse.TokenUsage(0, 0, 0);
+        }
         return new AiResponse.TokenUsage(
             usageMetadata.promptTokenCount(),
             usageMetadata.candidatesTokenCount(),
