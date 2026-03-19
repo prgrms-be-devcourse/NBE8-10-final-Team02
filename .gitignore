@@ -26,6 +26,9 @@ Thumbs.db
 **/data/
 **/logs/
 
+# Local personal working files
+/.local/
+
 # AI 문서
 # docs
 # AGENTS.md
