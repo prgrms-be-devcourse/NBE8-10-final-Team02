@@ -150,7 +150,13 @@ jobs:
             docker pull "${FE_IMAGE}:${IMAGE_TAG}"
 
             docker rm -f $GREEN_BE $GREEN_FE >/dev/null 2>&1 || true
-            docker run -d --name $GREEN_BE -p $GREEN_BE_PORT:8080 --network global-net --env-file .env-prod "${BE_IMAGE}:${IMAGE_TAG}"
+            docker run -d --name $GREEN_BE \
+            -p $GREEN_BE_PORT:8080 \
+            --network global-net \
+            --memory="2g" \
+            -e JAVA_TOOL_OPTIONS="-XX:InitialRAMPercentage=50.0 -XX:MaxRAMPercentage=50.0" \
+            --env-file .env-prod \
+            "${BE_IMAGE}:${IMAGE_TAG}"
             docker run -d --name $GREEN_FE --network global-net "${FE_IMAGE}:${IMAGE_TAG}"
 
             # 보안을 위해 사용이 끝난 환경변수 파일 즉시 삭제
