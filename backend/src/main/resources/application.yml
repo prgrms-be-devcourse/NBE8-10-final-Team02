@@ -3,11 +3,6 @@ spring:
     name: backend
   profiles:
     active: dev
-  data:
-    redis:
-      host: localhost
-      port: 6379
-      timeout: 3s
 
 # Actuator 설정 (Prometheus 수집을 위해 필수)
 management:
