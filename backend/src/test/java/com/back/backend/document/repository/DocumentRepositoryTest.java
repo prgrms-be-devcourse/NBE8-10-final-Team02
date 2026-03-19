@@ -1,17 +1,14 @@
 package com.back.backend.document.repository;
 
-import com.back.backend.TestcontainersConfiguration;
 import com.back.backend.document.entity.Document;
 import com.back.backend.document.entity.DocumentExtractStatus;
 import com.back.backend.document.entity.DocumentType;
+import com.back.backend.support.IntegrationTest;
 import com.back.backend.user.entity.User;
 import com.back.backend.user.entity.UserStatus;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -19,11 +16,9 @@ import java.time.Instant;
 import static org.assertj.core.api.Assertions.assertThat;
 
 // [Integration Test 계층]
-// - @SpringBootTest + Testcontainers: 실제 PostgreSQL로 제약조건 검증
+// - @IntegrationTest: SpringBootTest + Testcontainers 공통 설정
 // - @Transactional: 각 테스트 후 롤백으로 격리
-@SpringBootTest
-@ActiveProfiles("test")
-@Import(TestcontainersConfiguration.class)
+@IntegrationTest
 @Transactional
 class DocumentRepositoryTest {
 

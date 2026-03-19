@@ -1,56 +1,32 @@
 package com.back.backend.document.controller;
 
-import com.back.backend.TestcontainersConfiguration;
 import com.back.backend.document.service.DocumentService;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
-import org.junit.jupiter.api.BeforeEach;
+import com.back.backend.support.ApiTestBase;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.context.WebApplicationContext;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.willDoNothing;
 import static org.mockito.BDDMockito.willThrow;
-import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // [API Test 계층]
-// - @SpringBootTest: 전체 컨텍스트 로드 → HTTP 계약(인증, 응답 형식) 검증
+// - ApiTestBase: SpringBootTest + Testcontainers + MockMvc 공통 설정 상속
 // - @MockitoBean: Service 대체 → 비즈니스 로직이 아닌 HTTP 레이어에 집중
 // - @WithMockUser: 인증된 사용자 시뮬레이션
-@SpringBootTest
-@ActiveProfiles("test")
-@Import(TestcontainersConfiguration.class)
-class DocumentApiTest {
-
-    @Autowired
-    private WebApplicationContext webApplicationContext;
+class DocumentApiTest extends ApiTestBase {
 
     @MockitoBean
     private DocumentService documentService;
-
-    private MockMvc mockMvc;
-
-    @BeforeEach
-    void setUp() {
-        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
-                .apply(springSecurity())
-                .build();
-    }
 
     @Test
     void uploadDocument_returns401WhenUnauthenticated() throws Exception {
