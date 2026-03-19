@@ -27,7 +27,6 @@
 - 외부 API 호출을 긴 트랜잭션 안에 넣지 않는다.
 - MVP 밖 기능은 문서 선반영 없이 구현하지 않는다.
 - `archive/originals/`와 `status: deprecated` 문서는 참조 비교용으로만 보고 새 구현의 직접 원본으로 사용하지 않는다.
-- 현재 저장소는 root `.gitignore` 기준으로 `docs/`, `openapi.yaml`, `AGENTS.md`, `archive/` 등을 Git 추적 대상으로 올리지 않는다. 이 정책을 바꾸기 위해 `.gitignore`를 수정하지 않는다.
 
 ## 작업 중단 조건
 
