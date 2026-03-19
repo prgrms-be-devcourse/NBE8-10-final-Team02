@@ -1,0 +1,39 @@
+# 주의!!!!!
+# application-prod는 편의상 유지하는 거지 실제 사용되지 않음
+# 실제 배포는 .env파일로 진행됨
+# 실제 배포에 적용되길 원한다면 .env.default와 .env파일 수정 필요
+# 구조 확인용 prod일 뿐입니다.
+
+spring:
+  datasource:
+    # docker-compose 내부 네트워크의 서비스 이름인 'db'를 사용
+    url: jdbc:postgresql://prod-db:5432/appdb
+    username: user
+    password: password # 실제로는 환경변수로 빼는 것을 권장
+    hikari:
+      maximum-pool-size: 10 # 24GB 서버지만 메모리 다이어트를 위해 10개로 제한
+
+  jpa:
+    hibernate:
+      ddl-auto: validate # 운영 서버에선 절대 건드리지 않게 검증만 수행
+    show-sql: false
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:prod-redis}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+
+logging:
+  level:
+    root: info
+    com.back.backend: info
+
+# JWT 보안 설정 (참고용 - 실제로는 .env 파일 사용)
+security:
+  jwt:
+    secret: ${SECURITY_JWT_SECRET} # .env 파일에서 주입
+    access-ttl-seconds: ${SECURITY_JWT_ACCESS_TTL_SECONDS:900}
+    refresh-ttl-seconds: ${SECURITY_JWT_REFRESH_TTL_SECONDS:86400}
+  cookie:
+    secure: ${SECURITY_COOKIE_SECURE:true} # HTTPS 환경에서 true
