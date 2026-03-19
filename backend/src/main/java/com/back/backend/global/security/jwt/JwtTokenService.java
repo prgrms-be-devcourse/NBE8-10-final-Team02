@@ -14,7 +14,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-
+import java.util.Date;
 /**
  * MVP token service.
  * <p>
@@ -71,11 +71,13 @@ public class JwtTokenService {
         Instant exp = now.plus(ttl);
 
         return Jwts.builder()
-                .setSubject(String.valueOf(userId))
-                .setIssuedAt(java.util.Date.from(now))
-                .setExpiration(java.util.Date.from(exp))
-                .signWith(signingKey, SignatureAlgorithm.HS256)
-                .compact();
+            .subject(String.valueOf(userId))
+            .issuedAt(Date.from(now))
+            .expiration(Date.from(exp))
+            // signingKey가 SecretKey 타입이라면 signWith(signingKey)만 적어도 됩니다.
+            // 명시적으로 알고리즘을 지정하려면 Jwts.SIG.HS256 을 사용합니다.
+            .signWith(signingKey, Jwts.SIG.HS256)
+            .compact();
     }
 
     public Jws<Claims> parseAccessToken(String token) throws JwtException {
