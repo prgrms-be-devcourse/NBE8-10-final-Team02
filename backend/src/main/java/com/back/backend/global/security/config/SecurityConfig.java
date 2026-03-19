@@ -1,12 +1,15 @@
 package com.back.backend.global.security.config;
 
 import com.back.backend.global.request.RequestIdFilter;
+import com.back.backend.global.security.auth.CookieJwtAuthenticationFilter;
 import com.back.backend.global.security.handler.ApiAuthenticationEntryPoint;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.access.ExceptionTranslationFilter;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
@@ -21,10 +24,16 @@ public class SecurityConfig {
 
     private final RequestIdFilter requestIdFilter;
     private final ApiAuthenticationEntryPoint apiAuthenticationEntryPoint;
+    private final CookieJwtAuthenticationFilter cookieJwtAuthenticationFilter;
 
-    public SecurityConfig(RequestIdFilter requestIdFilter, ApiAuthenticationEntryPoint apiAuthenticationEntryPoint) {
+    public SecurityConfig(
+            RequestIdFilter requestIdFilter,
+            ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
+            CookieJwtAuthenticationFilter cookieJwtAuthenticationFilter
+    ) {
         this.requestIdFilter = requestIdFilter;
         this.apiAuthenticationEntryPoint = apiAuthenticationEntryPoint;
+        this.cookieJwtAuthenticationFilter = cookieJwtAuthenticationFilter;
     }
 
     @Bean
@@ -44,9 +53,12 @@ public class SecurityConfig {
                         .requestMatchers("/auth/oauth2/**", "/api/v1/auth/oauth2/**").permitAll()
                         .requestMatchers("/users/**", "/github/**", "/documents/**", "/applications/**", "/interview/**", "/auth/logout").authenticated()
                         .requestMatchers("/api/**").authenticated()
-                        .anyRequest().permitAll()
+                        .anyRequest().permitAll() //TODO: 개발완료후 후 수정필요
                 )
-                .addFilterBefore(requestIdFilter, SecurityContextHolderFilter.class);
+                // 보통 로그 추적(Logging)을 위해 전체 시스템의 '입구'에서 번표를 나눠주는 작업
+                .addFilterBefore(requestIdFilter, SecurityContextHolderFilter.class)
+                // JWT사용
+                .addFilterBefore(cookieJwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 

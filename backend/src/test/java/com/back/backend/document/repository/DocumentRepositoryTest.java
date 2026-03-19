@@ -1,11 +1,13 @@
 package com.back.backend.document.repository;
 
-import com.back.backend.document.entity.Document;
-import com.back.backend.document.entity.DocumentExtractStatus;
-import com.back.backend.document.entity.DocumentType;
+
+import com.back.backend.domain.document.entity.Document;
+import com.back.backend.domain.document.entity.DocumentExtractStatus;
+import com.back.backend.domain.document.entity.DocumentType;
+import com.back.backend.domain.user.entity.User;
+import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.support.IntegrationTest;
-import com.back.backend.user.entity.User;
-import com.back.backend.user.entity.UserStatus;
+
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

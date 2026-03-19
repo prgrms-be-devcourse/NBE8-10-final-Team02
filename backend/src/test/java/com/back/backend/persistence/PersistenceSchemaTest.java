@@ -1,25 +1,19 @@
 package com.back.backend.persistence;
 
-import com.back.backend.application.entity.Application;
-import com.back.backend.application.entity.ApplicationStatus;
-import com.back.backend.application.entity.ApplicationSourceDocument;
-import com.back.backend.document.entity.Document;
-import com.back.backend.document.entity.DocumentExtractStatus;
-import com.back.backend.document.entity.DocumentType;
-import com.back.backend.github.entity.GithubConnection;
-import com.back.backend.github.entity.GithubSyncStatus;
-import com.back.backend.interview.entity.DifficultyLevel;
-import com.back.backend.interview.entity.FeedbackTag;
-import com.back.backend.interview.entity.InterviewAnswer;
-import com.back.backend.interview.entity.InterviewAnswerTag;
-import com.back.backend.interview.entity.InterviewQuestion;
-import com.back.backend.interview.entity.InterviewQuestionSet;
-import com.back.backend.interview.entity.InterviewQuestionType;
-import com.back.backend.interview.entity.InterviewSession;
-import com.back.backend.interview.entity.InterviewSessionStatus;
+
+import com.back.backend.domain.application.entity.Application;
+import com.back.backend.domain.application.entity.ApplicationSourceDocument;
+import com.back.backend.domain.application.entity.ApplicationStatus;
+import com.back.backend.domain.document.entity.Document;
+import com.back.backend.domain.document.entity.DocumentExtractStatus;
+import com.back.backend.domain.document.entity.DocumentType;
+import com.back.backend.domain.github.entity.GithubConnection;
+import com.back.backend.domain.github.entity.GithubSyncStatus;
+import com.back.backend.domain.interview.entity.*;
+import com.back.backend.domain.user.entity.User;
+import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.support.IntegrationTest;
-import com.back.backend.user.entity.User;
-import com.back.backend.user.entity.UserStatus;
+
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceException;
 import org.junit.jupiter.api.Test;

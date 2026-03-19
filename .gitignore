@@ -43,3 +43,7 @@ docker-compose.prod-monitoring.yml
 docker-compose.prod.yml
 docker/nginx/prod.conf
 docker/prometheus-prod.yml
+
+# Personal design docs (work-in-progress; not for team canonical)
+docs/personal-design/
+.claude
