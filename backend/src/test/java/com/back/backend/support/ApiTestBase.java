@@ -1,8 +1,12 @@
 package com.back.backend.support;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
+
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 
 /**
  * API(HTTP 계층) 테스트 베이스 클래스.
@@ -64,9 +68,20 @@ import org.springframework.test.web.servlet.MockMvc;
  * </ul>
  */
 @IntegrationTest
-@AutoConfigureMockMvc
 public abstract class ApiTestBase {
 
     @Autowired
+    private WebApplicationContext context;
+
     protected MockMvc mockMvc;
+
+    // SecurityConfig에 STATELESS 세션이 설정돼 있어 @AutoConfigureMockMvc만으로는
+    // @WithMockUser가 동작하지 않음. springSecurity()를 명시적으로 적용해야
+    // SecurityContextHolderFilter가 테스트용 인증 컨텍스트를 덮어쓰지 않음.
+    @BeforeEach
+    void setUpMockMvc() {
+        this.mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(springSecurity())
+                .build();
+    }
 }
