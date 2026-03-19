@@ -7,6 +7,7 @@ import java.util.List;
 
 /**
  * Gemini API 요청 DTO
+ *  POST /v1beta/models/{model}:generateContent 형식에 맞춤
  * <a href="https://ai.google.dev/api/generate-content">Gemini generateContent API</a>
  */
 public record GeminiRequest(
