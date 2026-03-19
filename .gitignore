@@ -37,6 +37,7 @@ Thumbs.db
 # CONTRIBUTING.md
 # manifest.json
 # openapi.yaml
+CLAUDE.md
 
 docker-compose.prod-monitoring.yml
 docker-compose.prod.yml
