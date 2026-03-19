@@ -39,7 +39,7 @@ class CookieJwtIntegrationTest {
             );
             ctx.getEnvironment().getSystemProperties().put("security.jwt.secret",
                     "insecure-dev-secret-please-change-123456789012345678901234567890");
-            ctx.getEnvironment().getSystemProperties().put("security.jwt.access-ttl-seconds", "5");
+            ctx.getEnvironment().getSystemProperties().put("security.jwt.access-ttl-seconds", "1");
             ctx.getEnvironment().getSystemProperties().put("security.jwt.refresh-ttl-seconds", "60");
             ctx.getEnvironment().getSystemProperties().put("security.cookie.secure", "false");
             ctx.refresh();
@@ -81,7 +81,7 @@ class CookieJwtIntegrationTest {
             // 4) expired accessToken + refreshToken -> 200 and Set-Cookie(accessToken)
             String expiringAccess = jwtTokenService.createAccessToken(202L);
             String refresh = jwtTokenService.createRefreshToken(202L);
-            Thread.sleep(5100);
+            Thread.sleep(1200);
 
             mockMvc.perform(get("/api/v1/test/protected")
                             .cookie(
