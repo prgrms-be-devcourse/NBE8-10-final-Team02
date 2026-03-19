@@ -55,9 +55,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )
-                // 보통 로그 추적(Logging)을 위해 전체 시스템의 '입구'에서 번표를 나눠주는 작업
                 .addFilterBefore(requestIdFilter, SecurityContextHolderFilter.class)
-                // JWT사용
                 .addFilterBefore(cookieJwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

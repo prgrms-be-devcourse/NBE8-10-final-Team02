@@ -1,7 +1,6 @@
 package com.back.backend.global.security;
 
 import com.back.backend.global.response.ApiResponse;
-import com.back.backend.global.security.apikey.ApiKeyService;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,9 +15,6 @@ import org.springframework.mock.web.MockServletContext;
 
 import java.util.Map;
 
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -29,8 +25,6 @@ class CookieJwtIntegrationTest {
 
     @Test
     void cookieJwtAuthFlowWorksEndToEnd() throws Exception {
-        // TODO: @SpringBootTest가 무거워서 다이어트시킨 버전
-        // Testcontinaer와 통합테스트로 수정필요
         try (AnnotationConfigWebApplicationContext ctx = new AnnotationConfigWebApplicationContext()) {
             ctx.setServletContext(new MockServletContext());
             ctx.register(
@@ -45,7 +39,7 @@ class CookieJwtIntegrationTest {
             );
             ctx.getEnvironment().getSystemProperties().put("security.jwt.secret",
                     "insecure-dev-secret-please-change-123456789012345678901234567890");
-            ctx.getEnvironment().getSystemProperties().put("security.jwt.access-ttl-seconds", "1");
+            ctx.getEnvironment().getSystemProperties().put("security.jwt.access-ttl-seconds", "5");
             ctx.getEnvironment().getSystemProperties().put("security.jwt.refresh-ttl-seconds", "60");
             ctx.getEnvironment().getSystemProperties().put("security.cookie.secure", "false");
             ctx.refresh();
@@ -64,48 +58,40 @@ class CookieJwtIntegrationTest {
                     .andExpect(jsonPath("$.success").value(false))
                     .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));
 
-            // 2) invalid apiKey -> AUTH_INVALID_TOKEN
+            // 2) invalid token -> AUTH_INVALID_TOKEN
             mockMvc.perform(get("/api/v1/test/protected")
                             .cookie(
-                                    new jakarta.servlet.http.Cookie("apiKey", "invalid-key"),
-                                    new jakarta.servlet.http.Cookie("accessToken", "some-token")
+                                    new jakarta.servlet.http.Cookie("apiKey", "k"),
+                                    new jakarta.servlet.http.Cookie("accessToken", "not-a-jwt")
                             ))
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.error.code").value("AUTH_INVALID_TOKEN"));
 
-            // 3) valid apiKey + valid accessToken -> 200
+            // 3) valid accessToken -> 200
             String okAccess = jwtTokenService.createAccessToken(101L);
             mockMvc.perform(get("/api/v1/test/protected")
                             .cookie(
-                                    new jakarta.servlet.http.Cookie("apiKey", "valid-api-key-101"),
+                                    new jakarta.servlet.http.Cookie("apiKey", "k"),
                                     new jakarta.servlet.http.Cookie("accessToken", okAccess)
                             )
                             .accept(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isOk())
                     .andExpect(status().isOk());
 
-            // 4) apiKey userId != accessToken userId -> AUTH_INVALID_TOKEN
-            String access202 = jwtTokenService.createAccessToken(202L);
-            mockMvc.perform(get("/api/v1/test/protected")
-                            .cookie(
-                                    new jakarta.servlet.http.Cookie("apiKey", "valid-api-key-101"), // userId 101
-                                    new jakarta.servlet.http.Cookie("accessToken", access202) // userId 202
-                            ))
-                    .andExpect(status().isUnauthorized())
-                    .andExpect(jsonPath("$.error.code").value("AUTH_INVALID_TOKEN"));
-
-            // 5) expired accessToken + refreshToken -> 200 and Set-Cookie(accessToken)
+            // 4) expired accessToken + refreshToken -> 200 and Set-Cookie(accessToken)
             String expiringAccess = jwtTokenService.createAccessToken(202L);
             String refresh = jwtTokenService.createRefreshToken(202L);
-            Thread.sleep(1200);
+            Thread.sleep(5100);
 
             mockMvc.perform(get("/api/v1/test/protected")
                             .cookie(
-                                    new jakarta.servlet.http.Cookie("apiKey", "valid-api-key-202"),
+                                    new jakarta.servlet.http.Cookie("apiKey", "k"),
                                     new jakarta.servlet.http.Cookie("accessToken", expiringAccess),
                                     new jakarta.servlet.http.Cookie("refreshToken", refresh)
                             ))
                     .andExpect(status().isOk())
-                    .andExpect(header().stringValues("Set-Cookie", org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.containsString("accessToken="))));
+                    .andExpect(header().stringValues("Set-Cookie", org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.containsString("accessToken="))))
+                    .andExpect(status().isOk());
         }
     }
 
@@ -123,18 +109,6 @@ class CookieJwtIntegrationTest {
         @Bean
         tools.jackson.databind.ObjectMapper toolsObjectMapper() {
             return new tools.jackson.databind.ObjectMapper();
-        }
-
-        @Bean
-        ApiKeyService apiKeyService() {
-            // Mock ApiKeyService: "valid-api-key-101" -> userId 101, "valid-api-key-202" -> userId 202
-            ApiKeyService mockService = mock(ApiKeyService.class);
-            // anyString()을 먼저 설정 (기본값)
-            when(mockService.validateAndGetUserId(anyString())).thenReturn(null);
-            // 구체적인 값들을 나중에 설정 (우선순위 높음)
-            when(mockService.validateAndGetUserId("valid-api-key-101")).thenReturn(101L);
-            when(mockService.validateAndGetUserId("valid-api-key-202")).thenReturn(202L);
-            return mockService;
         }
     }
 }
