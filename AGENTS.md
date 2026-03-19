@@ -22,12 +22,13 @@
 - `openapi.yaml`이 있으면 API 계약은 md 문서보다 `openapi.yaml`을 우선한다.
 - migration 파일이 생기면 DB 문서보다 migration을 우선한다.
 - AGENTS는 요약 규칙만 둔다. 세부 기준은 각 canonical 문서를 따른다.
+- `docs/`는 팀 공통 문서 위치로 사용한다. 개인 구현 중 생기는 메모, 초안, 실험 문서는 root `.local/docs/`에 작성하고 Git 추적 대상으로 올리지 않는다.
+- 개인 구현 문서를 공통 문서로 승격할 때는 필요한 canonical 문서에 반영하고, `.local/docs/`의 초안을 규칙 원본처럼 직접 참조하지 않는다.
 - 같은 변경은 같은 PR에서 닫는다. API, DB, 오류 코드, 화면 상태, AI 출력 스키마, 테스트가 바뀌면 관련 문서를 같이 수정한다.
 - Entity를 응답으로 직접 노출하지 않는다.
 - 외부 API 호출을 긴 트랜잭션 안에 넣지 않는다.
 - MVP 밖 기능은 문서 선반영 없이 구현하지 않는다.
 - `archive/originals/`와 `status: deprecated` 문서는 참조 비교용으로만 보고 새 구현의 직접 원본으로 사용하지 않는다.
-- 현재 저장소는 root `.gitignore` 기준으로 `docs/`, `openapi.yaml`, `AGENTS.md`, `archive/` 등을 Git 추적 대상으로 올리지 않는다. 이 정책을 바꾸기 위해 `.gitignore`를 수정하지 않는다.
 
 ## 작업 중단 조건
 
