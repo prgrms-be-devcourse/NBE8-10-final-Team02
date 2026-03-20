@@ -41,7 +41,7 @@ public class JwtTokenService {
     }
 
     @PostConstruct
-    void init() {
+    public void init() {
         // secret이 base64라고 가정하지 않고, 그대로 사용하도록 처리합니다.
         // (Keys.hmacShaKeyFor는 길이 조건을 만족하지 않으면 예외를 던질 수 있음)
         byte[] secretBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);

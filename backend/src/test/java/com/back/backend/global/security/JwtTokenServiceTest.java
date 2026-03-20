@@ -1,5 +1,6 @@
-package com.back.backend.global.security.jwt;
+package com.back.backend.global.security;
 
+import com.back.backend.global.security.jwt.JwtTokenService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
