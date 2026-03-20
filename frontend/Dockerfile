@@ -29,6 +29,11 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 
+# next.config.ts rewrites()는 빌드 타임에 평가되어 routes-manifest.json에 박힘
+# 런타임 -e로 넣어도 rewrite 목적지에 영향 없으므로 빌드 타임에 고정값으로 설정
+ARG BACKEND_URL=http://backend:8080
+ENV BACKEND_URL=$BACKEND_URL
+
 # 빌드 실행
 RUN \
   if [ -f yarn.lock ]; then yarn run build; \
