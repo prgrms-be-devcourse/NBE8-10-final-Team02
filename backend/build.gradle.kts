@@ -60,6 +60,7 @@ dependencies {
     testImplementation("org.testcontainers:postgresql:1.20.6")
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 
     // API Docs
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.4.0")
