@@ -37,4 +37,12 @@ public class User extends BaseTimeEntity {
     @Convert(converter = UserStatusConverter.class)
     @Column(name = "status", nullable = false, length = 20)
     private UserStatus status;
+
+    public void updateProfile(String displayName, String profileImageUrl, String email) {
+        this.displayName = displayName;
+        this.profileImageUrl = profileImageUrl;
+        if (email != null) {
+            this.email = email;
+        }
+    }
 }

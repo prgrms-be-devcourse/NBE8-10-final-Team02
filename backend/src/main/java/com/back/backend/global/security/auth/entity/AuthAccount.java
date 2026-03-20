@@ -18,6 +18,12 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
+/**
+ * 소셜 로그인 인증 계정 정보를 저장하는 엔티티입니다.
+ * <p>
+ * 하나의 {@link User}(사람)는 여러 개의 {@code AuthAccount}(신분증)를 가질 수 있으며,
+ * 이를 통해 구글, 깃허브 등 다중 소셜 연동을 지원합니다.
+ */
 @Getter
 @Entity
 @Builder
@@ -53,4 +59,8 @@ public class AuthAccount extends BaseEntity {
 
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
+
+    public void updateLastLoginAt(Instant lastLoginAt) {
+        this.lastLoginAt = lastLoginAt;
+    }
 }

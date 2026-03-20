@@ -2,7 +2,7 @@
 owner: 포트폴리오 수집/외부 연동 + 품질/테스트
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-03-20
 linked_issue_or_pr: docs-sync-quality-ops-v7
 applies_to: testing-and-quality
 ---
@@ -71,9 +71,80 @@ applies_to: testing-and-quality
 - HTTP 스텁 또는 테스트 더블로 성공, timeout, malformed response, rate limit을 검증한다.
 - 외부 응답 스키마를 도메인 모델로 변환하는 매핑 실패를 명시적으로 테스트한다.
 
-## 3. 도메인별 필수 시나리오
+## 3. 테스트 작성 규칙
 
-### 3.1 인증과 회원
+prereq: Integration/API 테스트는 Docker Desktop 필요 (Testcontainers가 PostgreSQL 컨테이너 사용).
+
+### 3.1 계층-클래스 매핑
+
+| 클래스 | 테스트 방식 | 비고 |
+|--------|------------|------|
+| `XxxService` | `@ExtendWith(MockitoExtension.class)` | Spring/DB 불필요 |
+| `XxxRepository` (커스텀 쿼리) | `@IntegrationTest` + `@Transactional` | 실제 PostgreSQL 필요 |
+| `XxxRepository` (JPA 기본 메서드) | 불필요 | Spring Data가 보장 |
+| `XxxController` | `extends ApiTestBase` + `@MockitoBean` | HTTP 계층만 검증 |
+| 도메인 객체/Entity 메서드 | `@ExtendWith(MockitoExtension.class)` | 순수 Java |
+| 외부 API 클라이언트 | WireMock | 실제 호출 금지 |
+| Security 필터 | `@WebMvcTest` 슬라이스 | ref: `CookieJwtSecurityTest` |
+
+원칙: 각 계층은 자기 계층만 검증. 하위 계층은 Mock으로 대체.
+
+### 3.2 E2E 대안 (시간 부족 시)
+
+`ApiTestBase`를 `@MockitoBean` 없이 사용하면 전체 스택(Service + DB)을 실제로 실행한다. 빠른 커버리지 확보에 유용하나 실패 원인 특정이 어렵고 속도가 느림. 로직이 복잡해지면 계층 분리 권장.
+
+```java
+class UserApiTest extends ApiTestBase {
+    // @MockitoBean 없음 → 진짜 Service + DB
+    @Test @WithMockUser
+    void getMe_returns200() throws Exception {
+        mockMvc.perform(get("/api/v1/users/me")).andExpect(status().isOk());
+    }
+}
+```
+
+### 3.3 계층별 패턴
+
+**Unit** — ref: `document/service/DocumentServiceTest.java`
+```java
+@ExtendWith(MockitoExtension.class)
+class XxxServiceTest {
+    @Mock XxxRepository repo;
+    @InjectMocks XxxService sut;
+}
+```
+
+**Integration** — ref: `document/repository/DocumentRepositoryTest.java`, `persistence/PersistenceSchemaTest.java`
+```java
+@IntegrationTest
+@Transactional
+class XxxRepositoryTest {
+    @Autowired XxxRepository repo;
+}
+```
+
+**API** — ref: `document/controller/DocumentApiTest.java`
+```java
+// @MockitoBean: 진짜 Bean을 Mock으로 교체. @Autowired와 다름 (@Autowired는 실제 DB까지 실행됨)
+class XxxApiTest extends ApiTestBase {
+    @MockitoBean XxxService service;
+
+    @Test
+    void endpoint_returns401WhenUnauthenticated() throws Exception { ... }
+
+    @Test @WithMockUser
+    void endpoint_returns200WhenAuthenticated() throws Exception {
+        given(service.method(any())).willReturn(...);
+        ...
+    }
+}
+```
+
+추가 주의사항: `ApiTestBase.java`, `IntegrationTest.java` Javadoc 참고.
+
+## 4. 도메인별 필수 시나리오
+
+### 4.1 인증과 회원
 
 - OAuth 로그인 성공/실패
 - 지원하지 않는 provider 차단
@@ -81,7 +152,7 @@ applies_to: testing-and-quality
 - 같은 이메일의 다른 소셜 로그인 자동 병합 금지
 - 탈퇴 사용자 또는 비활성 사용자 접근 제한
 
-### 3.2 포트폴리오와 GitHub 연동
+### 4.2 포트폴리오와 GitHub 연동
 
 - public repository 목록 조회
 - private repository scope 부족 처리
@@ -90,7 +161,7 @@ applies_to: testing-and-quality
 - 최근 2년 활동 repository 우선 정렬
 - GitHub API rate limit 및 권한 오류 분기
 
-### 3.3 문서 업로드와 추출
+### 4.3 문서 업로드와 추출
 
 - PDF, DOCX, MD 업로드 성공
 - 지원하지 않는 형식 차단
@@ -100,7 +171,7 @@ applies_to: testing-and-quality
 - 동일 문서 재업로드 시 덮어쓰기/취소 분기
 - 스캔 PDF 또는 비정상 추출 결과 품질 경고
 
-### 3.4 자소서 생성
+### 4.4 자소서 생성
 
 - application 생성/수정/삭제
 - source repository, source document 연결 저장
@@ -110,7 +181,7 @@ applies_to: testing-and-quality
 - AI timeout, 빈 응답, schema mismatch 처리
 - 재생성 시 이전 결과 이력 보존
 
-### 3.5 면접 질문 생성
+### 4.5 면접 질문 생성
 
 - 질문 세트 생성 성공
 - 질문 최대 20개 제한
@@ -118,7 +189,7 @@ applies_to: testing-and-quality
 - 자소서 미생성 상태 차단
 - 질문 개별 삭제/수동 추가
 
-### 3.6 모의 면접과 결과
+### 4.6 모의 면접과 결과
 
 - 활성 세션 1개 제한
 - 일반 답변 50~1000자 검증
@@ -130,7 +201,7 @@ applies_to: testing-and-quality
 - 점수, 태그, 종합 코멘트 저장
 - 완료 세션 재답변 차단
 
-## 4. 핵심 품질 위험과 우선순위
+## 5. 핵심 품질 위험과 우선순위
 
 가장 먼저 보호해야 하는 버그 유형은 아래와 같다.
 
@@ -142,7 +213,7 @@ applies_to: testing-and-quality
 
 PR 리뷰와 CI는 이 다섯 가지를 우선적으로 방어해야 한다.
 
-## 5. 테스트 데이터와 환경 기준
+## 6. 테스트 데이터와 환경 기준
 
 - DB 통합 테스트는 PostgreSQL 기준으로 검증한다.
 - Redis 사용 기능이 생기면 임베디드 대체보다 실제 동작에 가까운 테스트 환경을 우선한다.
@@ -150,7 +221,7 @@ PR 리뷰와 CI는 이 다섯 가지를 우선적으로 방어해야 한다.
 - 개인정보가 포함된 실제 이력서나 면접 답변 원문을 테스트 fixture로 커밋하지 않는다.
 - AI 응답 fixture는 정상 응답, 빈 응답, malformed JSON, schema violation을 모두 포함한다.
 
-## 6. CI 최소 게이트
+## 7. CI 최소 게이트
 
 MVP 기준으로 merge 전 최소한 아래를 통과해야 한다.
 
@@ -162,15 +233,14 @@ MVP 기준으로 merge 전 최소한 아래를 통과해야 한다.
 
 테스트를 임시로 끄거나 `@Disabled` 처리했다면 PR 본문에 이유와 복구 계획을 남겨야 한다.
 
-## 7. 문서와 테스트 동기화 규칙
-
+## 8. 문서와 테스트 동기화 규칙
 - API path, 요청/응답 구조가 바뀌면 `openapi.yaml`과 API 테스트를 함께 수정한다.
 - 오류 코드가 바뀌면 `docs/error-policy.md`, `docs/error-codes.md`, 오류 응답 테스트를 함께 수정한다.
 - DB 제약이 바뀌면 `docs/db/schema.md`와 integration test를 함께 수정한다.
 - 숫자 제한이 바뀌면 요구사항 문서와 validation 테스트를 함께 수정한다.
 - 세션 상태 enum이 바뀌면 API, DB, 화면, 테스트를 함께 수정한다.
 
-## 8. 현재 수용 기준
+## 9. 현재 수용 기준
 
 아래 항목을 만족하면 현재 테스트 기준을 충족한 것으로 본다.
 

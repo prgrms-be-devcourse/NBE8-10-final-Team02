@@ -97,6 +97,8 @@ jobs:
             ${{ env.FE_IMAGE_PATH }}:latest
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
 
   # 3. Oracle Cloud SSH 배포 (Blue/Green)
   deploy:
@@ -157,7 +159,10 @@ jobs:
             -e JAVA_TOOL_OPTIONS="-XX:InitialRAMPercentage=50.0 -XX:MaxRAMPercentage=50.0" \
             --env-file .env-prod \
             "${BE_IMAGE}:${IMAGE_TAG}"
-            docker run -d --name $GREEN_FE --network global-net "${FE_IMAGE}:${IMAGE_TAG}"
+            docker run -d --name $GREEN_FE \
+            --network global-net \
+            -e BACKEND_URL="http://$GREEN_BE:8080" \
+            "${FE_IMAGE}:${IMAGE_TAG}"
 
             # 보안을 위해 사용이 끝난 환경변수 파일 즉시 삭제
             rm -f .env-prod
