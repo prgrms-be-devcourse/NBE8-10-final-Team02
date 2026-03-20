@@ -1,5 +1,6 @@
 package com.back.backend.global.security;
 
+import com.back.backend.global.request.RequestIdFilter;
 import com.back.backend.global.response.ApiErrorResponseWriter;
 import com.back.backend.global.security.apikey.ApiKeyService;
 import com.back.backend.global.security.auth.CookieJwtAuthenticationFilter;
@@ -10,6 +11,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -31,10 +35,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = CookieJwtSecurityTest.ProtectedTestController.class)
 @Import({
     SecurityConfig.class,
-    CookieJwtAuthenticationFilter.class,
     JwtTokenService.class,
     ApiAuthenticationEntryPoint.class,
-    ApiErrorResponseWriter.class
+    ApiErrorResponseWriter.class,
+    CookieJwtSecurityTest.ProtectedTestController.class,
 })
 @TestPropertySource(properties = "security.jwt.access-ttl-seconds=1")
 @ActiveProfiles("test")
