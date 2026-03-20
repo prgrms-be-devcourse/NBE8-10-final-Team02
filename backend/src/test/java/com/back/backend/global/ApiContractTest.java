@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Clock;
 import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -54,6 +55,9 @@ class ApiContractTest {
 
     @MockitoBean
     private ApiKeyService apiKeyService;
+
+    @MockitoBean
+    private Clock clock;
 
     @Test
     void successResponseIncludesRequestIdAndMeta() throws Exception {
