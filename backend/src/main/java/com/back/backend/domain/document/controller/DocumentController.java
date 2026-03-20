@@ -1,6 +1,8 @@
 package com.back.backend.domain.document.controller;
 
-import com.back.backend.domain.document.service.DocumentService;
+import com.back.backend.document.dto.DocumentResponse;
+import com.back.backend.document.service.DocumentService;
+import com.back.backend.domain.document.entity.DocumentType;
 import com.back.backend.global.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -24,8 +26,9 @@ public class DocumentController {
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<Void> uploadDocument(@RequestParam("file") MultipartFile file) {
-        documentService.validateUpload(PLACEHOLDER_USER_ID, file.getContentType(), file.getSize());
-        return ApiResponse.success(null);
+    public ApiResponse<DocumentResponse> uploadDocument(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "documentType", defaultValue = "OTHER") DocumentType documentType) {
+        return ApiResponse.success(documentService.upload(PLACEHOLDER_USER_ID, documentType, file));
     }
 }

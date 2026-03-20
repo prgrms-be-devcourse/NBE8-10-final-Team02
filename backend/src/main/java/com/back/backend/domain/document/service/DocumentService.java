@@ -1,12 +1,23 @@
 package com.back.backend.domain.document.service;
 
 import com.back.backend.domain.document.repository.DocumentRepository;
+import com.back.backend.document.dto.DocumentResponse;
+import com.back.backend.document.repository.DocumentRepository;
+import com.back.backend.document.storage.DocumentStorageService;
+import com.back.backend.domain.document.entity.Document;
+import com.back.backend.domain.document.entity.DocumentExtractStatus;
+import com.back.backend.domain.document.entity.DocumentType;
+import com.back.backend.domain.user.entity.User;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
+import com.back.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Clock;
 import java.util.Set;
 
 @Service
@@ -22,6 +33,9 @@ public class DocumentService {
     );
 
     private final DocumentRepository documentRepository;
+    private final DocumentStorageService documentStorageService;
+    private final UserRepository userRepository;
+    private final Clock clock;
 
     public void validateUpload(Long userId, String mimeType, long fileSizeBytes) {
         if (!ALLOWED_MIME_TYPES.contains(mimeType)) {
@@ -45,5 +59,26 @@ public class DocumentService {
                     "문서는 최대 5개까지 업로드할 수 있습니다."
             );
         }
+    }
+
+    @Transactional
+    public DocumentResponse upload(Long userId, DocumentType documentType, MultipartFile file) {
+        validateUpload(userId, file.getContentType(), file.getSize());
+
+        String storagePath = documentStorageService.store(file);
+        User user = userRepository.getReferenceById(userId);
+
+        Document document = Document.builder()
+                .user(user)
+                .documentType(documentType)
+                .originalFileName(file.getOriginalFilename())
+                .storagePath(storagePath)
+                .mimeType(file.getContentType())
+                .fileSizeBytes(file.getSize())
+                .extractStatus(DocumentExtractStatus.PENDING)
+                .uploadedAt(clock.instant())
+                .build();
+
+        return DocumentResponse.from(documentRepository.save(document));
     }
 }
