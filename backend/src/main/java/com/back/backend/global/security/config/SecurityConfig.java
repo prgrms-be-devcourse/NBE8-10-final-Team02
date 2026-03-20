@@ -1,8 +1,11 @@
 package com.back.backend.global.security.config;
 
 import com.back.backend.global.request.RequestIdFilter;
+import com.back.backend.global.security.apikey.ApiKeyService;
 import com.back.backend.global.security.auth.CookieJwtAuthenticationFilter;
 import com.back.backend.global.security.handler.ApiAuthenticationEntryPoint;
+import com.back.backend.global.security.jwt.JwtTokenService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -24,20 +27,38 @@ public class SecurityConfig {
 
     private final RequestIdFilter requestIdFilter;
     private final ApiAuthenticationEntryPoint apiAuthenticationEntryPoint;
-    private final CookieJwtAuthenticationFilter cookieJwtAuthenticationFilter;
+    private final JwtTokenService jwtTokenService;
+    private final ApiKeyService apiKeyService;
+
+    @Value("${security.cookie.secure:false}")
+    private boolean cookieSecure;
 
     public SecurityConfig(
             RequestIdFilter requestIdFilter,
             ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
-            CookieJwtAuthenticationFilter cookieJwtAuthenticationFilter
+            JwtTokenService jwtTokenService,
+            ApiKeyService apiKeyService
     ) {
         this.requestIdFilter = requestIdFilter;
         this.apiAuthenticationEntryPoint = apiAuthenticationEntryPoint;
-        this.cookieJwtAuthenticationFilter = cookieJwtAuthenticationFilter;
+        this.jwtTokenService = jwtTokenService;
+        this.apiKeyService = apiKeyService;
     }
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        // 필터를 여기서 직접 생성(new)합니다.
+        // CookieFilter의 @Component를 뗐기 때문에 오직 여기서만 생성되어 시큐리티 체인에만 들어갑니다.
+        // 필터의 생명주기 주도권이 '스프링 부트'에서 **'스프링 시큐리티'**로 완전히 넘어옵니다.
+        RequestIdFilter requestIdFilter = new RequestIdFilter();
+
+        CookieJwtAuthenticationFilter cookieJwtAuthenticationFilter = new CookieJwtAuthenticationFilter(
+            jwtTokenService,
+            apiKeyService,
+            apiAuthenticationEntryPoint,
+            cookieSecure
+        );
+
         http
                 .csrf(csrf -> csrf.disable()) // API 서버이므로 대개 비활성화
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
