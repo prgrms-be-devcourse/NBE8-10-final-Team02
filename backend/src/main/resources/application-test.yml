@@ -1,0 +1,53 @@
+spring:
+  config:
+    import: optional:file:../.env.test[.properties]
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: true
+  flyway:
+    enabled: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  # github는 redirectionUrl 하나밖에 지원을 안하기 때문에 LOCAL ID,SECRET이 따로 필요
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            clientId: ${GITHUB_CLIENT_ID_LOCAL:}
+            clientSecret: ${GITHUB_CLIENT_SECRET_LOCAL:}
+          google:
+            clientId: ${GOOGLE_CLIENT_ID:}
+            clientSecret: ${GOOGLE_CLIENT_SECRET:}
+          kakao:
+            clientId: ${KAKAO_CLIENT_ID:}
+
+ai:
+  gemini:
+    api-key: test-key-not-real
+    base-url: http://localhost:8089 # MockWebServer 주소
+    model: gemini-2.5-flash
+    timeout:
+      connect: 1s
+      read: 5s # 빠른 실패
+    retry:
+      max-attempts: 0 # 재시도 비활성화
+
+security:
+  jwt:
+    secret: test-jwt-secret-key-for-integration-tests-9f8e7d6c5b4a3928
+    access-ttl-seconds: 60 # 테스트 환경에서는 1분으로 짧게
+    refresh-ttl-seconds: 120 # 2분
+  cookie:
+    secure: false # 테스트 환경

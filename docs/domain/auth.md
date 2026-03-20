@@ -2,7 +2,7 @@
 owner: 플랫폼/공통 기반 + 인프라/배포/관측성
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-03-18
 linked_issue_or_pr: docs-sync-requirements-v5
 applies_to: auth-domain
 ---
@@ -35,5 +35,5 @@ applies_to: auth-domain
 - `AUTH_UNSUPPORTED_PROVIDER`
 - `AUTH_OAUTH_CANCELLED`
 - `AUTH_PROVIDER_RESPONSE_INVALID`
-- `AUTH_ACCOUNT_MERGE_REQUIRED`
+- `AUTH_INVALID_TOKEN`
 - `USER_WITHDRAWN`

@@ -42,6 +42,10 @@ applies_to: backend-api-governance
 - 인증 우선순위는 `Authorization` 헤더가 먼저다.
 - 헤더 형식은 `Bearer {apiKey} {accessToken}`를 사용한다.
 - 헤더가 없을 때만 쿠키 `apiKey`, `accessToken` 폴백을 고려한다.
+- 인증이 필요한 business API는 `/api/**` 하위 경로를 기본 보호 대상으로 둔다.
+- 현재 canonical base URL은 `/api/v1`이므로 실제 보호 대상 business API는 `/api/v1/**` 하위에 위치한다.
+- 런타임에서 `/api/v1` base path가 전역 적용되지 않았다면 business resource root도 개별 matcher로 함께 보호한다.
+- OAuth2 인가 시작/콜백, actuator, swagger 관련 경로는 allowlist 예외로 관리할 수 있다.
 - 사용자 식별자는 인증 컨텍스트에서 가져오며, 요청 본문에서 `userId`를 받지 않는다.
 
 ## 5. 응답 규칙

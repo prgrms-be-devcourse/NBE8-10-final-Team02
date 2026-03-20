@@ -167,10 +167,12 @@ applies_to: storage-schema
 선택 컬럼
 - `application_title`
 - `company_name`
+- `application_type`
 
 비고
 - 직무는 필수 입력이다.
 - 회사명은 없는 상태로도 초안 생성이 가능하므로 nullable로 둔다.
+- `application_type`은 지원 유형 예: 신입, 인턴, 경력 값을 저장하는 nullable 문자열 컬럼으로 둔다.
 - `status`는 `draft | ready` 2단계로 운영한다. `ready`는 면접 질문 생성과 이후 흐름에 사용할 기준 데이터가 준비된 상태를 뜻한다.
 
 ## 3.8 application_source_repositories
@@ -322,6 +324,8 @@ applies_to: storage-schema
 - `document_type`: `resume`, `award`, `certificate`, `other`
 - `extract_status`: `pending`, `success`, `failed`
 - `application_status`: `draft`, `ready`
+- `application_tone_option`: `formal`, `balanced`, `casual`
+- `application_length_option`: `short`, `medium`, `long`
 - `difficulty_level`: `easy`, `medium`, `hard`
 - `interview_question_type`: `experience`, `project`, `technical_cs`, `technical_stack`, `behavioral`, `follow_up`
 - `interview_session_status`: `ready`, `in_progress`, `paused`, `completed`, `feedback_completed`
