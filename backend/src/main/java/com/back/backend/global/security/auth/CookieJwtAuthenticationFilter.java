@@ -23,7 +23,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.List;
 
-@Component
+// @Component : filter 이중등록문제를 막기위해 제거
 public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
 
     public static final String COOKIE_API_KEY = "apiKey";
