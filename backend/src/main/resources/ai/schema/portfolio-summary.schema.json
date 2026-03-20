@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "projects",
+    "globalStrengths",
+    "globalRisks",
+    "qualityFlags"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "projectKey",
+          "projectName",
+          "summary",
+          "signals",
+          "evidenceBullets",
+          "confidence",
+          "sourceRefs",
+          "qualityFlags"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "projectKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "projectName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "signals": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 6
+          },
+          "evidenceBullets": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 5
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "sourceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "qualityFlags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "globalStrengths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "globalRisks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "qualityFlags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "questions",
+    "qualityFlags"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "questionOrder",
+          "questionType",
+          "difficultyLevel",
+          "questionText"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "questionOrder": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "questionType": {
+            "type": "string",
+            "enum": [
+              "experience",
+              "project",
+              "technical_cs",
+              "technical_stack",
+              "behavioral",
+              "follow_up"
+            ]
+          },
+          "difficultyLevel": {
+            "type": "string",
+            "enum": [
+              "easy",
+              "medium",
+              "hard"
+            ]
+          },
+          "questionText": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceApplicationQuestionOrder": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "parentQuestionOrder": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "usedEvidenceKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "qualityFlags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
