@@ -1,4 +1,7 @@
 spring:
+  config:
+    import: optional:file:../.env.dev[.properties]
+
   datasource:
     # localhost:5432는 로컬 docker-compose에서 뚫어준 포트
     url: jdbc:postgresql://localhost:5432/appdb
