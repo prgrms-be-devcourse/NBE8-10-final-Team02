@@ -9,6 +9,31 @@ spring:
       port: 6379
       timeout: 3s
 
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            clientId: ${GITHUB_CLIENT_ID:GITHUB_CLIENT_ID}
+            clientSecret: ${GITHUB_CLIENT_SECRET:GITHUB_CLIENT_SECRET}
+            scope: user:email,read:user
+          google:
+            clientId: ${GOOGLE_CLIENT_ID:GOOGLE_CLIENT_ID}
+            clientSecret: ${GOOGLE_CLIENT_SECRET:GOOGLE_CLIENT_SECRET}
+            scope: profile,email
+          kakao:
+            clientId: ${KAKAO_CLIENT_ID:KAKAO_CLIENT_ID}
+            scope: profile_nickname, profile_image
+            client-name: Kakao
+            authorization-grant-type: authorization_code
+            redirect-uri: '{baseUrl}/{action}/oauth2/code/{registrationId}'
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+
 # Actuator 설정 (Prometheus 수집을 위해 필수)
 management:
   endpoints:
@@ -46,3 +71,5 @@ security:
     refresh-ttl-seconds: 86400 # 24시간
   cookie:
     secure: false # 개발 환경 기본값, HTTPS 환경에서는 true로 설정
+  oauth2:
+    frontend-redirect-url: http://localhost:3000

@@ -17,6 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create .env.test from Secret
+        env:
+          DOT_ENV_TEST: ${{ secrets.DOT_ENV_TEST }}
+        run: echo "$DOT_ENV_TEST" > .env.test
+
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:

@@ -7,6 +7,10 @@ import com.back.backend.global.security.auth.CookieJwtAuthenticationFilter;
 import com.back.backend.global.security.config.SecurityConfig;
 import com.back.backend.global.security.handler.ApiAuthenticationEntryPoint;
 import com.back.backend.global.security.jwt.JwtTokenService;
+import com.back.backend.global.security.oauth2.CookieOAuth2AuthorizationRequestRepository;
+import com.back.backend.global.security.oauth2.CustomOAuth2AuthorizationRequestResolver;
+import com.back.backend.global.security.oauth2.CustomOAuth2LoginSuccessHandler;
+import com.back.backend.global.security.oauth2.CustomOAuth2UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,6 +63,18 @@ class CookieJwtSecurityTest {
     @MockitoBean
     private Clock clock;
     private Instant currentInstant;
+
+    @MockitoBean
+    private CustomOAuth2UserService customOAuth2UserService;
+
+    @MockitoBean
+    private CustomOAuth2LoginSuccessHandler customOAuth2LoginSuccessHandler;
+
+    @MockitoBean
+    private CustomOAuth2AuthorizationRequestResolver customOAuth2AuthorizationRequestResolver;
+
+    @MockitoBean
+    private CookieOAuth2AuthorizationRequestRepository cookieOAuth2AuthorizationRequestRepository;
 
     @BeforeEach
     void setUpApiKeyService() {
