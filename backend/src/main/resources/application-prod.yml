@@ -1,4 +1,4 @@
-# 주의!!!!!
+# !!!! 필독 !!!!!
 # application-prod는 편의상 유지하는 거지 실제 사용되지 않음
 # 실제 배포는 .env파일로 진행됨
 # 실제 배포에 적용되길 원한다면 .env.default와 .env파일 수정 필요
@@ -28,8 +28,14 @@ spring:
     oauth2:
       client:
         registration:
+          github:
+            clientId: ${GITHUB_CLIENT_ID:}
+            clientSecret: ${GITHUB_CLIENT_SECRET:}
+          google:
+            clientId: ${GOOGLE_CLIENT_ID:}
+            clientSecret: ${GOOGLE_CLIENT_SECRET:}
           kakao:
-            clientId: 00000000000000000000000000
+            clientId: ${KAKAO_CLIENT_ID:}
 
 logging:
   level:

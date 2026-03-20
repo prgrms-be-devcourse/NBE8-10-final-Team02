@@ -14,15 +14,15 @@ spring:
       client:
         registration:
           github:
-            clientId: ${GITHUB_CLIENT_ID}
-            clientSecret: ${GITHUB_CLIENT_SECRET}
+            clientId: ${GITHUB_CLIENT_ID:GITHUB_CLIENT_ID}
+            clientSecret: ${GITHUB_CLIENT_SECRET:GITHUB_CLIENT_SECRET}
             scope: user:email,read:user
           google:
-            clientId: ${GOOGLE_CLIENT_ID}
-            clientSecret: ${GOOGLE_CLIENT_SECRET}
+            clientId: ${GOOGLE_CLIENT_ID:GOOGLE_CLIENT_ID}
+            clientSecret: ${GOOGLE_CLIENT_SECRET:GOOGLE_CLIENT_SECRET}
             scope: openid,profile,email
           kakao:
-            clientId: ${KAKAO_CLIENT_ID:YOUR_KAKAO_CLIENT_ID}
+            clientId: ${KAKAO_CLIENT_ID:KAKAO_CLIENT_ID}
             scope: profile_nickname, profile_image
             client-name: Kakao
             authorization-grant-type: authorization_code

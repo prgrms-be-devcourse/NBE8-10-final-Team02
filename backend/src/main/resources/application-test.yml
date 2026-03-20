@@ -10,19 +10,25 @@ spring:
         format_sql: true
   flyway:
     enabled: true
-  # 팀에서 Redis 미사용으로 결정했으나, Redis 설정을 추가한 브랜치가 머지될 경우
-  # PlaceholderResolutionException 방지용 더미값
+
   data:
     redis:
       host: localhost
       port: 6379
 
+  # github는 redirectionUrl 하나밖에 지원을 안하기 때문에 LOCAL ID,SECRET이 따로 필요
   security:
     oauth2:
       client:
         registration:
+          github:
+            clientId: ${GITHUB_CLIENT_ID_LOCAL:}
+            clientSecret: ${GITHUB_CLIENT_SECRET_LOCAL:}
+          google:
+            clientId: ${GOOGLE_CLIENT_ID:}
+            clientSecret: ${GOOGLE_CLIENT_SECRET:}
           kakao:
-            clientId: 00000000000000000000000000
+            clientId: ${KAKAO_CLIENT_ID:}
 
 ai:
   gemini:
@@ -37,8 +43,8 @@ ai:
 
 security:
   jwt:
-    secret: test-jwt-secret-key-for-integration-tests-9f8e7d6c5b4a3928 #tests-only-not-real
-    access-ttl-seconds: 900
-    refresh-ttl-seconds: 86400
+    secret: test-jwt-secret-key-for-integration-tests-9f8e7d6c5b4a3928
+    access-ttl-seconds: 60 # 테스트 환경에서는 1분으로 짧게
+    refresh-ttl-seconds: 120 # 2분
   cookie:
-    secure: false
+    secure: false # 테스트 환경
