@@ -24,6 +24,13 @@ spring:
       port: ${SPRING_DATA_REDIS_PORT:6379}
       password: ${SPRING_DATA_REDIS_PASSWORD:}
 
+  security:
+    oauth2:
+      client:
+        registration:
+          kakao:
+            clientId: 00000000000000000000000000
+
 logging:
   level:
     root: info

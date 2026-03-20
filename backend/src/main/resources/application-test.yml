@@ -17,6 +17,13 @@ spring:
       host: localhost
       port: 6379
 
+  security:
+    oauth2:
+      client:
+        registration:
+          kakao:
+            clientId: 00000000000000000000000000
+
 ai:
   gemini:
     api-key: test-key-not-real

@@ -25,6 +25,10 @@ COPY . .
 # Next.js 텔레메트리(데이터 수집) 비활성화 (선택사항)
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# 빌드할 때 외부(GitHub Actions)에서 던져주는 변수를 받기 위한 구멍 뚫기. 받은 값을 빌드 환경변수로 승격
+ARG NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+
 # 빌드 실행
 RUN \
   if [ -f yarn.lock ]; then yarn run build; \
