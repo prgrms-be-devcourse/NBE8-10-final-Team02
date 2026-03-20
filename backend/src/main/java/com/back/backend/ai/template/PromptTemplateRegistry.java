@@ -6,16 +6,14 @@ import java.util.Map;
 /**
  * 프롬프트 템플릿 레지스트리
  * 6개 템플릿을 등록하고 templateId로 조회
+ * 생성 후 불변 — 외부에서 추가/수정 불가
  */
 public class PromptTemplateRegistry {
 
-    private final Map<String, PromptTemplate> templates = new HashMap<>();
+    private final Map<String, PromptTemplate> templates;
 
-    public void register(PromptTemplate template) {
-        if (templates.containsKey(template.templateId())) {
-            throw new IllegalArgumentException("이미 등록된 templateId: " + template.templateId());
-        }
-        templates.put(template.templateId(), template);
+    private PromptTemplateRegistry(Map<String, PromptTemplate> templates) {
+        this.templates = templates;
     }
 
     public PromptTemplate get(String templateId) {
@@ -27,12 +25,12 @@ public class PromptTemplateRegistry {
     }
 
     /**
-     * 6개 기본 템플릿이 모두 등록된 레지스트리를 생성
+     * 6개 기본 템플릿이 모두 등록된 불변 레지스트리를 생성
      */
     public static PromptTemplateRegistry createDefault() {
-        PromptTemplateRegistry registry = new PromptTemplateRegistry();
+        Map<String, PromptTemplate> map = new HashMap<>();
 
-        registry.register(new PromptTemplate(
+        map.put("ai.portfolio.summary.v1", new PromptTemplate(
             "ai.portfolio.summary.v1", "v1", "portfolio_summary",
             "system/common-system.txt",
             "developer/ai.portfolio.summary.v1.txt",
@@ -41,7 +39,7 @@ public class PromptTemplateRegistry {
             new PromptTemplate.RetryPolicy(2, false)
         ));
 
-        registry.register(new PromptTemplate(
+        map.put("ai.self_intro.generate.v1", new PromptTemplate(
             "ai.self_intro.generate.v1", "v1", "self_intro_generation",
             "system/common-system.txt",
             "developer/ai.self_intro.generate.v1.txt",
@@ -50,7 +48,7 @@ public class PromptTemplateRegistry {
             new PromptTemplate.RetryPolicy(2, false)
         ));
 
-        registry.register(new PromptTemplate(
+        map.put("ai.interview.questions.generate.v1", new PromptTemplate(
             "ai.interview.questions.generate.v1", "v1", "interview_question_generation",
             "system/common-system.txt",
             "developer/ai.interview.questions.generate.v1.txt",
@@ -59,7 +57,7 @@ public class PromptTemplateRegistry {
             new PromptTemplate.RetryPolicy(2, false)
         ));
 
-        registry.register(new PromptTemplate(
+        map.put("ai.interview.followup.generate.v1", new PromptTemplate(
             "ai.interview.followup.generate.v1", "v1", "interview_followup_generation",
             "system/common-system.txt",
             "developer/ai.interview.followup.generate.v1.txt",
@@ -68,7 +66,7 @@ public class PromptTemplateRegistry {
             new PromptTemplate.RetryPolicy(1, false)
         ));
 
-        registry.register(new PromptTemplate(
+        map.put("ai.interview.evaluate.v1", new PromptTemplate(
             "ai.interview.evaluate.v1", "v1", "interview_evaluation",
             "system/common-system.txt",
             "developer/ai.interview.evaluate.v1.txt",
@@ -77,7 +75,7 @@ public class PromptTemplateRegistry {
             new PromptTemplate.RetryPolicy(2, false)
         ));
 
-        registry.register(new PromptTemplate(
+        map.put("ai.interview.summary.v1", new PromptTemplate(
             "ai.interview.summary.v1", "v1", "interview_summary",
             "system/common-system.txt",
             "developer/ai.interview.summary.v1.txt",
@@ -86,6 +84,7 @@ public class PromptTemplateRegistry {
             new PromptTemplate.RetryPolicy(1, false)
         ));
 
-        return registry;
+        // Map.copyOf()로 불변 맵 생성 — 이후 수정 시도 시 UnsupportedOperationException
+        return new PromptTemplateRegistry(Map.copyOf(map));
     }
 }
