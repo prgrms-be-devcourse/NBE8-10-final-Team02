@@ -50,14 +50,14 @@ class JwtTokenServiceTest {
 
     @Test
     void rejectsExpiredToken() {
-        // 토큰 생성 시점: 과거
+        // 토큰 생성 시점: 과거 (accessTtl=60s → 200s 전에 발급된 토큰은 만료)
         Clock pastClock = Clock.fixed(Instant.now().minusSeconds(200), ZoneOffset.UTC);
-        JwtTokenService tokenService = serviceWith(SECRET_A, pastClock);
+        JwtTokenService issuer = serviceWith(SECRET_A, pastClock);
+        String token = issuer.createAccessToken(1L);
 
-        // accessTtl=60s → 200s 전에 발급된 토큰은 만료
-        String token = tokenService.createAccessToken(1L);
-
-        assertThatThrownBy(() -> tokenService.parseAccessToken(token))
+        // 파싱은 현재 시각 기준으로 검증해야 만료 여부를 올바르게 판단
+        JwtTokenService verifier = serviceWith(SECRET_A, Clock.systemUTC());
+        assertThatThrownBy(() -> verifier.parseAccessToken(token))
             .isInstanceOf(JwtException.class);
     }
 }

@@ -98,6 +98,7 @@ public class JwtTokenService {
         // JWT 서명/exp 검증까지 포함
         return Jwts.parser()
             .verifyWith(signingKey)
+            .clock(() -> Date.from(clock.instant()))
             .build()
             .parseSignedClaims(token);
     }
