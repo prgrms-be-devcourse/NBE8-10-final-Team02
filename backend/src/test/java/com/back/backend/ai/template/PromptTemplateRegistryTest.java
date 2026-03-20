@@ -61,14 +61,12 @@ class PromptTemplateRegistryTest {
     }
 
     @Test
-    @DisplayName("레지스트리는 불변이다 — 외부에서 수정할 수 없다")
-    void createDefault_immutable() {
+    @DisplayName("PromptTemplate은 record로 불변이 보장된다")
+    void promptTemplate_isImmutableRecord() {
         PromptTemplateRegistry registry = PromptTemplateRegistry.createDefault();
 
-        // get()으로 받은 템플릿은 record라 수정 불가
         PromptTemplate template = registry.get("ai.portfolio.summary.v1");
 
-        // record는 setter가 없으므로 컴파일 타임에 불변 보장
         assertThat(template).isInstanceOf(Record.class);
     }
 
