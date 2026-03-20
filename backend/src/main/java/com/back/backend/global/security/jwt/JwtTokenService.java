@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
@@ -30,23 +31,30 @@ public class JwtTokenService {
 
     private SecretKey signingKey;
 
+    private final Clock clock;
+
     public JwtTokenService(
-            @Value("${security.jwt.secret:insecure-dev-secret-please-change-123456789012345678901234567890}") String jwtSecret,
-            @Value("${security.jwt.access-ttl-seconds:900}") long accessTtlSeconds,
-            @Value("${security.jwt.refresh-ttl-seconds:86400}") long refreshTtlSeconds
+        @Value("${security.jwt.secret}") String jwtSecret,
+        @Value("${security.jwt.access-ttl-seconds}") long accessTtlSeconds,
+        @Value("${security.jwt.refresh-ttl-seconds}") long refreshTtlSeconds,
+        Clock clock
     ) {
         this.jwtSecret = jwtSecret;
         this.accessTtl = Duration.ofSeconds(accessTtlSeconds);
         this.refreshTtl = Duration.ofSeconds(refreshTtlSeconds);
-    }
+        this.clock = clock;
 
-    @PostConstruct
-    public void init() {
-        // secret이 base64라고 가정하지 않고, 그대로 사용하도록 처리합니다.
-        // (Keys.hmacShaKeyFor는 길이 조건을 만족하지 않으면 예외를 던질 수 있음)
         byte[] secretBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
         this.signingKey = Keys.hmacShaKeyFor(secretBytes);
     }
+
+//    @PostConstruct
+//    public void init() {
+//        // secret이 base64라고 가정하지 않고, 그대로 사용하도록 처리합니다.
+//        // (Keys.hmacShaKeyFor는 길이 조건을 만족하지 않으면 예외를 던질 수 있음)
+//        byte[] secretBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
+//        this.signingKey = Keys.hmacShaKeyFor(secretBytes);
+//    }
 
     public Duration getAccessTtl() {
         return accessTtl;
@@ -65,7 +73,7 @@ public class JwtTokenService {
     }
 
     private String createToken(long userId, Duration ttl) {
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         Instant exp = now.plus(ttl);
 
         return Jwts.builder()
@@ -89,9 +97,9 @@ public class JwtTokenService {
     private Jws<Claims> parse(String token) throws JwtException {
         // JWT 서명/exp 검증까지 포함
         return Jwts.parser()
-                .verifyWith(signingKey)
-                .build()
-                .parseSignedClaims(token);
+            .verifyWith(signingKey)
+            .build()
+            .parseSignedClaims(token);
     }
 }
 
