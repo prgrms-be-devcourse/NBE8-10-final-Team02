@@ -164,8 +164,7 @@ jobs:
             --network global-net \
             "${FE_IMAGE}:${IMAGE_TAG}"
 
-            # 보안을 위해 사용이 끝난 환경변수 파일 즉시 삭제
-            rm -f .env-prod
+
 
             # --- 4. 헬스 체크 ---
             echo "⏱ Waiting for Green BE to be healthy..."
@@ -183,6 +182,10 @@ jobs:
               ELAPSED=$((ELAPSED + INTERVAL))
             done
             echo "✅ Green BE is healthy!"
+
+            # 보안을 위해 사용이 끝난 환경변수 파일 즉시 삭제
+            rm -f .env-prod
+            echo "✅ .env-prod is removed!"
 
             # --- 5. NPM API 로그인 (토큰 발급) ---
             TOKEN=$(curl -s -X POST "http://localhost:81/api/tokens" \
