@@ -13,6 +13,14 @@ spring:
     oauth2:
       client:
         registration:
+          github:
+            clientId: ${GITHUB_CLIENT_ID}
+            clientSecret: ${GITHUB_CLIENT_SECRET}
+            scope: user:email,read:user
+          google:
+            clientId: ${GOOGLE_CLIENT_ID}
+            clientSecret: ${GOOGLE_CLIENT_SECRET}
+            scope: openid,profile,email
           kakao:
             clientId: ${KAKAO_CLIENT_ID:YOUR_KAKAO_CLIENT_ID}
             scope: profile_nickname, profile_image
@@ -63,3 +71,5 @@ security:
     refresh-ttl-seconds: 86400 # 24시간
   cookie:
     secure: false # 개발 환경 기본값, HTTPS 환경에서는 true로 설정
+  oauth2:
+    frontend-redirect-url: http://localhost:3000
