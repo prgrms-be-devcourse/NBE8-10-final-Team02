@@ -1,8 +1,8 @@
 spring:
   config:
     import:
-      - optional:file:.env.dev[.properties]         # working dir = 프로젝트 루트일 때
-      - optional:file:../.env.dev[.properties]    # working dir = backend/ 일 때
+      - optional:file:.env.test[.properties]      # working dir = 프로젝트 루트일 때
+      - optional:file:../.env.test[.properties]   # working dir = backend/ 일 때 (CI)
 
   jpa:
     hibernate:
