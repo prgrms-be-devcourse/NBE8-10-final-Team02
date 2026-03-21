@@ -1,6 +1,7 @@
 package com.back.backend.global.security.config;
 
 import com.back.backend.global.request.RequestIdFilter;
+import com.back.backend.global.security.CookieManager;
 import com.back.backend.global.security.apikey.ApiKeyService;
 import com.back.backend.global.security.auth.CookieJwtAuthenticationFilter;
 import com.back.backend.global.security.handler.ApiAuthenticationEntryPoint;
@@ -9,7 +10,6 @@ import com.back.backend.global.security.oauth2.CookieOAuth2AuthorizationRequestR
 import com.back.backend.global.security.oauth2.CustomOAuth2AuthorizationRequestResolver;
 import com.back.backend.global.security.oauth2.CustomOAuth2LoginSuccessHandler;
 import com.back.backend.global.security.oauth2.CustomOAuth2UserService;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -32,19 +32,18 @@ public class SecurityConfig {
     private final ApiAuthenticationEntryPoint apiAuthenticationEntryPoint;
     private final JwtTokenService jwtTokenService;
     private final ApiKeyService apiKeyService;
+    private final CookieManager cookieManager;
     private final CustomOAuth2UserService customOAuth2UserService;
     private final CustomOAuth2LoginSuccessHandler customOAuth2LoginSuccessHandler;
     private final CustomOAuth2AuthorizationRequestResolver customOAuth2AuthorizationRequestResolver;
     private final CookieOAuth2AuthorizationRequestRepository cookieOAuth2AuthorizationRequestRepository;
-
-    @Value("${security.cookie.secure:false}")
-    private boolean cookieSecure;
 
     public SecurityConfig(
             RequestIdFilter requestIdFilter,
             ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
             JwtTokenService jwtTokenService,
             ApiKeyService apiKeyService,
+            CookieManager cookieManager,
             CustomOAuth2UserService customOAuth2UserService,
             CustomOAuth2LoginSuccessHandler customOAuth2LoginSuccessHandler,
             CustomOAuth2AuthorizationRequestResolver customOAuth2AuthorizationRequestResolver,
@@ -54,6 +53,7 @@ public class SecurityConfig {
         this.apiAuthenticationEntryPoint = apiAuthenticationEntryPoint;
         this.jwtTokenService = jwtTokenService;
         this.apiKeyService = apiKeyService;
+        this.cookieManager = cookieManager;
         this.customOAuth2UserService = customOAuth2UserService;
         this.customOAuth2LoginSuccessHandler = customOAuth2LoginSuccessHandler;
         this.customOAuth2AuthorizationRequestResolver = customOAuth2AuthorizationRequestResolver;
@@ -71,7 +71,7 @@ public class SecurityConfig {
             jwtTokenService,
             apiKeyService,
             apiAuthenticationEntryPoint,
-            cookieSecure
+            cookieManager
         );
 
         http

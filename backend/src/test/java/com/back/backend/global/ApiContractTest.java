@@ -6,6 +6,7 @@ import com.back.backend.global.request.RequestIdContext;
 import com.back.backend.global.request.RequestIdFilter;
 import com.back.backend.global.response.ApiErrorResponseWriter;
 import com.back.backend.global.response.ApiResponse;
+import com.back.backend.global.security.CookieManager;
 import com.back.backend.global.security.apikey.ApiKeyService;
 import com.back.backend.global.security.auth.CookieJwtAuthenticationFilter;
 import com.back.backend.global.security.config.SecurityConfig;
@@ -46,6 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = ApiContractTest.ContractTestController.class)
 @Import({
     SecurityConfig.class,
+    CookieManager.class,
     RequestIdFilter.class,
     CookieJwtAuthenticationFilter.class,
     ApiAuthenticationEntryPoint.class,

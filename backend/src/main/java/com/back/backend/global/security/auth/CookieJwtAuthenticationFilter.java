@@ -1,5 +1,6 @@
 package com.back.backend.global.security.auth;
 
+import com.back.backend.global.security.CookieManager;
 import com.back.backend.global.security.apikey.ApiKeyService;
 import com.back.backend.global.security.handler.ApiAuthenticationEntryPoint;
 import com.back.backend.global.security.jwt.JwtTokenService;
@@ -12,9 +13,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -33,18 +32,18 @@ public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenService jwtTokenService;
     private final ApiKeyService apiKeyService;
     private final ApiAuthenticationEntryPoint apiAuthenticationEntryPoint;
-    private final boolean cookieSecure;
+    private final CookieManager cookieManager;
 
     public CookieJwtAuthenticationFilter(
             JwtTokenService jwtTokenService,
             ApiKeyService apiKeyService,
             ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
-            @Value("${security.cookie.secure:false}") boolean cookieSecure
+            CookieManager cookieManager
     ) {
         this.jwtTokenService = jwtTokenService;
         this.apiKeyService = apiKeyService;
         this.apiAuthenticationEntryPoint = apiAuthenticationEntryPoint;
-        this.cookieSecure = cookieSecure;
+        this.cookieManager = cookieManager;
     }
 
     @Override
@@ -155,15 +154,7 @@ public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private void setAccessTokenCookie(HttpServletResponse response, String newAccessToken) {
-        ResponseCookie cookie = ResponseCookie.from(COOKIE_ACCESS_TOKEN, newAccessToken)
-                .httpOnly(true)
-                .secure(cookieSecure)
-                .path("/")
-                .sameSite("Lax")
-                .maxAge(jwtTokenService.getAccessTtl())
-                .build();
-
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+        cookieManager.add(response, COOKIE_ACCESS_TOKEN, newAccessToken, jwtTokenService.getAccessTtl());
     }
 
     /**
