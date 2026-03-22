@@ -16,6 +16,8 @@ spring:
   flyway:
     enabled: true
 
+  # 팀에서 Redis 사용보류로 결정했으나, Redis 설정을 추가한 브랜치가 머지될 경우
+  # PlaceholderResolutionException 방지용 더미값
   data:
     redis:
       host: localhost
@@ -34,6 +36,10 @@ spring:
             clientSecret: ${GOOGLE_CLIENT_SECRET:}
           kakao:
             clientId: ${KAKAO_CLIENT_ID:}
+
+app:
+  storage:
+    upload-dir: /tmp/test-uploads #파일업로드 위치
 
 ai:
   gemini:
