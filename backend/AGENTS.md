@@ -15,6 +15,8 @@
 
 ## 구현 규칙
 
+- `global`은 보안 설정, 공통 응답, 예외 처리 같은 횡단 기술 컴포넌트만 두고, business domain은 `com.back.backend.domain.{domain}` 루트 패키지에 둔다.
+- 같은 도메인을 `domain/application/*`와 `application/*`처럼 둘로 나누지 않는다.
 - Controller는 입출력과 인증/인가 확인에 집중하고 비즈니스 로직은 Service로 이동한다.
 - DTO, Entity, 외부 API 응답 객체를 분리한다.
 - 소유권 검증이 필요한 API는 현재 사용자 기준으로 검사한다.
