@@ -14,11 +14,15 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willDoNothing;
 import static org.mockito.BDDMockito.willThrow;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -132,6 +136,158 @@ class DocumentApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.mimeType").value("application/pdf"))
                 .andExpect(jsonPath("$.data.extractStatus").value("pending"))
                 .andExpect(jsonPath("$.data.originalFileName").value("resume.pdf"));
+    }
+
+    // =========================================================
+    // GET /api/v1/documents
+    // =========================================================
+
+    @Test
+    void getDocuments_returns401WhenUnauthenticated() throws Exception {
+        mockMvc.perform(get("/api/v1/documents"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.AUTH_REQUIRED.name()));
+    }
+
+    @Test
+    @WithMockUser
+    void getDocuments_returns200WithList() throws Exception {
+        DocumentResponse doc1 = new DocumentResponse(
+                1L, DocumentType.RESUME.getValue(), "resume.pdf",
+                "application/pdf", 1024L,
+                DocumentExtractStatus.SUCCESS.getValue(),
+                Instant.parse("2026-01-01T00:00:00Z"),
+                Instant.parse("2026-01-01T00:00:02Z"),
+                "extracted text"
+        );
+        DocumentResponse doc2 = new DocumentResponse(
+                2L, DocumentType.AWARD.getValue(), "award.pdf",
+                "application/pdf", 2048L,
+                DocumentExtractStatus.PENDING.getValue(),
+                Instant.parse("2026-01-02T00:00:00Z"), null, null
+        );
+        given(documentService.getDocuments(any())).willReturn(List.of(doc1, doc2));
+
+        mockMvc.perform(get("/api/v1/documents"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].id").value(1))
+                .andExpect(jsonPath("$.data[0].documentType").value("resume"))
+                .andExpect(jsonPath("$.data[1].id").value(2))
+                .andExpect(jsonPath("$.data[1].documentType").value("award"));
+    }
+
+    @Test
+    @WithMockUser
+    void getDocuments_returns200WithEmptyList() throws Exception {
+        given(documentService.getDocuments(any())).willReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/documents"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    // =========================================================
+    // GET /api/v1/documents/{documentId}
+    // =========================================================
+
+    @Test
+    void getDocument_returns401WhenUnauthenticated() throws Exception {
+        mockMvc.perform(get("/api/v1/documents/1"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.AUTH_REQUIRED.name()));
+    }
+
+    @Test
+    @WithMockUser
+    void getDocument_returns200WhenFound() throws Exception {
+        DocumentResponse doc = new DocumentResponse(
+                1L, DocumentType.RESUME.getValue(), "resume.pdf",
+                "application/pdf", 1024L,
+                DocumentExtractStatus.SUCCESS.getValue(),
+                Instant.parse("2026-01-01T00:00:00Z"),
+                Instant.parse("2026-01-01T00:00:02Z"),
+                "extracted text"
+        );
+        given(documentService.getDocument(any(), eq(1L))).willReturn(doc);
+
+        mockMvc.perform(get("/api/v1/documents/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.originalFileName").value("resume.pdf"))
+                .andExpect(jsonPath("$.data.extractStatus").value("success"))
+                .andExpect(jsonPath("$.data.extractedText").value("extracted text"));
+    }
+
+    @Test
+    @WithMockUser
+    void getDocument_returns404WhenNotFound() throws Exception {
+        willThrow(new ServiceException(
+                ErrorCode.DOCUMENT_NOT_FOUND,
+                HttpStatus.NOT_FOUND,
+                "문서를 찾을 수 없습니다."
+        )).given(documentService).getDocument(any(), eq(99L));
+
+        mockMvc.perform(get("/api/v1/documents/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.DOCUMENT_NOT_FOUND.name()));
+    }
+
+    // =========================================================
+    // DELETE /api/v1/documents/{documentId}
+    // =========================================================
+
+    @Test
+    void deleteDocument_returns401WhenUnauthenticated() throws Exception {
+        mockMvc.perform(delete("/api/v1/documents/1"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.AUTH_REQUIRED.name()));
+    }
+
+    @Test
+    @WithMockUser
+    void deleteDocument_returns204WhenDeleted() throws Exception {
+        willDoNothing().given(documentService).deleteDocument(any(), eq(1L));
+
+        mockMvc.perform(delete("/api/v1/documents/1"))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @WithMockUser
+    void deleteDocument_returns404WhenNotFound() throws Exception {
+        willThrow(new ServiceException(
+                ErrorCode.DOCUMENT_NOT_FOUND,
+                HttpStatus.NOT_FOUND,
+                "문서를 찾을 수 없습니다."
+        )).given(documentService).deleteDocument(any(), eq(99L));
+
+        mockMvc.perform(delete("/api/v1/documents/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.DOCUMENT_NOT_FOUND.name()));
+    }
+
+    @Test
+    @WithMockUser
+    void deleteDocument_returns409WhenDocumentInUse() throws Exception {
+        willThrow(new ServiceException(
+                ErrorCode.DOCUMENT_IN_USE,
+                HttpStatus.CONFLICT,
+                "지원 단위에서 참조 중인 문서는 삭제할 수 없습니다."
+        )).given(documentService).deleteDocument(any(), eq(1L));
+
+        mockMvc.perform(delete("/api/v1/documents/1"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.DOCUMENT_IN_USE.name()));
     }
 
     private MockMultipartFile pdfFile(String filename) {

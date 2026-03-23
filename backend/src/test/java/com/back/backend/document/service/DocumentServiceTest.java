@@ -21,11 +21,17 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.time.Clock;
 import java.time.Instant;
 
+import com.back.backend.application.repository.ApplicationSourceDocumentRepository;
+
+import java.util.List;
+import java.util.Optional;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 
 // [Unit Test 계층]
@@ -45,6 +51,9 @@ class DocumentServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private ApplicationSourceDocumentRepository applicationSourceDocumentRepository;
 
     @Mock
     private Clock clock;
@@ -134,6 +143,92 @@ class DocumentServiceTest {
         assertThat(result.originalFileName()).isEqualTo("resume.pdf");
     }
 
+    // --- getDocuments ---
+
+    @Test
+    void getDocuments_returnsListForUser() {
+        User mockUser = user();
+        Document doc1 = document(mockUser, DocumentType.RESUME, "resume.pdf");
+        Document doc2 = document(mockUser, DocumentType.AWARD, "award.pdf");
+        given(documentRepository.findAllByUserId(1L)).willReturn(List.of(doc1, doc2));
+
+        List<DocumentResponse> result = documentService.getDocuments(1L);
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).documentType()).isEqualTo(DocumentType.RESUME.getValue());
+        assertThat(result.get(1).documentType()).isEqualTo(DocumentType.AWARD.getValue());
+    }
+
+    @Test
+    void getDocuments_returnsEmptyListWhenNone() {
+        given(documentRepository.findAllByUserId(1L)).willReturn(List.of());
+
+        List<DocumentResponse> result = documentService.getDocuments(1L);
+
+        assertThat(result).isEmpty();
+    }
+
+    // --- getDocument ---
+
+    @Test
+    void getDocument_returnsDocumentWhenFound() {
+        User mockUser = user();
+        Document doc = document(mockUser, DocumentType.RESUME, "resume.pdf");
+        given(documentRepository.findByIdAndUserId(1L, 1L)).willReturn(Optional.of(doc));
+
+        DocumentResponse result = documentService.getDocument(1L, 1L);
+
+        assertThat(result.originalFileName()).isEqualTo("resume.pdf");
+        assertThat(result.documentType()).isEqualTo(DocumentType.RESUME.getValue());
+    }
+
+    @Test
+    void getDocument_throwsWhenNotFound() {
+        given(documentRepository.findByIdAndUserId(99L, 1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> documentService.getDocument(1L, 99L))
+                .isInstanceOf(ServiceException.class)
+                .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.DOCUMENT_NOT_FOUND));
+    }
+
+    // --- deleteDocument ---
+
+    @Test
+    void deleteDocument_deletesWhenNotInUse() {
+        User mockUser = user();
+        Document doc = document(mockUser, DocumentType.RESUME, "resume.pdf");
+        given(documentRepository.findByIdAndUserId(1L, 1L)).willReturn(Optional.of(doc));
+        given(applicationSourceDocumentRepository.existsByDocumentId(1L)).willReturn(false);
+
+        documentService.deleteDocument(1L, 1L);
+
+        then(documentRepository).should().delete(doc);
+    }
+
+    @Test
+    void deleteDocument_throwsWhenNotFound() {
+        given(documentRepository.findByIdAndUserId(99L, 1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> documentService.deleteDocument(1L, 99L))
+                .isInstanceOf(ServiceException.class)
+                .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.DOCUMENT_NOT_FOUND));
+    }
+
+    @Test
+    void deleteDocument_throwsWhenDocumentInUse() {
+        User mockUser = user();
+        Document doc = document(mockUser, DocumentType.RESUME, "resume.pdf");
+        given(documentRepository.findByIdAndUserId(1L, 1L)).willReturn(Optional.of(doc));
+        given(applicationSourceDocumentRepository.existsByDocumentId(1L)).willReturn(true);
+
+        assertThatThrownBy(() -> documentService.deleteDocument(1L, 1L))
+                .isInstanceOf(ServiceException.class)
+                .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.DOCUMENT_IN_USE));
+    }
+
     @Test
     void upload_failWhenStorageFails() {
         MockMultipartFile file = new MockMultipartFile(
@@ -153,5 +248,28 @@ class DocumentServiceTest {
                 .isInstanceOf(ServiceException.class)
                 .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.DOCUMENT_UPLOAD_FAILED));
+    }
+    
+    //helper methods to create default user
+    private User user() {
+        return User.builder()
+                .email("test@example.com")
+                .displayName("tester")
+                .status(UserStatus.ACTIVE)
+                .build();
+    }
+
+    //helper methods to create sample document 
+    private Document document(User user, DocumentType type, String fileName) {
+        return Document.builder()
+                .user(user)
+                .documentType(type)
+                .originalFileName(fileName)
+                .storagePath("uploads/" + fileName)
+                .mimeType("application/pdf")
+                .fileSizeBytes(1024L)
+                .extractStatus(DocumentExtractStatus.PENDING)
+                .uploadedAt(FIXED_NOW)
+                .build();
     }
 }
