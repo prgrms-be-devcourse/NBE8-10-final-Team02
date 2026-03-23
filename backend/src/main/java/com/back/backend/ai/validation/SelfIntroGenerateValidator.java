@@ -73,12 +73,15 @@ public class SelfIntroGenerateValidator implements AiResponseValidator {
      * 공백(" ", "\t" 등)으로 채워진 응답은 통과된다. 도메인 규칙상 이를 실패로 처리한다.
      */
     private void validateAnswerTextLength(JsonNode answers, List<String> errors) {
+        int index = 0;
         for (JsonNode answer : answers) {
+            int order = answer.path("questionOrder").asInt(-1);
+            String label = order == -1 ? "index=" + index : "questionOrder=" + order;
             JsonNode answerText = answer.get("answerText");
-            int order = answer.path("questionOrder").asInt();
             if (answerText == null || answerText.asText().isBlank()) {
-                errors.add("answerText가 비어있습니다: questionOrder=" + order);
+                errors.add("answerText가 비어있습니다: " + label);
             }
+            index++;
         }
     }
 
@@ -87,12 +90,15 @@ public class SelfIntroGenerateValidator implements AiResponseValidator {
      * 근거 없는 답변이지만 자소서 자체는 유효할 수 있으므로 warning 처리
      */
     private void validateUsedEvidenceKeys(JsonNode answers, List<String> warnings) {
+        int index = 0;
         for (JsonNode answer : answers) {
+            int order = answer.path("questionOrder").asInt(-1);
+            String label = order == -1 ? "index=" + index : "questionOrder=" + order;
             JsonNode keys = answer.get("usedEvidenceKeys");
-            int order = answer.path("questionOrder").asInt();
             if (keys == null || keys.isEmpty()) {
-                warnings.add("usedEvidenceKeys가 비어있습니다: questionOrder=" + order);
+                warnings.add("usedEvidenceKeys가 비어있습니다: " + label);
             }
+            index++;
         }
     }
 }
