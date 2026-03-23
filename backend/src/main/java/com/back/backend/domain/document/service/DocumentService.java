@@ -11,7 +11,7 @@ import com.back.backend.domain.document.entity.DocumentType;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
-import com.back.backend.user.repository.UserRepository;
+import com.back.backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;

@@ -11,7 +11,7 @@ import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
-import com.back.backend.user.repository.UserRepository;
+import com.back.backend.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -251,7 +251,11 @@ class DocumentServiceTest {
                         .isEqualTo(ErrorCode.DOCUMENT_UPLOAD_FAILED));
     }
 
-    //helper methods to create default user
+    // =========================================================
+    // Test helpers
+    // =========================================================
+
+    /** 테스트용 기본 User를 생성한다. */
     private User user() {
         return User.builder()
                 .email("test@example.com")
@@ -260,7 +264,7 @@ class DocumentServiceTest {
                 .build();
     }
 
-    //helper methods to create sample document
+    /** 테스트용 샘플 Document를 생성한다. extractStatus는 PENDING으로 고정된다. */
     private Document document(User user, DocumentType type, String fileName) {
         return Document.builder()
                 .user(user)
