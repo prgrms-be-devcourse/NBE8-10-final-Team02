@@ -70,6 +70,7 @@ class InterviewQuestionsGenerateValidatorTest {
             ValidationResult result = validator.validate(node);
 
             assertThat(result.valid()).isFalse();
+            assertThat(result.errors()).anyMatch(e -> e.contains("unknown_type"));
         }
 
         @Test
@@ -82,6 +83,7 @@ class InterviewQuestionsGenerateValidatorTest {
             ValidationResult result = validator.validate(node);
 
             assertThat(result.valid()).isFalse();
+            assertThat(result.errors()).anyMatch(e -> e.contains("very_hard"));
         }
     }
 
