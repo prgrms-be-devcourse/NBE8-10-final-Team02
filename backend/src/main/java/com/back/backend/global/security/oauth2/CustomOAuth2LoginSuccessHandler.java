@@ -1,12 +1,12 @@
 package com.back.backend.global.security.oauth2;
 
+import com.back.backend.global.security.CookieManager;
 import com.back.backend.global.security.apikey.ApiKeyService;
 import com.back.backend.global.security.jwt.JwtTokenService;
 import com.back.backend.global.security.oauth2.app.OAuth2State;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
@@ -27,22 +27,18 @@ public class CustomOAuth2LoginSuccessHandler implements AuthenticationSuccessHan
 
     private final JwtTokenService jwtTokenService;
     private final ApiKeyService apiKeyService;
-    private final boolean cookieSecure;
+    private final CookieManager cookieManager;
     private final String defaultRedirectUrl;
 
-    /**
-     * @param cookieSecure HTTPS 환경 여부에 따른 쿠키 Secure 설정 값
-     * @param defaultRedirectUrl state 정보가 없을 경우 이동할 기본 프론트엔드 주소
-     */
     public CustomOAuth2LoginSuccessHandler(
             JwtTokenService jwtTokenService,
             ApiKeyService apiKeyService,
-            @Value("${security.cookie.secure:false}") boolean cookieSecure,
+            CookieManager cookieManager,
             @Value("${security.oauth2.frontend-redirect-url:http://localhost:3000}") String defaultRedirectUrl
     ) {
         this.jwtTokenService = jwtTokenService;
         this.apiKeyService = apiKeyService;
-        this.cookieSecure = cookieSecure;
+        this.cookieManager = cookieManager;
         this.defaultRedirectUrl = defaultRedirectUrl;
     }
 
@@ -56,16 +52,14 @@ public class CustomOAuth2LoginSuccessHandler implements AuthenticationSuccessHan
             HttpServletResponse response,
             Authentication authentication
     ) throws IOException {
-        // CustomOAuth2UserService에서 생성하여 반환했던 우리측 유저 객체를 꺼냅니다
         OurOAuth2User ourUser = (OurOAuth2User) authentication.getPrincipal();
         long userId = ourUser.getUserId();
 
         String accessToken = jwtTokenService.createAccessToken(userId);
         String apiKey = apiKeyService.createApiKey(userId);
 
-        // 생성된 열쇠들을 브라우저 쿠키에 저장합니다.
-        response.addHeader("Set-Cookie", buildCookie("apiKey", apiKey, Duration.ofDays(30)));
-        response.addHeader("Set-Cookie", buildCookie("accessToken", accessToken, jwtTokenService.getAccessTtl()));
+        cookieManager.add(response, "apiKey", apiKey, Duration.ofDays(30));
+        cookieManager.add(response, "accessToken", accessToken, jwtTokenService.getAccessTtl());
 
         // 로그인 시작 시 CustomOAuth2AuthorizationRequestResolver에서 담았던 state를 확인합니다.
         String stateParam = request.getParameter("state");
@@ -78,25 +72,6 @@ public class CustomOAuth2LoginSuccessHandler implements AuthenticationSuccessHan
             }
         }
 
-        // 모든 처리가 완료되면 프론트엔드의 원래 페이지로 사용자를 이동시킵니다.
         response.sendRedirect(redirectUrl);
-    }
-
-    /**
-     * 보안 설정이 적용된 쿠키 문자열을 생성합니다.
-     * * @param name 쿠키 키값 (apiKey, accessToken 등)
-     * @param value 저장할 토큰 값
-     * @param maxAge 쿠키 유효 기간
-     * @return 생성된 Set-Cookie 헤더 값
-     */
-    private String buildCookie(String name, String value, Duration maxAge) {
-        return ResponseCookie.from(name, value)
-                .httpOnly(true)
-                .secure(cookieSecure)
-                .path("/")
-                .sameSite("Lax")
-                .maxAge(maxAge)
-                .build()
-                .toString();
     }
 }
