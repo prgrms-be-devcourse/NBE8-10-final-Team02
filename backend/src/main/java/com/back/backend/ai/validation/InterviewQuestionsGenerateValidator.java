@@ -51,7 +51,6 @@ public class InterviewQuestionsGenerateValidator implements AiResponseValidator 
      */
     private void validateQuestionOrderSequential(JsonNode questions, List<String> errors) {
         int totalCount = questions.size();
-        List<Integer> orderList = new ArrayList<>();
         Set<Integer> orderSet = new HashSet<>();
 
         for (JsonNode question : questions) {
@@ -63,7 +62,6 @@ public class InterviewQuestionsGenerateValidator implements AiResponseValidator 
             if (!orderSet.add(order)) {
                 errors.add("questionOrder 중복: " + order);
             }
-            orderList.add(order);
         }
 
         for (int i = 1; i <= totalCount; i++) {
