@@ -93,14 +93,8 @@ class SelfIntroGenerateValidatorTest {
         @Test
         @DisplayName("questionOrder가 누락된 항목이 있으면 실패한다")
         void missing_questionOrder() {
-            ObjectNode answer = objectMapper.createObjectNode();
-            answer.put("questionText", "자기소개를 해주세요");
-            answer.put("answerText", "안녕하세요");
-            answer.putArray("usedEvidenceKeys").add("project_1");
-            answer.putArray("qualityFlags");
-
             ObjectNode root = objectMapper.createObjectNode();
-            root.putArray("answers").add(answer);
+            root.putArray("answers").add(buildAnswerWithoutOrder("안녕하세요", List.of("project_1")));
             root.putArray("qualityFlags");
 
             ValidationResult result = validator.validate(root);
@@ -142,8 +136,13 @@ class SelfIntroGenerateValidatorTest {
     }
 
     private ObjectNode buildAnswer(int questionOrder, String answerText, List<String> evidenceKeys) {
-        ObjectNode answer = objectMapper.createObjectNode();
+        ObjectNode answer = buildAnswerWithoutOrder(answerText, evidenceKeys);
         answer.put("questionOrder", questionOrder);
+        return answer;
+    }
+
+    private ObjectNode buildAnswerWithoutOrder(String answerText, List<String> evidenceKeys) {
+        ObjectNode answer = objectMapper.createObjectNode();
         answer.put("questionText", "자기소개를 해주세요");
         answer.put("answerText", answerText);
         ArrayNode keys = answer.putArray("usedEvidenceKeys");
