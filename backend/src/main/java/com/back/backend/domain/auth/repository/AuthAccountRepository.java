@@ -3,8 +3,8 @@ package com.back.backend.domain.auth.repository;
 import com.back.backend.domain.auth.entity.AuthAccount;
 import com.back.backend.domain.auth.entity.AuthProvider;
 import com.back.backend.domain.user.entity.User;
-import com.back.backend.global.security.auth.entity.AuthAccount;
-import com.back.backend.global.security.auth.entity.AuthProvider;
+import com.back.backend.domain.auth.entity.AuthAccount;
+import com.back.backend.domain.auth.entity.AuthProvider;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;

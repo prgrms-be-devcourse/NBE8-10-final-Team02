@@ -4,7 +4,7 @@ import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.global.response.ApiResponse;
 import com.back.backend.global.security.auth.JwtAuthenticationToken;
-import com.back.backend.global.security.auth.repository.AuthAccountRepository;
+import com.back.backend.domain.auth.repository.AuthAccountRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
