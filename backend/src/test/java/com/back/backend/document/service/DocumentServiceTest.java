@@ -1,8 +1,9 @@
 package com.back.backend.document.service;
 
-import com.back.backend.document.dto.DocumentResponse;
-import com.back.backend.document.repository.DocumentRepository;
-import com.back.backend.document.storage.DocumentStorageService;
+import com.back.backend.domain.document.dto.DocumentResponse;
+import com.back.backend.domain.document.repository.DocumentRepository;
+import com.back.backend.domain.document.service.DocumentService;
+import com.back.backend.domain.document.storage.DocumentStorageService;
 import com.back.backend.domain.document.entity.Document;
 import com.back.backend.domain.document.entity.DocumentExtractStatus;
 import com.back.backend.domain.document.entity.DocumentType;
@@ -10,7 +11,7 @@ import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
-import com.back.backend.user.repository.UserRepository;
+import com.back.backend.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -259,7 +260,7 @@ class DocumentServiceTest {
                 .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.DOCUMENT_UPLOAD_FAILED));
     }
-    
+
     //helper methods to create default user
     private User user() {
         return User.builder()
@@ -269,7 +270,7 @@ class DocumentServiceTest {
                 .build();
     }
 
-    //helper methods to create sample document 
+    //helper methods to create sample document
     private Document document(User user, DocumentType type, String fileName) {
         return Document.builder()
                 .user(user)

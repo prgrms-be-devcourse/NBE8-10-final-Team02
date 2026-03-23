@@ -1,7 +1,7 @@
 package com.back.backend.domain.document.controller;
 
-import com.back.backend.document.dto.DocumentResponse;
-import com.back.backend.document.service.DocumentService;
+import com.back.backend.domain.document.dto.DocumentResponse;
+import com.back.backend.domain.document.service.DocumentService;
 import com.back.backend.domain.document.entity.DocumentType;
 import com.back.backend.global.response.ApiResponse;
 import lombok.RequiredArgsConstructor;

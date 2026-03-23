@@ -1,4 +1,4 @@
-package com.back.backend.document.storage;
+package com.back.backend.domain.document.storage;
 
 import org.springframework.web.multipart.MultipartFile;
 
@@ -7,7 +7,7 @@ import org.springframework.web.multipart.MultipartFile;
  *
  * <p>현재 구현체는 로컬 디스크 기반의 {@link LocalDocumentStorageService}이며,
  * 추후 S3 등 외부 스토리지로 교체할 때는 이 인터페이스의 새 구현체를 추가.
- * {@link com.back.backend.document.service.DocumentService}는 이 인터페이스에만 의존하므로
+ * {@link com.back.backend.domain.document.service.DocumentService}는 이 인터페이스에만 의존하므로
  * 구현체 교체 시 service 코드를 수정할 필요가 없다.</p>
  */
 public interface DocumentStorageService {

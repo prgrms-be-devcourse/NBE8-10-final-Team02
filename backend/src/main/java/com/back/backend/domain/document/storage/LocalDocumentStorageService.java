@@ -1,4 +1,4 @@
-package com.back.backend.document.storage;
+package com.back.backend.domain.document.storage;
 
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;

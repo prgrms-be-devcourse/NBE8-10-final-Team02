@@ -1,9 +1,8 @@
 package com.back.backend.domain.document.service;
 
+import com.back.backend.domain.document.dto.DocumentResponse;
 import com.back.backend.domain.document.repository.DocumentRepository;
-import com.back.backend.document.dto.DocumentResponse;
-import com.back.backend.document.repository.DocumentRepository;
-import com.back.backend.document.storage.DocumentStorageService;
+import com.back.backend.domain.document.storage.DocumentStorageService;
 import com.back.backend.domain.document.entity.Document;
 import com.back.backend.domain.document.entity.DocumentExtractStatus;
 import com.back.backend.domain.document.entity.DocumentType;
@@ -69,18 +68,28 @@ class DocumentServiceTest {
         given(documentRepository.countByUserId(1L)).willReturn(0);
 
         assertThatCode(() ->
-                documentService.validateUpload(1L, "application/pdf", 1024L)
+            documentService.validateUpload(1L, "application/pdf", "resume.pdf", 1024L)
         ).doesNotThrowAnyException();
     }
 
     @Test
     void validateUpload_failWhenInvalidMimeType() {
         assertThatThrownBy(() ->
-                documentService.validateUpload(1L, "image/png", 1024L)
+            documentService.validateUpload(1L, "image/png", "photo.png", 1024L)
         )
-                .isInstanceOf(ServiceException.class)
-                .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
-                        .isEqualTo(ErrorCode.DOCUMENT_INVALID_TYPE));
+            .isInstanceOf(ServiceException.class)
+            .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.DOCUMENT_INVALID_TYPE));
+    }
+
+    @Test
+    void validateUpload_failWhenInvalidExtension() {
+        assertThatThrownBy(() ->
+            documentService.validateUpload(1L, "application/pdf", "disguised.exe", 1024L)
+        )
+            .isInstanceOf(ServiceException.class)
+            .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.DOCUMENT_INVALID_TYPE));
     }
 
     @Test
@@ -88,11 +97,11 @@ class DocumentServiceTest {
         long overLimit = DocumentService.MAX_FILE_SIZE_BYTES + 1;
 
         assertThatThrownBy(() ->
-                documentService.validateUpload(1L, "application/pdf", overLimit)
+            documentService.validateUpload(1L, "application/pdf", "resume.pdf", overLimit)
         )
-                .isInstanceOf(ServiceException.class)
-                .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
-                        .isEqualTo(ErrorCode.DOCUMENT_FILE_TOO_LARGE));
+            .isInstanceOf(ServiceException.class)
+            .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.DOCUMENT_FILE_TOO_LARGE));
     }
 
     @Test
@@ -100,11 +109,11 @@ class DocumentServiceTest {
         given(documentRepository.countByUserId(1L)).willReturn(DocumentService.MAX_DOCUMENT_COUNT);
 
         assertThatThrownBy(() ->
-                documentService.validateUpload(1L, "application/pdf", 1024L)
+            documentService.validateUpload(1L, "application/pdf", "resume.pdf", 1024L)
         )
-                .isInstanceOf(ServiceException.class)
-                .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
-                        .isEqualTo(ErrorCode.DOCUMENT_UPLOAD_FAILED));
+            .isInstanceOf(ServiceException.class)
+            .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.DOCUMENT_UPLOAD_FAILED));
     }
 
     // --- upload ---
@@ -112,24 +121,24 @@ class DocumentServiceTest {
     @Test
     void upload_success() {
         MockMultipartFile file = new MockMultipartFile(
-                "file", "resume.pdf", "application/pdf", new byte[1024]);
+            "file", "resume.pdf", "application/pdf", new byte[1024]);
 
         User mockUser = User.builder()
-                .email("test@example.com")
-                .displayName("tester")
-                .status(UserStatus.ACTIVE)
-                .build();
+            .email("test@example.com")
+            .displayName("tester")
+            .status(UserStatus.ACTIVE)
+            .build();
 
         Document saved = Document.builder()
-                .user(mockUser)
-                .documentType(DocumentType.RESUME)
-                .originalFileName("resume.pdf")
-                .storagePath("uploads/uuid_resume.pdf")
-                .mimeType("application/pdf")
-                .fileSizeBytes(1024L)
-                .extractStatus(DocumentExtractStatus.PENDING)
-                .uploadedAt(FIXED_NOW)
-                .build();
+            .user(mockUser)
+            .documentType(DocumentType.RESUME)
+            .originalFileName("resume.pdf")
+            .storagePath("uploads/uuid_resume.pdf")
+            .mimeType("application/pdf")
+            .fileSizeBytes(1024L)
+            .extractStatus(DocumentExtractStatus.PENDING)
+            .uploadedAt(FIXED_NOW)
+            .build();
 
         given(documentRepository.countByUserId(1L)).willReturn(0);
         given(documentStorageService.store(file)).willReturn("uploads/uuid_resume.pdf");
@@ -188,9 +197,9 @@ class DocumentServiceTest {
         given(documentRepository.findByIdAndUserId(99L, 1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> documentService.getDocument(1L, 99L))
-                .isInstanceOf(ServiceException.class)
-                .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
-                        .isEqualTo(ErrorCode.DOCUMENT_NOT_FOUND));
+            .isInstanceOf(ServiceException.class)
+            .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.DOCUMENT_NOT_FOUND));
     }
 
     // --- deleteDocument ---
@@ -212,9 +221,9 @@ class DocumentServiceTest {
         given(documentRepository.findByIdAndUserId(99L, 1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> documentService.deleteDocument(1L, 99L))
-                .isInstanceOf(ServiceException.class)
-                .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
-                        .isEqualTo(ErrorCode.DOCUMENT_NOT_FOUND));
+            .isInstanceOf(ServiceException.class)
+            .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.DOCUMENT_NOT_FOUND));
     }
 
     @Test
@@ -225,30 +234,30 @@ class DocumentServiceTest {
         given(applicationSourceDocumentRepository.existsByDocumentId(1L)).willReturn(true);
 
         assertThatThrownBy(() -> documentService.deleteDocument(1L, 1L))
-                .isInstanceOf(ServiceException.class)
-                .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
-                        .isEqualTo(ErrorCode.DOCUMENT_IN_USE));
+            .isInstanceOf(ServiceException.class)
+            .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.DOCUMENT_IN_USE));
     }
 
     @Test
     void upload_failWhenStorageFails() {
         MockMultipartFile file = new MockMultipartFile(
-                "file", "resume.pdf", "application/pdf", new byte[1024]);
+            "file", "resume.pdf", "application/pdf", new byte[1024]);
 
         given(documentRepository.countByUserId(1L)).willReturn(0);
         willThrow(new ServiceException(
-                ErrorCode.DOCUMENT_UPLOAD_FAILED,
-                org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR,
-                "파일 저장에 실패했습니다.",
-                true
+            ErrorCode.DOCUMENT_UPLOAD_FAILED,
+            org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR,
+            "파일 저장에 실패했습니다.",
+            true
         )).given(documentStorageService).store(file);
 
         assertThatThrownBy(() ->
-                documentService.upload(1L, DocumentType.RESUME, file)
+            documentService.upload(1L, DocumentType.RESUME, file)
         )
-                .isInstanceOf(ServiceException.class)
-                .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
-                        .isEqualTo(ErrorCode.DOCUMENT_UPLOAD_FAILED));
+            .isInstanceOf(ServiceException.class)
+            .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.DOCUMENT_UPLOAD_FAILED));
     }
 
     // =========================================================
@@ -258,23 +267,23 @@ class DocumentServiceTest {
     /** 테스트용 기본 User를 생성한다. */
     private User user() {
         return User.builder()
-                .email("test@example.com")
-                .displayName("tester")
-                .status(UserStatus.ACTIVE)
-                .build();
+            .email("test@example.com")
+            .displayName("tester")
+            .status(UserStatus.ACTIVE)
+            .build();
     }
 
     /** 테스트용 샘플 Document를 생성한다. extractStatus는 PENDING으로 고정된다. */
     private Document document(User user, DocumentType type, String fileName) {
         return Document.builder()
-                .user(user)
-                .documentType(type)
-                .originalFileName(fileName)
-                .storagePath("uploads/" + fileName)
-                .mimeType("application/pdf")
-                .fileSizeBytes(1024L)
-                .extractStatus(DocumentExtractStatus.PENDING)
-                .uploadedAt(FIXED_NOW)
-                .build();
+            .user(user)
+            .documentType(type)
+            .originalFileName(fileName)
+            .storagePath("uploads/" + fileName)
+            .mimeType("application/pdf")
+            .fileSizeBytes(1024L)
+            .extractStatus(DocumentExtractStatus.PENDING)
+            .uploadedAt(FIXED_NOW)
+            .build();
     }
 }

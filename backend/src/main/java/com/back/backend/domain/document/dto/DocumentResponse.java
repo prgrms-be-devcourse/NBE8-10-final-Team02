@@ -1,4 +1,4 @@
-package com.back.backend.document.dto;
+package com.back.backend.domain.document.dto;
 
 import com.back.backend.domain.document.entity.Document;
 
