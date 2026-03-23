@@ -1,0 +1,20 @@
+목표:
+- 각 questionOrder마다 answerText를 생성한다.
+- 문항과 직접 관련 있는 evidence만 선택해 사용한다.
+- companyName이 없으면 범용 직무 맞춤 답변으로 생성한다.
+- editedAnswer가 이미 존재하는 문항은 참고만 하고 덮어쓰지 않는다.
+
+금지:
+- 문항과 무관한 장황한 서론
+- 숫자, 성과, 조직 규모, 사용자 수의 임의 생성
+- 포트폴리오에 없는 기술 선택 배경 서사
+- 동일 표현 반복
+
+품질 규칙:
+- toneOption과 lengthOption을 지킨다.
+- lengthOption은 short | medium | long만 허용한다.
+- short는 3~4문단, 약 500~700자 수준으로 작성한다.
+- medium은 5~7문단, 약 900~1200자 수준으로 작성한다.
+- long은 8~10문단, 약 1400~1800자 수준으로 작성한다.
+- emphasisPoint가 있으면 해당 포인트를 우선 반영한다.
+- evidence 연결이 약하면 qualityFlags에 weak_evidence를 넣는다.

@@ -1,12 +1,12 @@
 package com.back.backend.global.security.auth.controller;
 
 import com.back.backend.global.response.ApiResponse;
+import com.back.backend.global.security.CookieManager;
 import com.back.backend.global.security.apikey.ApiKeyService;
 import com.back.backend.global.security.auth.entity.AuthProvider;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.ResponseCookie;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,7 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Map;
 
 @RestController
@@ -25,19 +24,18 @@ import java.util.Map;
 public class AuthController {
 
     private final ApiKeyService apiKeyService;
-    private final boolean cookieSecure;
+    private final CookieManager cookieManager;
     private final String frontendRedirectUrl;
-
     private final String backendBaseUrl;
 
     public AuthController(
             ApiKeyService apiKeyService,
-            @Value("${security.cookie.secure:false}") boolean cookieSecure,
+            CookieManager cookieManager,
             @Value("${security.oauth2.frontend-redirect-url:http://localhost:3000}") String frontendRedirectUrl,
             @Value("${security.oauth2.backend-base-url:}") String backendBaseUrl
     ) {
         this.apiKeyService = apiKeyService;
-        this.cookieSecure = cookieSecure;
+        this.cookieManager = cookieManager;
         this.frontendRedirectUrl = frontendRedirectUrl;
         this.backendBaseUrl = backendBaseUrl;
     }
@@ -90,9 +88,9 @@ public class AuthController {
         if (apiKey != null) {
             apiKeyService.invalidateApiKey(apiKey);
         }
-        clearCookie(response, "apiKey");
-        clearCookie(response, "accessToken");
-        clearCookie(response, "refreshToken");
+        cookieManager.clear(response, "apiKey");
+        cookieManager.clear(response, "accessToken");
+        cookieManager.clear(response, "refreshToken");
 
         return ApiResponse.success(Map.of("message", "로그아웃 성공"));
     }
@@ -106,17 +104,5 @@ public class AuthController {
         return isDefaultPort
                 ? scheme + "://" + serverName
                 : scheme + "://" + serverName + ":" + serverPort;
-    }
-
-    private void clearCookie(HttpServletResponse response, String name) {
-        String cleared = ResponseCookie.from(name, "")
-                .httpOnly(true)
-                .secure(cookieSecure)
-                .path("/")
-                .sameSite("Lax")
-                .maxAge(Duration.ZERO)
-                .build()
-                .toString();
-        response.addHeader("Set-Cookie", cleared);
     }
 }

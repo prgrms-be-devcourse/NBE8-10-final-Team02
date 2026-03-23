@@ -1,8 +1,15 @@
+
 # !!!! 필독 !!!!!
 # application-prod는 편의상 유지하는 거지 실제 사용되지 않음
 # 실제 배포는 .env파일로 진행됨
 # 실제 배포에 적용되길 원한다면 .env.default와 .env파일 수정 필요
 # 구조 확인용 prod일 뿐입니다.
+
+server:
+  # NPM(Nginx Proxy Manager) 등 리버스 프록시 뒤에서 X-Forwarded-Proto 등 헤더를 신뢰하도록 설정.
+  # 없으면 Spring Security가 redirect_uri를 http://... 로 만들어 OAuth provider의 https:// 등록값과 불일치함.
+  # 로컬 개발(dev 프로파일)에서는 설정하지 않아야 함 - Next.js가 X-Forwarded-Proto: https를 넘기면 잘못된 URL이 만들어짐.
+  forward-headers-strategy: framework
 
 spring:
   datasource:

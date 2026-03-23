@@ -2,6 +2,7 @@ package com.back.backend.global.security;
 
 import com.back.backend.global.request.RequestIdFilter;
 import com.back.backend.global.response.ApiErrorResponseWriter;
+import com.back.backend.global.security.CookieManager;
 import com.back.backend.global.security.apikey.ApiKeyService;
 import com.back.backend.global.security.auth.CookieJwtAuthenticationFilter;
 import com.back.backend.global.security.config.SecurityConfig;
@@ -42,6 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = CookieJwtSecurityTest.ProtectedTestController.class)
 @Import({
     SecurityConfig.class,
+    CookieManager.class,
     JwtTokenService.class,
     ApiAuthenticationEntryPoint.class,
     ApiErrorResponseWriter.class,

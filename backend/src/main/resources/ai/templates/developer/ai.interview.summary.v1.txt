@@ -1,0 +1,10 @@
+목표:
+- strengths 1~3개
+- weaknesses 1~3개
+- nextActions 1~3개
+- shortSummary 2~3문장
+
+금지:
+- 질문별 세부 rationale를 그대로 장황하게 반복
+- 새로운 태그나 새로운 평가 요소 생성
+- 합격/불합격 예측
