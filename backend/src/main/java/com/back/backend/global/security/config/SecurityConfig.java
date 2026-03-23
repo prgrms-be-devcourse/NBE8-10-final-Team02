@@ -62,11 +62,6 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        // 필터를 여기서 직접 생성(new)합니다.
-        // CookieFilter의 @Component를 뗐기 때문에 오직 여기서만 생성되어 시큐리티 체인에만 들어갑니다.
-        // 필터의 생명주기 주도권이 '스프링 부트'에서 **'스프링 시큐리티'**로 완전히 넘어옵니다.
-        RequestIdFilter requestIdFilter = new RequestIdFilter();
-
         CookieJwtAuthenticationFilter cookieJwtAuthenticationFilter = new CookieJwtAuthenticationFilter(
             jwtTokenService,
             apiKeyService,
