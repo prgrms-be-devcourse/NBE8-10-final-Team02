@@ -55,6 +55,21 @@ public class GithubController {
     }
 
     /**
+     * 현재 사용자의 GitHub 연결 정보 조회.
+     *
+     * 연결이 있으면 200 + 연결 정보, 없으면 200 + data: null 반환.
+     * 프론트에서 /portfolio/github 진입 시 이미 연결됐는지 확인하는 데 사용한다.
+     */
+    @GetMapping("/connections")
+    public ResponseEntity<ApiResponse<GithubConnectionResponse>> getConnection(
+            Authentication authentication
+    ) {
+        Long userId = extractUserId(authentication);
+        GithubConnectionResponse response = connectionService.getConnectionOrNull(userId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
      * GitHub 연결 생성 또는 갱신.
      *
      * mode=oauth: GitHub OAuth 완료 후 token과 함께 호출.

@@ -12,4 +12,7 @@ public interface GithubConnectionRepository extends JpaRepository<GithubConnecti
     Optional<GithubConnection> findByUser(User user);
 
     boolean existsByUser(User user);
+
+    // GitHub 계정 ID로 연결 조회 — 다른 app 사용자가 같은 GitHub 계정을 이미 연동했는지 확인하는 데 사용
+    Optional<GithubConnection> findByGithubUserId(Long githubUserId);
 }

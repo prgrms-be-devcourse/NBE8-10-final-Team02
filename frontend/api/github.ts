@@ -21,6 +21,25 @@ async function parseError(res: Response): Promise<string> {
 }
 
 /**
+ * GET /github/connections
+ * 현재 사용자의 GitHub 연결 정보 조회.
+ * 연결이 없으면 null 반환 (에러 아님).
+ */
+export async function getGithubConnection(): Promise<GithubConnection | null> {
+  const res = await fetch(`${base()}/connections`, {
+    credentials: 'include',
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseError(res));
+  }
+
+  const body = await res.json();
+  return (body.data as GithubConnection) ?? null;
+}
+
+/**
  * POST /github/connections
  * GitHub 연결 생성 또는 갱신.
  * mode=url: githubLogin 필수

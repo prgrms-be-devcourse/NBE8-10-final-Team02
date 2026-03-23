@@ -13,6 +13,8 @@ import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +42,13 @@ public class GithubConnectionService {
     private final GithubConnectionRepository connectionRepository;
     private final GithubRepositoryRepository repositoryRepository;
     private final UserRepository userRepository;
+
+    // @Transactional이 붙은 메서드(saveConnectionWithRepos)를 같은 클래스 내에서 호출하면
+    // Spring AOP 프록시를 우회해 트랜잭션이 적용되지 않는 자기호출(self-invocation) 문제가 생긴다.
+    // @Lazy 셀프 주입으로 프록시를 통해 호출해 이를 해결한다.
+    @Lazy
+    @Autowired
+    private GithubConnectionService self;
 
     public GithubConnectionService(
             GithubApiClient githubApiClient,
@@ -73,8 +82,22 @@ public class GithubConnectionService {
         // 3. GitHub API로 repo 목록 조회 (트랜잭션 밖 — 외부 API 호출)
         List<GithubApiClient.GithubRepoInfo> repos = fetchRepos(request, githubUser.login());
 
-        // 4. DB 저장 (트랜잭션 안 — 외부 호출 결과를 받은 뒤 저장)
-        return saveConnectionWithRepos(user, githubUser, repos, request);
+        // 4. DB 저장 (트랜잭션 안 — self 프록시를 통해 @Transactional 적용)
+        return self.saveConnectionWithRepos(user, githubUser, repos, request);
+    }
+
+    /**
+     * 현재 사용자의 GitHub 연결 정보를 반환한다.
+     * 연결이 없으면 null을 반환한다 (예외를 던지지 않음).
+     *
+     * 프론트엔드 /portfolio/github 페이지 진입 시 이미 연결되어 있는지 확인하는 데 사용한다.
+     * Google/Kakao 로그인 사용자도 이전에 URL 모드로 연동했다면 여기서 감지된다.
+     */
+    public GithubConnectionResponse getConnectionOrNull(Long userId) {
+        return userRepository.findById(userId)
+                .flatMap(connectionRepository::findByUser)
+                .map(GithubConnectionResponse::from)
+                .orElse(null);
     }
 
     /**
@@ -124,12 +147,12 @@ public class GithubConnectionService {
             repos = githubApiClient.getPublicRepos(connection.getGithubLogin());
         }
 
-        // 3. DB 저장 (트랜잭션 안)
+        // 3. DB 저장 (트랜잭션 안 — self 프록시를 통해 @Transactional 적용)
         GithubApiClient.GithubUserInfo githubUser = new GithubApiClient.GithubUserInfo(
                 connection.getGithubUserId(), connection.getGithubLogin());
         GithubConnectRequest refreshRequest = new GithubConnectRequest(
                 "oauth", null, connection.getAccessToken(), null);
-        return saveConnectionWithRepos(user, githubUser, repos, refreshRequest);
+        return self.saveConnectionWithRepos(user, githubUser, repos, refreshRequest);
     }
 
     // ─────────────────────────────────────────────────
@@ -181,7 +204,7 @@ public class GithubConnectionService {
      * repo는 (github_connection_id, github_repo_id) unique 제약 기반으로 upsert한다.
      */
     @Transactional
-    protected GithubConnectionResponse saveConnectionWithRepos(
+    public GithubConnectionResponse saveConnectionWithRepos(
             User user,
             GithubApiClient.GithubUserInfo githubUser,
             List<GithubApiClient.GithubRepoInfo> repos,
@@ -189,9 +212,20 @@ public class GithubConnectionService {
     ) {
         Instant now = Instant.now();
 
-        // 기존 연결 조회 → 있으면 갱신, 없으면 생성
+        // 기존 연결 조회 전략:
+        //   1순위: 현재 app 사용자(user_id)로 찾기
+        //   2순위: GitHub 계정(github_user_id)으로 찾기 — OAuth 로그인 시 saveConnectionOnly가
+        //          먼저 만들었지만 findByUser가 놓친 경우(예: 멀티 소셜 계정 시나리오) 대비
         GithubConnection connection = connectionRepository.findByUser(user)
+                .or(() -> connectionRepository.findByGithubUserId(githubUser.id()))
                 .map(existing -> {
+                    // 다른 app 사용자가 이미 이 GitHub 계정을 연결한 경우 → 차단
+                    if (!existing.getUser().getId().equals(user.getId())) {
+                        throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
+                                HttpStatus.CONFLICT,
+                                "이 GitHub 계정은 이미 다른 사용자와 연결되어 있습니다. " +
+                                "다른 GitHub 계정을 사용하거나, 해당 계정으로 로그인하세요.");
+                    }
                     log.info("Updating existing GitHub connection for userId={}", user.getId());
                     existing.update(
                             githubUser.id(), githubUser.login(),
