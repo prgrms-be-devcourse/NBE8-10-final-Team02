@@ -54,4 +54,37 @@ public class GithubConnection extends BaseEntity {
 
     @Column(name = "last_synced_at")
     private Instant lastSyncedAt;
+
+    // GitHub API 호출에 사용할 OAuth access token.
+    // 운영 환경에서는 암호화 저장을 권장한다 (backend-conventions.md §12.3).
+    @Column(name = "access_token", columnDefinition = "text")
+    private String accessToken;
+
+    /**
+     * 연결 정보를 갱신한다 (재연동, token 재발급 등).
+     */
+    public void update(Long githubUserId, String githubLogin, String accessToken, String accessScope, Instant connectedAt) {
+        this.githubUserId = githubUserId;
+        this.githubLogin = githubLogin;
+        this.accessToken = accessToken;
+        this.accessScope = accessScope;
+        this.connectedAt = connectedAt;
+        this.syncStatus = GithubSyncStatus.PENDING;
+    }
+
+    /**
+     * 동기화 성공 처리. last_synced_at을 갱신하고 status를 SUCCESS로 바꾼다.
+     */
+    public void markSyncSuccess(Instant syncedAt) {
+        this.syncStatus = GithubSyncStatus.SUCCESS;
+        this.lastSyncedAt = syncedAt;
+    }
+
+    /**
+     * 동기화 실패 처리. status를 FAILED로 바꾼다.
+     * 실패도 상태 컬럼에 남겨 원인 추적이 가능하게 한다 (backend-conventions.md §9.3).
+     */
+    public void markSyncFailed() {
+        this.syncStatus = GithubSyncStatus.FAILED;
+    }
 }
