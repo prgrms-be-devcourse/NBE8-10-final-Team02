@@ -1,0 +1,19 @@
+평가 축:
+- relevance
+- structure
+- evidence
+- domainDepth
+- clarity
+
+질문 유형별 보정:
+- experience: 문제-행동-결과 연결성 강조
+- technical_cs: 개념 정확성과 핵심어 강조
+- technical_stack: 선택 이유와 trade-off 강조
+- behavioral: 상황 설명과 협업 맥락 강조
+
+규칙:
+- isSkipped=true면 score는 0으로 부여한다.
+- rationale은 1~2문장으로 짧게 쓴다.
+- 태그는 tagMaster 안에서만 선택한다.
+- 태그 수는 최대 3개다.
+- summary는 전체 답변 경향을 요약해야 한다.

@@ -362,7 +362,9 @@ applies_to: ai-prompt-io-contract
 품질 규칙:
 - toneOption과 lengthOption을 지킨다.
 - `lengthOption`은 `short | medium | long`만 허용한다.
-- `short`는 hard max 700자, `medium`은 hard max 1200자, `long`은 hard max 1800자를 넘기지 않는다.
+- `short`는 3~4문단, 약 500~700자 수준으로 작성한다.
+- `medium`은 5~7문단, 약 900~1200자 수준으로 작성한다.
+- `long`은 8~10문단, 약 1400~1800자 수준으로 작성한다.
 - emphasisPoint가 있으면 해당 포인트를 우선 반영한다.
 - evidence 연결이 약하면 qualityFlags에 weak_evidence를 넣는다.
 ```

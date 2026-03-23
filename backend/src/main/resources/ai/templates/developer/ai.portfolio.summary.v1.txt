@@ -1,0 +1,11 @@
+목표:
+- repository와 문서에서 프로젝트/경험 단위 evidence를 추출한다.
+- 비슷한 commit 메시지는 묶고, 의미 없는 commit은 제거하거나 가중치를 낮춘다.
+- 문서와 GitHub에 동시에 존재하는 정보는 하나의 evidence로 통합할 수 있다.
+
+출력 규칙:
+- projects 배열로 반환한다.
+- 각 project는 stable key를 가진다.
+- signals는 최대 6개, evidence bullets는 최대 5개로 제한한다.
+- confidence는 high, medium, low 중 하나만 사용한다.
+- 근거가 약하면 qualityFlags에 low_context 또는 weak_evidence를 넣는다.
