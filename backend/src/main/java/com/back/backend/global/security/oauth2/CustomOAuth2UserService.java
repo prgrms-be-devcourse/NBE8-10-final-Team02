@@ -1,5 +1,6 @@
 package com.back.backend.global.security.oauth2;
 
+import com.back.backend.domain.github.service.GithubConnectionService;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.domain.user.repository.UserRepository;
@@ -27,10 +28,16 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
     private final UserRepository userRepository;
     private final AuthAccountRepository authAccountRepository;
+    private final GithubConnectionService githubConnectionService;
 
-    public CustomOAuth2UserService(UserRepository userRepository, AuthAccountRepository authAccountRepository) {
+    public CustomOAuth2UserService(
+            UserRepository userRepository,
+            AuthAccountRepository authAccountRepository,
+            GithubConnectionService githubConnectionService
+    ) {
         this.userRepository = userRepository;
         this.authAccountRepository = authAccountRepository;
+        this.githubConnectionService = githubConnectionService;
     }
 
     /**
@@ -74,6 +81,15 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                     .connectedAt(now)
                     .lastLoginAt(now)
                     .build());
+        }
+
+        // GitHub OAuth 로그인 시 token을 github_connections에 저장한다.
+        // repo 목록은 저장하지 않으며, 사용자가 명시적으로 요청할 때 채운다.
+        if (authProvider == AuthProvider.GITHUB) {
+            String githubToken = userRequest.getAccessToken().getTokenValue();
+            Long githubUserId = ((Number) oAuth2User.getAttributes().get("id")).longValue();
+            String githubLogin = (String) oAuth2User.getAttributes().get("login");
+            githubConnectionService.saveConnectionOnly(user, githubUserId, githubLogin, githubToken);
         }
 
         // 시큐리티 컨텍스트에 저장될 유저 객체를 반환합니다. (우리 도메인의 User ID 포함)

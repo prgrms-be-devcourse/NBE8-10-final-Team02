@@ -77,6 +77,61 @@ public class GithubConnectionService {
         return saveConnectionWithRepos(user, githubUser, repos, request);
     }
 
+    /**
+     * GitHub OAuth 로그인 성공 시 토큰과 login만 저장한다 (repo 조회 없음).
+     *
+     * CustomOAuth2UserService에서 GitHub provider로 로그인할 때 호출한다.
+     * 이미 연결이 있으면 token을 갱신하고, 없으면 새 연결 레코드를 생성한다.
+     * repo 목록은 사용자가 명시적으로 refreshFromStoredConnection()을 호출할 때 채운다.
+     */
+    @Transactional
+    public void saveConnectionOnly(User user, Long githubUserId, String githubLogin, String token) {
+        Instant now = Instant.now();
+        connectionRepository.findByUser(user).ifPresentOrElse(
+                existing -> existing.update(githubUserId, githubLogin, token, null, now),
+                () -> connectionRepository.save(GithubConnection.builder()
+                        .user(user)
+                        .githubUserId(githubUserId)
+                        .githubLogin(githubLogin)
+                        .accessToken(token)
+                        .syncStatus(GithubSyncStatus.PENDING)
+                        .connectedAt(now)
+                        .build())
+        );
+    }
+
+    /**
+     * 저장된 연결 정보(token)를 사용해 GitHub API를 호출하고 repo 목록을 갱신한다.
+     *
+     * GitHub OAuth 로그인 사용자가 repository 목록을 처음 가져올 때 사용한다.
+     * GitHub API 호출은 트랜잭션 밖에서 실행한다.
+     */
+    public GithubConnectionResponse refreshFromStoredConnection(Long userId) {
+        // 1. 연결 정보 조회 (트랜잭션 밖)
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ServiceException(
+                        ErrorCode.RESOURCE_NOT_FOUND, HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+
+        GithubConnection connection = connectionRepository.findByUser(user)
+                .orElseThrow(() -> new ServiceException(
+                        ErrorCode.RESOURCE_NOT_FOUND, HttpStatus.NOT_FOUND, "GitHub 연결 정보가 없습니다. 먼저 GitHub 연결을 설정하세요."));
+
+        // 2. 저장된 token으로 repo 목록 조회 (트랜잭션 밖)
+        List<GithubApiClient.GithubRepoInfo> repos;
+        if (connection.getAccessToken() != null) {
+            repos = githubApiClient.getAuthenticatedUserRepos(connection.getAccessToken());
+        } else {
+            repos = githubApiClient.getPublicRepos(connection.getGithubLogin());
+        }
+
+        // 3. DB 저장 (트랜잭션 안)
+        GithubApiClient.GithubUserInfo githubUser = new GithubApiClient.GithubUserInfo(
+                connection.getGithubUserId(), connection.getGithubLogin());
+        GithubConnectRequest refreshRequest = new GithubConnectRequest(
+                "oauth", null, connection.getAccessToken(), null);
+        return saveConnectionWithRepos(user, githubUser, repos, refreshRequest);
+    }
+
     // ─────────────────────────────────────────────────
     // Private helpers
     // ─────────────────────────────────────────────────

@@ -270,7 +270,7 @@ public class GithubApiClient {
 
         while (nextUrl != null) {
             try {
-                RestClient.RequestHeadersUriSpec<?> spec = restClient.get().uri(nextUrl);
+                RestClient.RequestHeadersSpec<?> spec = restClient.get().uri(nextUrl);
 
                 // token이 있을 때만 Authorization 헤더를 추가한다.
                 // null이면 헤더 자체를 생략해야 한다. 빈 문자열을 보내면 GitHub이 400을 반환할 수 있다.

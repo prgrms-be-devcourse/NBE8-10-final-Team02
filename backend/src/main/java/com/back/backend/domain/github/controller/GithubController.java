@@ -37,7 +37,7 @@ import java.util.List;
  *     요청 바디나 query param으로 userId를 받지 않는다 (backend-conventions.md §7.4).
  */
 @RestController
-@RequestMapping("/github")
+@RequestMapping("/api/v1/github")
 public class GithubController {
 
     private final GithubConnectionService connectionService;
@@ -70,6 +70,24 @@ public class GithubController {
         Long userId = extractUserId(authentication);
         GithubConnectionResponse response = connectionService.createOrUpdateConnection(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
+    }
+
+    /**
+     * 저장된 GitHub OAuth 연결로 repo 목록 갱신.
+     *
+     * GitHub OAuth 로그인 사용자가 로그인 시 저장된 token을 사용해
+     * GitHub API에서 repo 목록을 가져오고 DB에 반영한다.
+     * 로그인 시점에는 repo를 가져오지 않으므로, 사용자가 명시적으로 이 API를 호출해야 한다.
+     *
+     * 202 Accepted 반환 (처리 시간이 있음).
+     */
+    @PostMapping("/connections/refresh")
+    public ResponseEntity<ApiResponse<GithubConnectionResponse>> refreshConnection(
+            Authentication authentication
+    ) {
+        Long userId = extractUserId(authentication);
+        GithubConnectionResponse response = connectionService.refreshFromStoredConnection(userId);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(response));
     }
 
     /**
