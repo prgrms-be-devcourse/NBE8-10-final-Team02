@@ -44,6 +44,9 @@ public class DocumentService {
             "text/markdown"
     );
 
+    /** 업로드 허용 파일 확장자 목록. MIME type과 함께 이중 검증한다. */
+    static final Set<String> ALLOWED_EXTENSIONS = Set.of(".pdf", ".docx", ".md");
+
     private final DocumentRepository documentRepository;
     private final DocumentStorageService documentStorageService;
     private final UserRepository userRepository;
@@ -53,19 +56,31 @@ public class DocumentService {
     /**
      * 업로드 전 유효성을 검사한다.
      *
-     * <p>다음 세 가지 조건 중 하나라도 위반하면 {@link ServiceException}을 던진다.</p>
+     * <p>다음 네 가지 조건 중 하나라도 위반하면 {@link ServiceException}을 던진다.</p>
      * <ul>
      *   <li>허용되지 않는 MIME type</li>
+     *   <li>허용되지 않는 파일 확장자</li>
      *   <li>파일 크기가 10MB 초과</li>
      *   <li>해당 사용자의 문서가 이미 5개 이상</li>
      * </ul>
      *
      * @param userId        업로드 요청 사용자 ID
      * @param mimeType      파일의 MIME type
+     * @param filename      원본 파일명 (확장자 검증에 사용)
      * @param fileSizeBytes 파일 크기 (bytes)
      */
-    public void validateUpload(Long userId, String mimeType, long fileSizeBytes) {
+    public void validateUpload(Long userId, String mimeType, String filename, long fileSizeBytes) {
         if (!ALLOWED_MIME_TYPES.contains(mimeType)) {
+            throw new ServiceException(
+                    ErrorCode.DOCUMENT_INVALID_TYPE,
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "지원하지 않는 파일 형식입니다."
+            );
+        }
+        String ext = filename != null && filename.contains(".")
+                ? filename.substring(filename.lastIndexOf('.')).toLowerCase()
+                : "";
+        if (!ALLOWED_EXTENSIONS.contains(ext)) {
             throw new ServiceException(
                     ErrorCode.DOCUMENT_INVALID_TYPE,
                     HttpStatus.UNPROCESSABLE_CONTENT,
@@ -104,7 +119,7 @@ public class DocumentService {
      */
     @Transactional
     public DocumentResponse upload(Long userId, DocumentType documentType, MultipartFile file) {
-        validateUpload(userId, file.getContentType(), file.getSize());
+        validateUpload(userId, file.getContentType(), file.getOriginalFilename(), file.getSize());
 
         String storagePath = documentStorageService.store(file);
         User user = userRepository.getReferenceById(userId);
@@ -124,6 +139,7 @@ public class DocumentService {
     }
 
     // 사용자의 전체 문서 목록을 반환한다
+    @Transactional(readOnly = true)
     public List<DocumentResponse> getDocuments(Long userId) {
         return documentRepository.findAllByUserId(userId).stream()
                 .map(DocumentResponse::from)
@@ -131,6 +147,7 @@ public class DocumentService {
     }
 
     // 문서 단건 조회: userId를 함께 조회 조건으로 사용해 다른 사용자 접근을 차단한다
+    @Transactional(readOnly = true)
     public DocumentResponse getDocument(Long userId, Long documentId) {
         Document document = documentRepository.findByIdAndUserId(documentId, userId)
                 .orElseThrow(() -> new ServiceException(
