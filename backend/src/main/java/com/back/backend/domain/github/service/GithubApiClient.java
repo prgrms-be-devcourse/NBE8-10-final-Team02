@@ -38,8 +38,10 @@ public class GithubApiClient {
 
     private final RestClient restClient;
 
-    public GithubApiClient(RestClient.Builder builder) {
-        this.restClient = builder
+    public GithubApiClient() {
+        // RestClient.Builder를 Spring 컨텍스트에서 주입받지 않고 직접 생성한다.
+        // spring-boot-starter-webmvc 환경에서 RestClient.Builder 자동 구성이 없을 수 있기 때문이다.
+        this.restClient = RestClient.builder()
                 .baseUrl(GITHUB_API_BASE)
                 // GitHub API 요청 시 필수 헤더
                 .defaultHeader("Accept", "application/vnd.github+json")
