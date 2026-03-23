@@ -155,21 +155,37 @@ jobs:
             docker run -d --name $GREEN_BE \
             -p $GREEN_BE_PORT:8080 \
             --network global-net \
+            --network-alias backend \
             --memory="2g" \
             -e JAVA_TOOL_OPTIONS="-XX:InitialRAMPercentage=50.0 -XX:MaxRAMPercentage=50.0" \
             --env-file .env-prod \
             "${BE_IMAGE}:${IMAGE_TAG}"
             docker run -d --name $GREEN_FE \
             --network global-net \
-            -e BACKEND_URL="http://$GREEN_BE:8080" \
             "${FE_IMAGE}:${IMAGE_TAG}"
+
+
+
+            # --- 4. 헬스 체크 ---
+            echo "⏱ Waiting for Green BE to be healthy..."
+            MAX_WAIT=90
+            INTERVAL=5
+            ELAPSED=0
+            until curl -sf "http://localhost:$GREEN_BE_PORT/actuator/health" | grep -q '"status":"UP"'; do
+              if [ $ELAPSED -ge $MAX_WAIT ]; then
+                echo "❌ Health check failed after ${MAX_WAIT}s"
+                docker logs $GREEN_BE --tail 50
+                exit 1
+              fi
+              echo "⏳ ${ELAPSED}s elapsed, retrying in ${INTERVAL}s..."
+              sleep $INTERVAL
+              ELAPSED=$((ELAPSED + INTERVAL))
+            done
+            echo "✅ Green BE is healthy!"
 
             # 보안을 위해 사용이 끝난 환경변수 파일 즉시 삭제
             rm -f .env-prod
-
-            # --- 4. 헬스 체크 ---
-            echo "⏱ Waiting for Green to be healthy..."
-            sleep 20 # 앱이 완전히 켜질 시간 대기 (필요시 늘리세요)
+            echo "✅ .env-prod is removed!"
 
             # --- 5. NPM API 로그인 (토큰 발급) ---
             TOKEN=$(curl -s -X POST "http://localhost:81/api/tokens" \
