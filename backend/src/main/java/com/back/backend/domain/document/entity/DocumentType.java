@@ -20,6 +20,16 @@ public enum DocumentType implements StringCodeEnum {
     public String getValue() {
         return value;
     }
+
+    public static DocumentType fromValue(String value) {
+        for (DocumentType documentType : values()) {
+            if (documentType.value.equalsIgnoreCase(value)) {
+                return documentType;
+            }
+        }
+
+        throw new IllegalArgumentException("Unsupported document type: " + value);
+    }
 }
 
 @Converter(autoApply = false)
