@@ -61,4 +61,23 @@ public class GithubRepository extends BaseEntity {
 
     @Column(name = "synced_at", nullable = false)
     private Instant syncedAt;
+
+    /**
+     * GitHub API에서 새로 받아온 값으로 repo 정보를 갱신한다.
+     * visibility, defaultBranch, htmlUrl은 바뀔 수 있어 매 동기화마다 덮어쓴다.
+     */
+    public void sync(RepositoryVisibility visibility, String defaultBranch, String htmlUrl, Instant syncedAt) {
+        this.visibility = visibility;
+        this.defaultBranch = defaultBranch;
+        this.htmlUrl = htmlUrl;
+        this.syncedAt = syncedAt;
+    }
+
+    /**
+     * 사용자가 선택/해제한 상태를 저장한다.
+     * is_selected = true 인 repo만 커밋 동기화 대상이 된다.
+     */
+    public void updateSelection(boolean selected) {
+        this.selected = selected;
+    }
 }

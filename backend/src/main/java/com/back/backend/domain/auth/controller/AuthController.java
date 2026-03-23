@@ -7,6 +7,7 @@ import com.back.backend.domain.auth.entity.AuthProvider;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -75,6 +76,39 @@ public class AuthController {
                 "authorizationUrl", authorizationUrl,
                 "state", ""
         ));
+    }
+
+    /**
+     * 이미 로그인된 사용자가 GitHub 계정을 추가 연동하기 위한 OAuth2 인증 URL을 반환한다.
+     * 반환된 authorizationUrl로 브라우저를 이동시키면 GitHub OAuth 흐름이 시작된다.
+     * 완료 후 현재 사용자의 계정에 GitHub AuthAccount와 GithubConnection이 추가된다.
+     */
+    @GetMapping("/oauth2/github/link-url")
+    public ApiResponse<Map<String, String>> getGithubLinkUrl(
+            @RequestParam(required = false) String redirectUrl,
+            Authentication authentication,
+            HttpServletRequest request
+    ) {
+        long userId = (Long) authentication.getPrincipal();
+
+        String effectiveRedirectUrl = (redirectUrl != null && !redirectUrl.isBlank())
+                ? redirectUrl
+                : frontendRedirectUrl;
+        // 상대 경로("/portfolio/github")이면 프론트엔드 base URL을 앞에 붙인다.
+        // OAuth 완료 후 sendRedirect가 절대 URL이어야 브라우저가 프론트엔드로 돌아온다.
+        if (effectiveRedirectUrl.startsWith("/")) {
+            effectiveRedirectUrl = frontendRedirectUrl + effectiveRedirectUrl;
+        }
+
+        String backendBase = (this.backendBaseUrl != null && !this.backendBaseUrl.isBlank())
+                ? this.backendBaseUrl
+                : buildBackendBaseUrl(request);
+        String encodedRedirectUrl = URLEncoder.encode(effectiveRedirectUrl, StandardCharsets.UTF_8);
+        String authorizationUrl = backendBase + "/oauth2/authorization/github"
+                + "?redirectUrl=" + encodedRedirectUrl
+                + "&linkUserId=" + userId;
+
+        return ApiResponse.success(Map.of("authorizationUrl", authorizationUrl));
     }
 
     /**

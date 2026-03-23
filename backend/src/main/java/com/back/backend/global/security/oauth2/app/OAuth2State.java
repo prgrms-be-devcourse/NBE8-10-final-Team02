@@ -17,63 +17,62 @@ public class OAuth2State {
 
     private final String redirectUrl;
     private final String originState;
-
     /**
-     * 내부 생성자
-     * * @param redirectUrl 인증 성공 후 이동할 프론트엔드 경로
-     * @param originState 보안 검증을 위한 랜덤 고유 문자열
+     * null이면 일반 로그인 흐름.
+     * 값이 있으면 이미 로그인된 사용자가 GitHub 계정을 추가 연동하는 흐름.
      */
-    private OAuth2State(String redirectUrl, String originState) {
+    private final Long linkUserId;
+
+    private OAuth2State(String redirectUrl, String originState, Long linkUserId) {
         this.redirectUrl = redirectUrl;
         this.originState = originState;
+        this.linkUserId = linkUserId;
     }
 
-    /**
-     * @return 저장된 리다이렉트 URL 반환
-     */
     public String getRedirectUrl() {
         return redirectUrl;
     }
 
+    /** null이면 일반 로그인, 값이 있으면 계정 연동 흐름 */
+    public Long getLinkUserId() {
+        return linkUserId;
+    }
+
     /**
-     * 현재 객체의 정보를 URL 안전한 Base64 문자열로 인코딩합니다.
-     * <p>
-     * 예: "/posts/1#uuid-string" -> "L3Bvc3RzLzEj... (Base64)"
-     * * @return 인코딩된 state 문자열
+     * 인코딩: "redirectUrl#UUID" (일반) 또는 "redirectUrl#UUID#userId" (연동)
      */
     public String encode() {
-        String raw = redirectUrl + DELIMITER + originState;
+        String raw = redirectUrl + DELIMITER + originState
+                + (linkUserId != null ? DELIMITER + linkUserId : "");
         return Base64.getUrlEncoder().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
     }
 
-    /**
-     * 리다이렉트 URL을 받아 새로운 OAuth2State 객체를 생성합니다.
-     * <p>
-     * 생성 시 보안을 위한 무작위 UUID를 자동으로 생성하여 포함합니다.
-     * * @param redirectUrl 프론트엔드에서 전달받은 복귀 경로
-     * @return 생성된 OAuth2State 인스턴스
-     */
+    /** 일반 로그인용 state 생성 */
     public static OAuth2State of(String redirectUrl) {
         String url = (redirectUrl != null && !redirectUrl.isBlank()) ? redirectUrl : DEFAULT_REDIRECT_URL;
-        return new OAuth2State(url, UUID.randomUUID().toString());
+        return new OAuth2State(url, UUID.randomUUID().toString(), null);
+    }
+
+    /** GitHub 계정 연동용 state 생성 — linkUserId: 연동 대상 app 사용자 ID */
+    public static OAuth2State ofLink(String redirectUrl, Long linkUserId) {
+        String url = (redirectUrl != null && !redirectUrl.isBlank()) ? redirectUrl : DEFAULT_REDIRECT_URL;
+        return new OAuth2State(url, UUID.randomUUID().toString(), linkUserId);
     }
 
     /**
-     * 인코딩되어 돌아온 state 문자열을 다시 객체 형태로 복원(디코딩)합니다.
-     * <p>
-     * 예외 발생 시 서비스 중단을 막기 위해 기본값(/)을 가진 객체를 반환합니다.
-     * * @param encoded 소셜 공급자로부터 전달받은 인코딩된 문자열
-     * @return 복원된 OAuth2State 객체
+     * 디코딩: 파트 3개(redirectUrl, UUID, linkUserId)까지 지원.
+     * linkUserId가 없으면 null 반환 (일반 로그인).
      */
     public static OAuth2State decode(String encoded) {
         try {
             String decoded = new String(Base64.getUrlDecoder().decode(encoded), StandardCharsets.UTF_8);
-            String[] parts = decoded.split(DELIMITER, 2);
+            String[] parts = decoded.split(DELIMITER, 3);
             String url = (parts.length > 0 && !parts[0].isBlank()) ? parts[0] : DEFAULT_REDIRECT_URL;
             String state = parts.length > 1 ? parts[1] : "";
-            return new OAuth2State(url, state);
+            Long linkUserId = (parts.length > 2 && !parts[2].isBlank()) ? Long.parseLong(parts[2]) : null;
+            return new OAuth2State(url, state, linkUserId);
         } catch (Exception e) {
-            return new OAuth2State(DEFAULT_REDIRECT_URL, "");
+            return new OAuth2State(DEFAULT_REDIRECT_URL, "", null);
         }
     }
 }
