@@ -9,7 +9,11 @@ import com.back.backend.domain.application.repository.ApplicationRepository;
 import com.back.backend.domain.application.repository.ApplicationSourceDocumentBindingRepository;
 import com.back.backend.domain.application.repository.ApplicationSourceRepositoryBindingRepository;
 import com.back.backend.domain.application.entity.Application;
+import com.back.backend.domain.application.entity.ApplicationLengthOption;
+import com.back.backend.domain.application.entity.ApplicationQuestion;
 import com.back.backend.domain.application.entity.ApplicationStatus;
+import com.back.backend.domain.application.entity.ApplicationSourceRepository;
+import com.back.backend.domain.application.entity.ApplicationToneOption;
 import com.back.backend.domain.document.entity.Document;
 import com.back.backend.domain.document.entity.DocumentExtractStatus;
 import com.back.backend.domain.document.entity.DocumentType;
@@ -142,6 +146,30 @@ class ApplicationApiTest extends ApiTestBase {
                         ))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value(ErrorCode.APPLICATION_STATUS_CONFLICT.name()));
+    }
+
+    @Test
+    void updateApplication_returns200WhenReadyRequirementsAreMet() throws Exception {
+        User user = persistUser("ready@example.com", "ready-owner");
+        Application application = persistApplication(user, "ready-application", ApplicationStatus.DRAFT);
+        GithubRepository repository = persistGithubRepository(user, "team/ready-project");
+
+        bindRepositorySource(application, repository);
+        persistAnsweredQuestion(application, 1, "지원 동기", "포트폴리오 기반으로 작성된 자소서 초안");
+
+        mockMvc.perform(patch("/api/v1/applications/{applicationId}", application.getId())
+                        .with(authenticated(user.getId()))
+                        .contentType("application/json")
+                        .content(OBJECT_MAPPER.writeValueAsString(new UpdateApplicationRequest(
+                                null,
+                                null,
+                                "Backend Engineer",
+                                "ready",
+                                null
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("ready"));
     }
 
     @Test
@@ -357,5 +385,34 @@ class ApplicationApiTest extends ApiTestBase {
         entityManager.persist(document);
         entityManager.flush();
         return document;
+    }
+
+    private void bindRepositorySource(Application application, GithubRepository repository) {
+        ApplicationSourceRepository binding = ApplicationSourceRepository.builder()
+                .application(application)
+                .repository(repository)
+                .build();
+        entityManager.persist(binding);
+        entityManager.flush();
+    }
+
+    private void persistAnsweredQuestion(
+            Application application,
+            int questionOrder,
+            String questionText,
+            String generatedAnswer
+    ) {
+        ApplicationQuestion question = ApplicationQuestion.builder()
+                .application(application)
+                .questionOrder(questionOrder)
+                .questionText(questionText)
+                .generatedAnswer(generatedAnswer)
+                .editedAnswer(null)
+                .toneOption(ApplicationToneOption.FORMAL)
+                .lengthOption(ApplicationLengthOption.MEDIUM)
+                .emphasisPoint("협업")
+                .build();
+        entityManager.persist(question);
+        entityManager.flush();
     }
 }
