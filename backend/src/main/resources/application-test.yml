@@ -29,13 +29,13 @@ spring:
       client:
         registration:
           github:
-            clientId: ${GITHUB_CLIENT_ID_LOCAL:}
-            clientSecret: ${GITHUB_CLIENT_SECRET_LOCAL:}
+            clientId: ${GITHUB_CLIENT_ID_LOCAL:test-github-client-id}
+            clientSecret: ${GITHUB_CLIENT_SECRET_LOCAL:test-github-client-secret}
           google:
-            clientId: ${GOOGLE_CLIENT_ID:}
-            clientSecret: ${GOOGLE_CLIENT_SECRET:}
+            clientId: ${GOOGLE_CLIENT_ID:test-google-client-id}
+            clientSecret: ${GOOGLE_CLIENT_SECRET:test-google-client-secret}
           kakao:
-            clientId: ${KAKAO_CLIENT_ID:}
+            clientId: ${KAKAO_CLIENT_ID:test-kakao-client-id}
 
 app:
   storage:
