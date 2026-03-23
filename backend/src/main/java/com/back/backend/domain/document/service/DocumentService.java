@@ -1,6 +1,7 @@
 package com.back.backend.domain.document.service;
 
 import com.back.backend.domain.document.repository.DocumentRepository;
+import com.back.backend.application.repository.ApplicationSourceDocumentRepository;
 import com.back.backend.document.dto.DocumentResponse;
 import com.back.backend.document.repository.DocumentRepository;
 import com.back.backend.document.storage.DocumentStorageService;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Clock;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -46,6 +48,7 @@ public class DocumentService {
     private final DocumentRepository documentRepository;
     private final DocumentStorageService documentStorageService;
     private final UserRepository userRepository;
+    private final ApplicationSourceDocumentRepository applicationSourceDocumentRepository;
     private final Clock clock;
 
     /**
@@ -119,5 +122,43 @@ public class DocumentService {
                 .build();
 
         return DocumentResponse.from(documentRepository.save(document));
+    }
+
+    // 사용자의 전체 문서 목록을 반환한다
+    public List<DocumentResponse> getDocuments(Long userId) {
+        return documentRepository.findAllByUserId(userId).stream()
+                .map(DocumentResponse::from)
+                .toList();
+    }
+
+    // 문서 단건 조회: userId를 함께 조회 조건으로 사용해 다른 사용자 접근을 차단한다
+    public DocumentResponse getDocument(Long userId, Long documentId) {
+        Document document = documentRepository.findByIdAndUserId(documentId, userId)
+                .orElseThrow(() -> new ServiceException(
+                        ErrorCode.DOCUMENT_NOT_FOUND,
+                        HttpStatus.NOT_FOUND,
+                        "문서를 찾을 수 없습니다."
+                ));
+        return DocumentResponse.from(document);
+    }
+
+    // 문서 삭제: 존재 여부 확인 → 지원 단위 참조 여부 확인 → 삭제 순서로 진행한다
+    @Transactional
+    public void deleteDocument(Long userId, Long documentId) {
+        Document document = documentRepository.findByIdAndUserId(documentId, userId)
+                .orElseThrow(() -> new ServiceException(
+                        ErrorCode.DOCUMENT_NOT_FOUND,
+                        HttpStatus.NOT_FOUND,
+                        "문서를 찾을 수 없습니다."
+                ));
+        // 지원 단위(application)에서 이 문서를 소스로 사용 중이면 삭제 불가
+        if (applicationSourceDocumentRepository.existsByDocumentId(documentId)) {
+            throw new ServiceException(
+                    ErrorCode.DOCUMENT_IN_USE,
+                    HttpStatus.CONFLICT,
+                    "지원 단위에서 참조 중인 문서는 삭제할 수 없습니다."
+            );
+        }
+        documentRepository.delete(document);
     }
 }
