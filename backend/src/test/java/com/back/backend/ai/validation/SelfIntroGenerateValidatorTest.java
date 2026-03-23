@@ -110,24 +110,16 @@ class SelfIntroGenerateValidatorTest {
         }
 
         @Test
-        @DisplayName("answerText가 공백 문자열이면 실패한다")
+        @DisplayName("answerText가 공백 문자열이면 questionOrder를 포함한 에러와 함께 실패한다")
         void blank_answerText() {
             JsonNode node = buildResponse(1, "   ", List.of("project_1"));
 
             ValidationResult result = validator.validate(node);
 
             assertThat(result.valid()).isFalse();
-            assertThat(result.errors()).anyMatch(e -> e.contains("answerText가 비어있습니다"));
-        }
-
-        @Test
-        @DisplayName("answerText 오류 메시지에 questionOrder가 포함된다")
-        void blank_answerText_error_contains_order() {
-            JsonNode node = buildResponse(1, "   ", List.of("project_1"));
-
-            ValidationResult result = validator.validate(node);
-
-            assertThat(result.errors()).anyMatch(e -> e.contains("questionOrder=1"));
+            assertThat(result.errors()).anyMatch(e ->
+                e.contains("answerText가 비어있습니다") && e.contains("questionOrder=1")
+            );
         }
 
         @Test
