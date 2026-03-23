@@ -45,22 +45,29 @@ public class InterviewQuestionsGenerateValidator implements AiResponseValidator 
     }
 
     /**
-     * questionOrder는 1부터 시작해 연속적이어야 한다 — hard fail.
-     * 스키마의 minimum:1은 개별 값만 체크하므로 연속성은 별도 검증이 필요
+     * questionOrder는 1부터 시작해 questions 개수만큼 중복 없이 연속적이어야 한다 — hard fail.
+     * 스키마의 minimum:1은 개별 값만 체크하므로 연속성과 중복은 별도 검증이 필요하다.
+     * 기대값: {1, 2, ..., n} (n = questions 배열 길이)
      */
     private void validateQuestionOrderSequential(JsonNode questions, List<String> errors) {
-        Set<Integer> orders = new HashSet<>();
+        int totalCount = questions.size();
+        List<Integer> orderList = new ArrayList<>();
+        Set<Integer> orderSet = new HashSet<>();
+
         for (JsonNode question : questions) {
             JsonNode orderNode = question.get("questionOrder");
             if (orderNode == null || orderNode.isNull()) {
                 continue; // 스키마 검증에서 이미 잡힘
             }
-            orders.add(orderNode.asInt());
+            int order = orderNode.asInt();
+            if (!orderSet.add(order)) {
+                errors.add("questionOrder 중복: " + order);
+            }
+            orderList.add(order);
         }
 
-        int size = orders.size();
-        for (int i = 1; i <= size; i++) {
-            if (!orders.contains(i)) {
+        for (int i = 1; i <= totalCount; i++) {
+            if (!orderSet.contains(i)) {
                 errors.add("questionOrder가 1부터 연속적이지 않습니다. 누락된 순서: " + i);
             }
         }
