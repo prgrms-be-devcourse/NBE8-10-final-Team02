@@ -86,12 +86,14 @@ applies_to: storage-schema
 - `connected_at`
 
 선택 컬럼
+- `access_token`
 - `access_scope`
 - `last_synced_at`
 
 비고
 - MVP 기준으로 사용자당 GitHub 연결은 1개만 허용한다.
 - `github_user_id`는 유일해야 한다.
+- `access_token`은 GitHub API 호출(커밋 동기화)에 사용한다. 운영 환경에서는 암호화 저장을 권장한다.
 
 ## 3.4 github_repositories
 

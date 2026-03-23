@@ -90,6 +90,7 @@ public class SecurityConfig {
                         // /login/oauth2/code/** (모든 소셜 로그인 도착점)
                         // ex) /oauth2/authorization/google, /login/oauth2/code/github
                         .requestMatchers("/oauth2/authorization/**", "/login/oauth2/code/**").permitAll()
+                        .requestMatchers("/api/v1/auth/oauth2/github/link-url").authenticated() // 연동 URL 생성은 로그인 필요 (permitAll 와일드카드보다 먼저 선언)
                         .requestMatchers("/auth/oauth2/**", "/api/v1/auth/oauth2/**").permitAll()
                         .requestMatchers("/api/v1/auth/logout").permitAll() // 만료된 토큰으로도 로그아웃 가능
                         .requestMatchers("/api/**").authenticated()

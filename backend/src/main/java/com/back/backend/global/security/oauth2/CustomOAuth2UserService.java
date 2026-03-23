@@ -1,16 +1,20 @@
 package com.back.backend.global.security.oauth2;
 
+import com.back.backend.domain.github.service.GithubConnectionService;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.domain.auth.entity.AuthAccount;
 import com.back.backend.domain.auth.entity.AuthProvider;
 import com.back.backend.domain.auth.repository.AuthAccountRepository;
+import com.back.backend.global.security.oauth2.app.OAuth2State;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.Instant;
 import java.util.Map;
@@ -27,10 +31,16 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
     private final UserRepository userRepository;
     private final AuthAccountRepository authAccountRepository;
+    private final GithubConnectionService githubConnectionService;
 
-    public CustomOAuth2UserService(UserRepository userRepository, AuthAccountRepository authAccountRepository) {
+    public CustomOAuth2UserService(
+            UserRepository userRepository,
+            AuthAccountRepository authAccountRepository,
+            GithubConnectionService githubConnectionService
+    ) {
         this.userRepository = userRepository;
         this.authAccountRepository = authAccountRepository;
+        this.githubConnectionService = githubConnectionService;
     }
 
     /**
@@ -44,6 +54,13 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         OAuth2User oAuth2User = super.loadUser(userRequest);
         String registrationId = userRequest.getClientRegistration().getRegistrationId();
         AuthProvider authProvider = AuthProvider.fromRegistrationId(registrationId);
+
+        // state에서 linkUserId 확인: 값이 있으면 계정 연동 흐름, 없으면 일반 로그인 흐름
+        Long linkUserId = extractLinkUserIdFromState();
+        if (linkUserId != null && authProvider == AuthProvider.GITHUB) {
+            return handleGithubLink(oAuth2User, userRequest, linkUserId);
+        }
+
         UserInfo info = extractUserInfo(authProvider, oAuth2User);
         Instant now = Instant.now();
 
@@ -76,8 +93,74 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                     .build());
         }
 
+        // GitHub OAuth 로그인 시 token을 github_connections에 저장한다.
+        // repo 목록은 저장하지 않으며, 사용자가 명시적으로 요청할 때 채운다.
+        if (authProvider == AuthProvider.GITHUB) {
+            String githubToken = userRequest.getAccessToken().getTokenValue();
+            Long githubUserId = ((Number) oAuth2User.getAttributes().get("id")).longValue();
+            String githubLogin = (String) oAuth2User.getAttributes().get("login");
+            githubConnectionService.saveConnectionOnly(user, githubUserId, githubLogin, githubToken);
+        }
+
         // 시큐리티 컨텍스트에 저장될 유저 객체를 반환합니다. (우리 도메인의 User ID 포함)
         return new OurOAuth2User(user.getId(), oAuth2User);
+    }
+
+    /**
+     * OAuth2 콜백 요청의 state 파라미터에서 linkUserId를 추출한다.
+     * 연동 흐름이 아니면 null을 반환한다.
+     */
+    private Long extractLinkUserIdFromState() {
+        try {
+            ServletRequestAttributes attrs =
+                    (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attrs == null) return null;
+            String stateParam = attrs.getRequest().getParameter("state");
+            if (stateParam == null || stateParam.isBlank()) return null;
+            return OAuth2State.decode(stateParam).getLinkUserId();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 이미 로그인된 사용자(linkUserId)에게 GitHub 계정을 추가 연동한다.
+     * AuthAccount를 추가하고 GithubConnection을 저장한 후, 원래 사용자 ID로 JWT를 발급한다.
+     */
+    private OAuth2User handleGithubLink(OAuth2User oAuth2User, OAuth2UserRequest userRequest, Long linkUserId) {
+        Map<String, Object> attrs = oAuth2User.getAttributes();
+        String githubLogin = (String) attrs.get("login");
+        String githubProviderUserId = String.valueOf(attrs.get("id"));
+        Long githubUserId = ((Number) attrs.get("id")).longValue();
+        String email = (String) attrs.get("email");
+        Instant now = Instant.now();
+
+        User user = userRepository.findById(linkUserId)
+                .orElseThrow(() -> new RuntimeException("연동 대상 사용자를 찾을 수 없습니다: " + linkUserId));
+
+        // GitHub AuthAccount 추가 (없으면 생성, 있으면 마지막 로그인 시간만 갱신)
+        Optional<AuthAccount> existingAccount = authAccountRepository
+                .findByProviderAndProviderUserId(AuthProvider.GITHUB, githubProviderUserId);
+        if (existingAccount.isPresent()) {
+            existingAccount.get().updateLastLoginAt(now);
+        } else {
+            authAccountRepository.save(AuthAccount.builder()
+                    .user(user)
+                    .provider(AuthProvider.GITHUB)
+                    .providerUserId(githubProviderUserId)
+                    .providerEmail(email)
+                    .primary(false)
+                    .connectedAt(now)
+                    .lastLoginAt(now)
+                    .build());
+        }
+
+        // GitHub Connection 저장 (token 포함)
+        String githubToken = userRequest.getAccessToken().getTokenValue();
+        githubConnectionService.saveConnectionOnly(user, githubUserId, githubLogin, githubToken);
+
+        // 원래 사용자 ID로 JWT 발급
+        return new OurOAuth2User(linkUserId, oAuth2User);
     }
 
     /**
