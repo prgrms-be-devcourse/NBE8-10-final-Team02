@@ -7,6 +7,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 자소서 생성 AI 응답 검증기 (템플릿: ai.self_intro.generate.v1).
+ * <p>
+ * JSON Schema 검증 이후 스키마만으로 잡을 수 없는 도메인 규칙을 추가로 검사
+ * questionOrder 중복 — hard fail
+ * answerText 공백 문자열 — hard fail
+ * usedEvidenceKeys 비어있음 — warning (자소서 자체는 유효)
+ */
 public class SelfIntroGenerateValidator implements AiResponseValidator {
 
     private static final String TEMPLATE_ID = "ai.self_intro.generate.v1";

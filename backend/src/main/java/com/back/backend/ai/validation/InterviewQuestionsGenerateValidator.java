@@ -7,6 +7,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 면접 질문 생성 AI 응답 검증기 (템플릿: ai.interview.questions.generate.v1).
+ * <p>
+ * JSON Schema 검증 이후 스키마만으로 잡을 수 없는 도메인 규칙을 추가로 검사
+ * questionOrder 중복 및 1부터 N까지 연속성 — hard fail
+ * questionText 공백 문자열 — hard fail
+ * <p>
+ * questionType, difficultyLevel의 enum 유효성은 JSON Schema가 담당
+ */
 public class InterviewQuestionsGenerateValidator implements AiResponseValidator {
 
     private static final String TEMPLATE_ID = "ai.interview.questions.generate.v1";

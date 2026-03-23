@@ -5,6 +5,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 꼬리 질문 생성 AI 응답 검증기 (템플릿: ai.interview.followup.generate.v1).
+ * <p>
+ * JSON Schema 검증 이후 스키마만으로 잡을 수 없는 도메인 규칙을 추가로 검사
+ * followUpQuestion이 null이면 꼬리 질문 없음(스킵)으로 정상 처리
+ * followUpQuestion이 존재하면 questionText 공백 문자열 — hard fail
+ * <p>
+ * parentQuestionOrder 일치 검증은 입력값이 필요하므로 파이프라인 계층에서 담당
+ */
 public class InterviewFollowupGenerateValidator implements AiResponseValidator {
 
     private static final String TEMPLATE_ID = "ai.interview.followup.generate.v1";
@@ -31,6 +40,7 @@ public class InterviewFollowupGenerateValidator implements AiResponseValidator {
         List<String> errors = new ArrayList<>();
 
         JsonNode followUpQuestion = responseNode.get("followUpQuestion");
+        // null은 꼬리 질문 없음(스킵)을 의미하므로 정상 케이스
         if (followUpQuestion != null && !followUpQuestion.isNull()) {
             validateQuestionText(followUpQuestion, errors);
         }

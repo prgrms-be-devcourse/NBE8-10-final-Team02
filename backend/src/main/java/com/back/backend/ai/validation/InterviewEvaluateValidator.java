@@ -7,6 +7,17 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 면접 답변 평가 AI 응답 검증기 (템플릿: ai.interview.evaluate.v1).
+ * <p>
+ * JSON Schema 검증 이후 스키마만으로 잡을 수 없는 도메인 규칙을 추가로 검사
+ * summaryFeedback 공백 문자열 — hard fail
+ * questionOrder 중복 및 1부터 N까지 연속성 — hard fail
+ * evaluationRationale 공백 문자열 — hard fail
+ * <p>
+ * totalScore/score 범위(0-100)는 JSON Schema가 담당
+ * answers 개수와 입력 질문 수 일치 검증은 입력값이 필요하므로 파이프라인 계층에서 담당
+ */
 public class InterviewEvaluateValidator implements AiResponseValidator {
 
     private static final String TEMPLATE_ID = "ai.interview.evaluate.v1";
@@ -47,9 +58,9 @@ public class InterviewEvaluateValidator implements AiResponseValidator {
     }
 
     /**
-     * summaryFeedback 공백 문자열 추가 검사.
+     * summaryFeedback 공백 문자열 추가 검사
      * JSON Schema의 minLength:1은 빈 문자열("")만 차단하므로
-     * 공백으로 채워진 응답은 통과된다. 도메인 규칙상 이를 실패로 처리한다.
+     * 공백으로 채워진 응답은 통과된다. 도메인 규칙상 이를 실패로 처리
      */
     private void validateSummaryFeedback(JsonNode responseNode, List<String> errors) {
         JsonNode summaryFeedback = responseNode.get("summaryFeedback");
@@ -59,8 +70,8 @@ public class InterviewEvaluateValidator implements AiResponseValidator {
     }
 
     /**
-     * questionOrder는 1부터 시작해 answers 개수만큼 중복 없이 연속적이어야 한다 — hard fail.
-     * 스키마의 minimum:1은 개별 값만 체크하므로 연속성과 중복은 별도 검증이 필요하다.
+     * questionOrder는 1부터 시작해 answers 개수만큼 중복 없이 연속적이어야 함 — hard fail.
+     * 스키마의 minimum:1은 개별 값만 체크하므로 연속성과 중복은 별도 검증이 필요
      * 기대값: {1, 2, ..., n} (n = answers 배열 길이)
      */
     private void validateQuestionOrderSequential(JsonNode answers, List<String> errors) {
@@ -86,9 +97,9 @@ public class InterviewEvaluateValidator implements AiResponseValidator {
     }
 
     /**
-     * evaluationRationale 공백 문자열 추가 검사.
+     * evaluationRationale 공백 문자열 추가 검사
      * JSON Schema의 minLength:1은 빈 문자열("")만 차단하므로
-     * 공백으로 채워진 응답은 통과된다. 도메인 규칙상 이를 실패로 처리한다.
+     * 공백으로 채워진 응답은 통과된다. 도메인 규칙상 이를 실패로 처리
      */
     private void validateEvaluationRationale(JsonNode answers, List<String> errors) {
         int index = 0;
