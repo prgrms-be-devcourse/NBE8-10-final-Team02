@@ -42,7 +42,14 @@ public class CustomOAuth2AuthorizationRequestResolver implements OAuth2Authoriza
 
     private OAuth2AuthorizationRequest customizeState(OAuth2AuthorizationRequest req, HttpServletRequest request) {
         String redirectUrl = request.getParameter("redirectUrl");
-        OAuth2State state = OAuth2State.of(redirectUrl != null ? redirectUrl : "");
+        String linkUserIdStr = request.getParameter("linkUserId");
+        Long linkUserId = null;
+        if (linkUserIdStr != null && !linkUserIdStr.isBlank()) {
+            try { linkUserId = Long.parseLong(linkUserIdStr); } catch (NumberFormatException ignored) {}
+        }
+        OAuth2State state = (linkUserId != null)
+                ? OAuth2State.ofLink(redirectUrl != null ? redirectUrl : "", linkUserId)
+                : OAuth2State.of(redirectUrl != null ? redirectUrl : "");
         return OAuth2AuthorizationRequest.from(req)
                 .state(state.encode())
                 .build();

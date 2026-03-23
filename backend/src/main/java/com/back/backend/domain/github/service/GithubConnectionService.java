@@ -110,17 +110,28 @@ public class GithubConnectionService {
     @Transactional
     public void saveConnectionOnly(User user, Long githubUserId, String githubLogin, String token) {
         Instant now = Instant.now();
-        connectionRepository.findByUser(user).ifPresentOrElse(
-                existing -> existing.update(githubUserId, githubLogin, token, null, now),
-                () -> connectionRepository.save(GithubConnection.builder()
-                        .user(user)
-                        .githubUserId(githubUserId)
-                        .githubLogin(githubLogin)
-                        .accessToken(token)
-                        .syncStatus(GithubSyncStatus.PENDING)
-                        .connectedAt(now)
-                        .build())
-        );
+
+        // 1순위: 현재 app 사용자로 찾기
+        // 2순위: GitHub 계정 ID로 찾기 — 연동 흐름에서 같은 GitHub 계정이 다른 app user에 연결된 경우 재할당
+        connectionRepository.findByUser(user)
+                .or(() -> connectionRepository.findByGithubUserId(githubUserId))
+                .ifPresentOrElse(
+                        existing -> {
+                            // 다른 app user의 연결이면 현재 user로 재할당
+                            if (!existing.getUser().getId().equals(user.getId())) {
+                                existing.reassignUser(user);
+                            }
+                            existing.update(githubUserId, githubLogin, token, null, now);
+                        },
+                        () -> connectionRepository.save(GithubConnection.builder()
+                                .user(user)
+                                .githubUserId(githubUserId)
+                                .githubLogin(githubLogin)
+                                .accessToken(token)
+                                .syncStatus(GithubSyncStatus.PENDING)
+                                .connectedAt(now)
+                                .build())
+                );
     }
 
     /**

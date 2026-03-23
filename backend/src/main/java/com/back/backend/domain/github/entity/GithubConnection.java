@@ -61,6 +61,14 @@ public class GithubConnection extends BaseEntity {
     private String accessToken;
 
     /**
+     * 연결된 app 사용자를 바꾼다.
+     * GitHub 계정 연동 흐름에서 다른 소셜 로그인(Google/Kakao) 사용자에게 연결을 이전할 때 사용한다.
+     */
+    public void reassignUser(User newUser) {
+        this.user = newUser;
+    }
+
+    /**
      * 연결 정보를 갱신한다 (재연동, token 재발급 등).
      */
     public void update(Long githubUserId, String githubLogin, String accessToken, String accessScope, Instant connectedAt) {

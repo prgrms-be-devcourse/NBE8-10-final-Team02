@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { connectGithub, refreshGithubConnection, getGithubConnection } from '@/api/github';
-import { getMe } from '@/api/auth';
+import { getMe, getGithubLinkUrl } from '@/api/auth';
 import type { GithubConnection } from '@/types/github';
 import type { Provider } from '@/types/auth';
 
@@ -71,6 +71,20 @@ export default function GithubConnectPage() {
         setApiError(msg);
       }
     } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // ── GitHub OAuth 연동 (Google/Kakao 사용자) ──────────────────
+  async function handleGithubOAuthLink() {
+    setSubmitting(true);
+    setApiError(null);
+    try {
+      const authorizationUrl = await getGithubLinkUrl('/portfolio/github');
+      window.location.href = authorizationUrl;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'GitHub OAuth 연동 중 오류가 발생했습니다.';
+      setApiError(msg);
       setSubmitting(false);
     }
   }
@@ -275,12 +289,24 @@ export default function GithubConnectPage() {
               API 요청 한도도 시간당 5,000회로 늘어납니다.
             </p>
           </div>
-          {/* TODO: 백엔드 OAuth callback 구현 후 활성화 */}
-          <div className="rounded border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
-            OAuth 연동 기능은 준비 중입니다.
-            <br />
-            지금은 URL 입력 탭으로 public repository를 먼저 연동해 주세요.
-          </div>
+
+          {apiError && (
+            <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 whitespace-pre-line">
+              {apiError}
+              <button type="button" onClick={() => setApiError(null)} className="ml-2 underline text-red-500">닫기</button>
+            </div>
+          )}
+
+          <button
+            onClick={handleGithubOAuthLink}
+            disabled={submitting}
+            className="rounded bg-zinc-900 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {submitting ? 'GitHub로 이동 중...' : 'GitHub OAuth 연동하기'}
+          </button>
+          <p className="text-xs text-zinc-400">
+            • GitHub 로그인 페이지로 이동합니다. 완료 후 이 페이지로 돌아옵니다.
+          </p>
         </div>
       )}
     </main>

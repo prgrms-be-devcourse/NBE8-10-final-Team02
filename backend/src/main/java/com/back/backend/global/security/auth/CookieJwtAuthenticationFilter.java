@@ -56,7 +56,7 @@ public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
                 || path.startsWith("/swagger-ui/")
                 || path.equals("/swagger-ui.html")
                 || path.startsWith("/auth/oauth2/")
-                || path.startsWith("/api/v1/auth/oauth2/")
+                || (path.startsWith("/api/v1/auth/oauth2/") && !path.equals("/api/v1/auth/oauth2/github/link-url"))
                 || path.startsWith("/contract-test/"); // TODO: 테스트용 경로 추후삭제필요
     }
 
