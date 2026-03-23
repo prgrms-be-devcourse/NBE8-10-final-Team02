@@ -2,10 +2,14 @@ package com.back.backend.ai.validation;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,8 +37,8 @@ class SelfIntroGenerateValidatorTest {
 
         @Test
         @DisplayName("정상 응답은 검증을 통과한다")
-        void valid_response() throws Exception {
-            JsonNode node = objectMapper.readTree(validResponse());
+        void valid_response() {
+            JsonNode node = buildResponse(1, "안녕하세요, 저는", List.of("project_1"));
 
             ValidationResult result = validator.validate(node);
 
@@ -45,12 +49,9 @@ class SelfIntroGenerateValidatorTest {
 
         @Test
         @DisplayName("필수 필드 누락 시 실패한다")
-        void missing_required_field() throws Exception {
-            JsonNode node = objectMapper.readTree("""
-                {
-                  "qualityFlags": []
-                }
-                """);
+        void missing_required_field() {
+            ObjectNode node = objectMapper.createObjectNode();
+            node.putArray("qualityFlags");
 
             ValidationResult result = validator.validate(node);
 
@@ -60,12 +61,9 @@ class SelfIntroGenerateValidatorTest {
 
         @Test
         @DisplayName("스키마에 없는 임의 필드가 있으면 실패한다")
-        void additional_properties_rejected() throws Exception {
-            String json = validResponse().replace(
-                "\"qualityFlags\": []",
-                "\"qualityFlags\": [], \"extraField\": \"unexpected\""
-            );
-            JsonNode node = objectMapper.readTree(json);
+        void additional_properties_rejected() {
+            ObjectNode node = (ObjectNode) buildResponse(1, "안녕하세요, 저는", List.of("project_1"));
+            node.put("extraField", "unexpected");
 
             ValidationResult result = validator.validate(node);
 
@@ -79,10 +77,14 @@ class SelfIntroGenerateValidatorTest {
 
         @Test
         @DisplayName("questionOrder가 중복되면 실패한다")
-        void duplicate_questionOrder() throws Exception {
-            JsonNode node = objectMapper.readTree(duplicateOrderResponse());
+        void duplicate_questionOrder() {
+            ObjectNode root = objectMapper.createObjectNode();
+            ArrayNode answers = root.putArray("answers");
+            answers.add(buildAnswer(1, "안녕하세요, 저는", List.of("project_1")));
+            answers.add(buildAnswer(1, "저는 이 회사에", List.of("project_2")));
+            root.putArray("qualityFlags");
 
-            ValidationResult result = validator.validate(node);
+            ValidationResult result = validator.validate(root);
 
             assertThat(result.valid()).isFalse();
             assertThat(result.errors()).anyMatch(e -> e.contains("questionOrder 중복"));
@@ -90,22 +92,18 @@ class SelfIntroGenerateValidatorTest {
 
         @Test
         @DisplayName("questionOrder가 누락된 항목이 있으면 실패한다")
-        void missing_questionOrder() throws Exception {
-            JsonNode node = objectMapper.readTree("""
-                {
-                  "answers": [
-                    {
-                      "questionText": "자기소개를 해주세요",
-                      "answerText": "안녕하세요",
-                      "usedEvidenceKeys": ["project_1"],
-                      "qualityFlags": []
-                    }
-                  ],
-                  "qualityFlags": []
-                }
-                """);
+        void missing_questionOrder() {
+            ObjectNode answer = objectMapper.createObjectNode();
+            answer.put("questionText", "자기소개를 해주세요");
+            answer.put("answerText", "안녕하세요");
+            answer.putArray("usedEvidenceKeys").add("project_1");
+            answer.putArray("qualityFlags");
 
-            ValidationResult result = validator.validate(node);
+            ObjectNode root = objectMapper.createObjectNode();
+            root.putArray("answers").add(answer);
+            root.putArray("qualityFlags");
+
+            ValidationResult result = validator.validate(root);
 
             assertThat(result.valid()).isFalse();
             assertThat(result.errors()).anyMatch(e -> e.contains("questionOrder"));
@@ -113,12 +111,8 @@ class SelfIntroGenerateValidatorTest {
 
         @Test
         @DisplayName("answerText가 공백 문자열이면 실패한다")
-        void blank_answerText() throws Exception {
-            String json = validResponse().replace(
-                "\"answerText\": \"안녕하세요, 저는\"",
-                "\"answerText\": \"   \""
-            );
-            JsonNode node = objectMapper.readTree(json);
+        void blank_answerText() {
+            JsonNode node = buildResponse(1, "   ", List.of("project_1"));
 
             ValidationResult result = validator.validate(node);
 
@@ -128,12 +122,8 @@ class SelfIntroGenerateValidatorTest {
 
         @Test
         @DisplayName("answerText 오류 메시지에 questionOrder가 포함된다")
-        void blank_answerText_error_contains_order() throws Exception {
-            String json = validResponse().replace(
-                "\"answerText\": \"안녕하세요, 저는\"",
-                "\"answerText\": \"   \""
-            );
-            JsonNode node = objectMapper.readTree(json);
+        void blank_answerText_error_contains_order() {
+            JsonNode node = buildResponse(1, "   ", List.of("project_1"));
 
             ValidationResult result = validator.validate(node);
 
@@ -142,12 +132,8 @@ class SelfIntroGenerateValidatorTest {
 
         @Test
         @DisplayName("usedEvidenceKeys가 비어있으면 경고와 함께 통과한다")
-        void empty_usedEvidenceKeys_warning() throws Exception {
-            String json = validResponse().replace(
-                "\"usedEvidenceKeys\": [\"project_1\"]",
-                "\"usedEvidenceKeys\": []"
-            );
-            JsonNode node = objectMapper.readTree(json);
+        void empty_usedEvidenceKeys_warning() {
+            JsonNode node = buildResponse(1, "안녕하세요, 저는", List.of());
 
             ValidationResult result = validator.validate(node);
 
@@ -156,44 +142,21 @@ class SelfIntroGenerateValidatorTest {
         }
     }
 
-    private String validResponse() {
-        return """
-            {
-              "answers": [
-                {
-                  "questionOrder": 1,
-                  "questionText": "자기소개를 해주세요",
-                  "answerText": "안녕하세요, 저는",
-                  "usedEvidenceKeys": ["project_1"],
-                  "qualityFlags": []
-                }
-              ],
-              "qualityFlags": []
-            }
-            """;
+    private JsonNode buildResponse(int questionOrder, String answerText, List<String> evidenceKeys) {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.putArray("answers").add(buildAnswer(questionOrder, answerText, evidenceKeys));
+        root.putArray("qualityFlags");
+        return root;
     }
 
-    private String duplicateOrderResponse() {
-        return """
-            {
-              "answers": [
-                {
-                  "questionOrder": 1,
-                  "questionText": "자기소개를 해주세요",
-                  "answerText": "안녕하세요, 저는",
-                  "usedEvidenceKeys": ["project_1"],
-                  "qualityFlags": []
-                },
-                {
-                  "questionOrder": 1,
-                  "questionText": "지원 동기를 말씀해 주세요",
-                  "answerText": "저는 이 회사에",
-                  "usedEvidenceKeys": ["project_2"],
-                  "qualityFlags": []
-                }
-              ],
-              "qualityFlags": []
-            }
-            """;
+    private ObjectNode buildAnswer(int questionOrder, String answerText, List<String> evidenceKeys) {
+        ObjectNode answer = objectMapper.createObjectNode();
+        answer.put("questionOrder", questionOrder);
+        answer.put("questionText", "자기소개를 해주세요");
+        answer.put("answerText", answerText);
+        ArrayNode keys = answer.putArray("usedEvidenceKeys");
+        evidenceKeys.forEach(keys::add);
+        answer.putArray("qualityFlags");
+        return answer;
     }
 }
