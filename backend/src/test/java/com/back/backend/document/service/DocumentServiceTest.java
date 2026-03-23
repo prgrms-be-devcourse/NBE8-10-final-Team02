@@ -68,14 +68,24 @@ class DocumentServiceTest {
         given(documentRepository.countByUserId(1L)).willReturn(0);
 
         assertThatCode(() ->
-                documentService.validateUpload(1L, "application/pdf", 1024L)
+                documentService.validateUpload(1L, "application/pdf", "resume.pdf", 1024L)
         ).doesNotThrowAnyException();
     }
 
     @Test
     void validateUpload_failWhenInvalidMimeType() {
         assertThatThrownBy(() ->
-                documentService.validateUpload(1L, "image/png", 1024L)
+                documentService.validateUpload(1L, "image/png", "photo.png", 1024L)
+        )
+                .isInstanceOf(ServiceException.class)
+                .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.DOCUMENT_INVALID_TYPE));
+    }
+
+    @Test
+    void validateUpload_failWhenInvalidExtension() {
+        assertThatThrownBy(() ->
+                documentService.validateUpload(1L, "application/pdf", "disguised.exe", 1024L)
         )
                 .isInstanceOf(ServiceException.class)
                 .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
@@ -87,7 +97,7 @@ class DocumentServiceTest {
         long overLimit = DocumentService.MAX_FILE_SIZE_BYTES + 1;
 
         assertThatThrownBy(() ->
-                documentService.validateUpload(1L, "application/pdf", overLimit)
+                documentService.validateUpload(1L, "application/pdf", "resume.pdf", overLimit)
         )
                 .isInstanceOf(ServiceException.class)
                 .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
@@ -99,7 +109,7 @@ class DocumentServiceTest {
         given(documentRepository.countByUserId(1L)).willReturn(DocumentService.MAX_DOCUMENT_COUNT);
 
         assertThatThrownBy(() ->
-                documentService.validateUpload(1L, "application/pdf", 1024L)
+                documentService.validateUpload(1L, "application/pdf", "resume.pdf", 1024L)
         )
                 .isInstanceOf(ServiceException.class)
                 .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
