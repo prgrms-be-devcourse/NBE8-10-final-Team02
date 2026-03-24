@@ -28,6 +28,7 @@ import java.time.Instant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -138,6 +139,76 @@ class InterviewQuestionSetApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.error.fieldErrors[0].field").value("questionText"));
     }
 
+    @Test
+    void deleteQuestion_returns204AndReordersRemainingQuestions() throws Exception {
+        User user = persistUser("interview-delete@example.com", "delete-owner");
+        Application application = persistApplication(user, "application-title");
+        InterviewQuestionSet questionSet = persistQuestionSet(user, application, 3);
+        persistQuestion(questionSet, 1, "첫 번째 질문");
+        InterviewQuestion secondQuestion = persistQuestion(questionSet, 2, "두 번째 질문");
+        persistQuestion(questionSet, 3, "세 번째 질문");
+
+        mockMvc.perform(delete("/api/v1/interview/question-sets/{questionSetId}/questions/{questionId}", questionSet.getId(), secondQuestion.getId())
+                        .with(authenticated(user.getId())))
+                .andExpect(status().isNoContent());
+
+        entityManager.flush();
+        entityManager.clear();
+
+        InterviewQuestionSet refreshedQuestionSet = entityManager.find(InterviewQuestionSet.class, questionSet.getId());
+        assertThat(refreshedQuestionSet.getQuestionCount()).isEqualTo(2);
+
+        assertThat(interviewQuestionRepository.findAllByQuestionSetIdOrderByQuestionOrderAsc(questionSet.getId()))
+                .extracting(InterviewQuestion::getQuestionOrder, InterviewQuestion::getQuestionText)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(1, "첫 번째 질문"),
+                        org.assertj.core.groups.Tuple.tuple(2, "세 번째 질문")
+                );
+    }
+
+    @Test
+    void deleteQuestion_returns400WhenDeletingLastRemainingQuestion() throws Exception {
+        User user = persistUser("interview-delete-last@example.com", "delete-last");
+        Application application = persistApplication(user, "application-title");
+        InterviewQuestionSet questionSet = persistQuestionSet(user, application, 1);
+        InterviewQuestion question = persistQuestion(questionSet, 1, "유일한 질문");
+
+        mockMvc.perform(delete("/api/v1/interview/question-sets/{questionSetId}/questions/{questionId}", questionSet.getId(), question.getId())
+                        .with(authenticated(user.getId())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.REQUEST_VALIDATION_FAILED.name()))
+                .andExpect(jsonPath("$.error.fieldErrors[0].field").value("questionId"));
+    }
+
+    @Test
+    void deleteQuestion_returns404WhenQuestionIsMissing() throws Exception {
+        User user = persistUser("interview-delete-missing@example.com", "delete-missing");
+        Application application = persistApplication(user, "application-title");
+        InterviewQuestionSet questionSet = persistQuestionSet(user, application, 2);
+        persistQuestion(questionSet, 1, "첫 번째 질문");
+        persistQuestion(questionSet, 2, "두 번째 질문");
+
+        mockMvc.perform(delete("/api/v1/interview/question-sets/{questionSetId}/questions/{questionId}", questionSet.getId(), 999999L)
+                        .with(authenticated(user.getId())))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.RESOURCE_NOT_FOUND.name()));
+    }
+
+    @Test
+    void deleteQuestion_returns409WhenQuestionSetAlreadyStarted() throws Exception {
+        User user = persistUser("interview-delete-locked@example.com", "delete-locked");
+        Application application = persistApplication(user, "application-title");
+        InterviewQuestionSet questionSet = persistQuestionSet(user, application, 2);
+        InterviewQuestion question = persistQuestion(questionSet, 1, "첫 번째 질문");
+        persistQuestion(questionSet, 2, "두 번째 질문");
+        persistStartedSession(user, questionSet);
+
+        mockMvc.perform(delete("/api/v1/interview/question-sets/{questionSetId}/questions/{questionId}", questionSet.getId(), question.getId())
+                        .with(authenticated(user.getId())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.INTERVIEW_QUESTION_SET_NOT_EDITABLE.name()));
+    }
+
     private RequestPostProcessor authenticated(long userId) {
         return authentication(new JwtAuthenticationToken(
                 userId,
@@ -185,7 +256,7 @@ class InterviewQuestionSetApiTest extends ApiTestBase {
         return questionSet;
     }
 
-    private void persistQuestion(InterviewQuestionSet questionSet, int order, String questionText) {
+    private InterviewQuestion persistQuestion(InterviewQuestionSet questionSet, int order, String questionText) {
         InterviewQuestion question = InterviewQuestion.builder()
                 .questionSet(questionSet)
                 .questionOrder(order)
@@ -195,6 +266,7 @@ class InterviewQuestionSetApiTest extends ApiTestBase {
                 .build();
         entityManager.persist(question);
         entityManager.flush();
+        return question;
     }
 
     private void persistStartedSession(User user, InterviewQuestionSet questionSet) {
