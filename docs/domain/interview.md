@@ -34,6 +34,7 @@ applies_to: interview-domain
 - `in_progress` 상태의 세션만 일반 답변 제출을 허용한다.
 - `paused` 상태는 재개 후 `in_progress`로 전환한 뒤 답변을 제출한다.
 - `completed`, `feedback_completed` 세션에는 추가 답변을 허용하지 않는다.
+- 세션 상세 조회는 복원 화면 기준으로 `currentQuestion`, 진행률 계산용 count, `resumeAvailable`, `lastActivityAt`를 함께 반환한다.
 - 일반 답변은 50자 이상 1000자 이하로 검증하고, 건너뛰기는 예외로 처리한다.
 - 사용자 1명당 동시에 진행 가능한 활성 세션은 1개다.
 - 세션 완료와 결과 저장은 논리적으로 일관되게 처리해야 한다.
@@ -44,6 +45,7 @@ applies_to: interview-domain
 - `POST /interview/question-sets/{questionSetId}/questions`
 - `DELETE /interview/question-sets/{questionSetId}/questions/{questionId}`
 - `POST /interview/sessions`
+- `GET /interview/sessions/{sessionId}`
 - `POST /interview/sessions/{sessionId}/answers`
 - `POST /interview/sessions/{sessionId}/complete`
 - `GET /interview/sessions/{sessionId}/result`

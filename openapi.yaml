@@ -354,6 +354,88 @@ components:
       - id
       - questionSetId
       - status
+    InterviewSessionCurrentQuestion:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        questionOrder:
+          type: integer
+        questionType:
+          type: string
+          enum:
+          - experience
+          - project
+          - technical_cs
+          - technical_stack
+          - behavioral
+          - follow_up
+        difficultyLevel:
+          type: string
+          enum:
+          - easy
+          - medium
+          - hard
+        questionText:
+          type: string
+      required:
+      - id
+      - questionOrder
+      - questionType
+      - difficultyLevel
+      - questionText
+    InterviewSessionDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        questionSetId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+          - ready
+          - in_progress
+          - paused
+          - completed
+          - feedback_completed
+          description: 'ready: 시작 전, in_progress: 진행 중, paused: 일시중지, completed: 종료,
+            feedback_completed: 피드백 완료'
+        currentQuestion:
+          allOf:
+          - $ref: '#/components/schemas/InterviewSessionCurrentQuestion'
+          nullable: true
+        totalQuestionCount:
+          type: integer
+        answeredQuestionCount:
+          type: integer
+        remainingQuestionCount:
+          type: integer
+        resumeAvailable:
+          type: boolean
+        lastActivityAt:
+          type: string
+          format: date-time
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - id
+      - questionSetId
+      - status
+      - totalQuestionCount
+      - answeredQuestionCount
+      - remainingQuestionCount
+      - resumeAvailable
     ErrorDetail:
       type: object
       properties:
@@ -2266,7 +2348,7 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    $ref: '#/components/schemas/InterviewSession'
+                    $ref: '#/components/schemas/InterviewSessionDetail'
                   meta:
                     $ref: '#/components/schemas/Meta'
                 required:
@@ -2277,8 +2359,25 @@ paths:
                 sessionDetailSuccess:
                   value:
                     success: true
-                    data: *id006
+                    data:
+                      id: 901
+                      questionSetId: 701
+                      status: paused
+                      currentQuestion:
+                        id: 802
+                        questionOrder: 2
+                        questionType: project
+                        difficultyLevel: medium
+                        questionText: 프로젝트에서 가장 어려웠던 장애 대응 경험을 설명해주세요.
+                      totalQuestionCount: 5
+                      answeredQuestionCount: 1
+                      remainingQuestionCount: 4
+                      resumeAvailable: true
+                      lastActivityAt: '2026-03-17T10:36:00Z'
+                      startedAt: '2026-03-17T10:35:00Z'
+                      endedAt: null
                     meta: *id001
+      description: 세션 복원 화면이 한 번의 조회로 그려질 수 있도록 현재 질문, 진행률, 남은 질문 수, resume 가능 여부, 마지막 활동 시각을 함께 반환한다.
   /interview/sessions/{sessionId}/answers:
     post:
       tags:

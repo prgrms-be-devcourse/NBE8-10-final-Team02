@@ -597,6 +597,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 일반 답변은 50자 미만 제출 차단
 - 일반 답변은 1000자 초과 차단
 - `건너뛰기`는 별도 버튼으로 처리
+- 세션 진입 시 `GET /interview/sessions/{sessionId}` 한 번으로 현재 질문, 진행률, 남은 질문 수, `resumeAvailable`, `lastActivityAt`를 구성한다.
 - 새로고침/브라우저 이탈 후 30분 이내 복원 안내
 - 30분 이상 미입력 시 자동 일시정지
 - 완료된 세션에는 추가 입력 불가
