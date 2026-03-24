@@ -16,6 +16,8 @@ spring:
   flyway:
     enabled: true
 
+  # 팀에서 Redis 사용보류로 결정했으나, Redis 설정을 추가한 브랜치가 머지될 경우
+  # PlaceholderResolutionException 방지용 더미값
   data:
     redis:
       host: localhost
@@ -27,13 +29,17 @@ spring:
       client:
         registration:
           github:
-            clientId: ${GITHUB_CLIENT_ID_LOCAL:}
-            clientSecret: ${GITHUB_CLIENT_SECRET_LOCAL:}
+            clientId: ${GITHUB_CLIENT_ID_LOCAL:test-github-client-id}
+            clientSecret: ${GITHUB_CLIENT_SECRET_LOCAL:test-github-client-secret}
           google:
-            clientId: ${GOOGLE_CLIENT_ID:}
-            clientSecret: ${GOOGLE_CLIENT_SECRET:}
+            clientId: ${GOOGLE_CLIENT_ID:test-google-client-id}
+            clientSecret: ${GOOGLE_CLIENT_SECRET:test-google-client-secret}
           kakao:
-            clientId: ${KAKAO_CLIENT_ID:}
+            clientId: ${KAKAO_CLIENT_ID:test-kakao-client-id}
+
+app:
+  storage:
+    upload-dir: /tmp/test-uploads #파일업로드 위치
 
 ai:
   gemini:

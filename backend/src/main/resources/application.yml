@@ -49,6 +49,10 @@ management:
     tags:
       application: spring-app # Prometheus 설정의 job_name과 맞춰주는 것이 좋습니다.
 
+app:
+  storage:
+    upload-dir: uploads
+
 ai:
   provider: gemini
   gemini:
