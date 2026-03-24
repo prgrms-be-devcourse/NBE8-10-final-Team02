@@ -21,7 +21,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.time.Clock;
 import java.time.Instant;
 
-import com.back.backend.application.repository.ApplicationSourceDocumentRepository;
+import com.back.backend.domain.application.repository.ApplicationSourceDocumentRepository;
 
 import java.util.List;
 import java.util.Optional;
