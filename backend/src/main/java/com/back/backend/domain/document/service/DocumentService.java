@@ -1,6 +1,6 @@
 package com.back.backend.domain.document.service;
 
-import com.back.backend.application.repository.ApplicationSourceDocumentRepository;
+import com.back.backend.domain.application.repository.ApplicationSourceDocumentRepository;
 import com.back.backend.domain.document.dto.DocumentResponse;
 import com.back.backend.domain.document.repository.DocumentRepository;
 import com.back.backend.domain.document.storage.DocumentStorageService;
