@@ -2,7 +2,7 @@
 owner: 면접 세션/서비스 흐름 + 대시보드/히스토리
 reviewer: 프론트 협업자
 status: reviewed
-last_updated: 2026-03-18
+last_updated: 2026-03-24
 linked_issue_or_pr: docs-sync-screen-wbs-v6
 applies_to: screen-state-route
 ---
@@ -535,7 +535,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 질문 리스트
 - 질문 카테고리/난이도
 - 개별 삭제
-- 수동 질문 추가
+- 수동 질문 추가 입력(question text, question type, difficulty level)
 - 선택 질문 수 표시
 - `모의 면접 시작`
 
@@ -546,6 +546,10 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 활성 세션 존재
 
 ### 검증/예외
+- 질문 세트 편집은 세션 시작 전까지만 허용한다.
+- 수동 질문 추가 1차 범위는 독립 질문만 허용하고 `follow_up`와 `parentQuestionId`는 받지 않는다.
+- 질문 삭제는 hard delete로 처리하고, 삭제 후 남은 질문 순서는 서버가 자동 재정렬한다.
+- 질문 추가/삭제 시 질문 순서는 사용자가 직접 조정하지 않고 서버 응답 기준으로 다시 그린다.
 - 실제 세션 시작 시 질문 수가 3개 이상 20개 이하인지 검증
 - 활성 세션이 이미 있으면 새 세션 시작 대신 기존 세션 이동 유도
 
