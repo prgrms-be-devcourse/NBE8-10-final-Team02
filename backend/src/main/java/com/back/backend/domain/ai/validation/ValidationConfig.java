@@ -13,11 +13,10 @@ public class ValidationConfig {
 
     /**
      * AI 응답 JSON 파싱 및 schema 검증 담당
-     * Spring이 제공하는 ObjectMapper를 주입받아 생성
      */
     @Bean
-    public JsonSchemaValidator jsonSchemaValidator(ObjectMapper objectMapper) {
-        return new JsonSchemaValidator(objectMapper);
+    public JsonSchemaValidator jsonSchemaValidator() {
+        return new JsonSchemaValidator(new ObjectMapper());
     }
 
     /**
