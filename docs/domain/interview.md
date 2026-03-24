@@ -33,10 +33,16 @@ applies_to: interview-domain
 - `ready` 상태는 시작 전 상태이며 답변 제출을 허용하지 않는다.
 - `in_progress` 상태의 세션만 일반 답변 제출을 허용한다.
 - `paused` 상태는 재개 후 `in_progress`로 전환한 뒤 답변을 제출한다.
+- `pause/resume`은 상태 필드 일반 수정이 아니라 명시적 액션 API로 처리한다.
 - `completed`, `feedback_completed` 세션에는 추가 답변을 허용하지 않는다.
 - 세션 상세 조회는 복원 화면 기준으로 `currentQuestion`, 진행률 계산용 count, `resumeAvailable`, `lastActivityAt`를 함께 반환한다.
 - 일반 답변은 50자 이상 1000자 이하로 검증하고, 건너뛰기는 예외로 처리한다.
 - 사용자 1명당 동시에 진행 가능한 활성 세션은 1개다.
+- 활성 세션은 `in_progress + paused`로 본다.
+- 활성 세션이 있으면 새 세션 시작보다 기존 세션 복귀 또는 재개를 우선한다.
+- 자동 일시정지 v1은 스케줄러보다 `lastActivityAt` 기반 요청 시점 전이로 처리한다.
+- v1 자동 일시정지 조건 평가는 최소 `GET /interview/sessions/{sessionId}`, `POST /interview/sessions/{sessionId}/answers`, `POST /interview/sessions/{sessionId}/resume` 진입 시점에 수행한다.
+- `lastActivityAt`는 세션 생성, 답변 제출 성공, 재개 성공 시점에 갱신한다.
 - 세션 완료와 결과 저장은 논리적으로 일관되게 처리해야 한다.
 
 ## 주요 API
@@ -46,6 +52,8 @@ applies_to: interview-domain
 - `DELETE /interview/question-sets/{questionSetId}/questions/{questionId}`
 - `POST /interview/sessions`
 - `GET /interview/sessions/{sessionId}`
+- `POST /interview/sessions/{sessionId}/pause`
+- `POST /interview/sessions/{sessionId}/resume`
 - `POST /interview/sessions/{sessionId}/answers`
 - `POST /interview/sessions/{sessionId}/complete`
 - `GET /interview/sessions/{sessionId}/result`

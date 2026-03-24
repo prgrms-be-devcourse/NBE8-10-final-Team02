@@ -436,6 +436,24 @@ components:
       - answeredQuestionCount
       - remainingQuestionCount
       - resumeAvailable
+    InterviewSessionTransitionData:
+      type: object
+      properties:
+        sessionId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+          - in_progress
+          - paused
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - sessionId
+      - status
+      - updatedAt
     ErrorDetail:
       type: object
       properties:
@@ -2270,7 +2288,7 @@ paths:
                       endedAt: null
                     meta: *id001
         '409':
-          description: 이미 진행 중인 세션이 존재함
+          description: 이미 활성 세션이 존재함
           content:
             application/json:
               schema:
@@ -2281,11 +2299,11 @@ paths:
                     success: false
                     error:
                       code: INTERVIEW_SESSION_ALREADY_ACTIVE
-                      message: 이미 진행 중인 면접 세션이 있습니다.
+                      message: 이미 활성 면접 세션이 있습니다.
                       retryable: false
                     meta: *id001
-      description: 면접 세션을 시작한다. 사용자당 동시에 진행 가능한 활성 세션은 1개다. 세션 시작 전 질문 세트는 실제 사용
-        질문 수 기준 3개 이상 20개 이하인지 검증한다.
+      description: 면접 세션을 시작한다. 사용자당 동시에 진행 가능한 활성 세션은 1개다. 활성 세션은 `in_progress`와 `paused`
+        를 포함한다. 세션 시작 전 질문 세트는 실제 사용 질문 수 기준 3개 이상 20개 이하인지 검증한다.
     get:
       tags:
       - Interview
@@ -2378,6 +2396,91 @@ paths:
                       endedAt: null
                     meta: *id001
       description: 세션 복원 화면이 한 번의 조회로 그려질 수 있도록 현재 질문, 진행률, 남은 질문 수, resume 가능 여부, 마지막 활동 시각을 함께 반환한다.
+        v1 자동 일시정지는 이 조회 요청 진입 시점에도 `lastActivityAt` 기준으로 평가하며, 30분 초과 상태의 `in_progress`
+        세션은 `paused`로 정규화한다.
+  /interview/sessions/{sessionId}/pause:
+    post:
+      tags:
+      - Interview
+      summary: 세션 일시정지
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: 일시정지 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/InterviewSessionTransitionData'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                sessionPauseSuccess:
+                  value:
+                    success: true
+                    data:
+                      sessionId: 901
+                      status: paused
+                      updatedAt: '2026-03-17T10:37:00Z'
+                    meta: *id001
+      description: 진행 중인 세션을 명시적으로 일시정지한다. `pause/resume`은 일반 상태 필드 수정이 아니라 액션 API로 처리한다.
+  /interview/sessions/{sessionId}/resume:
+    post:
+      tags:
+      - Interview
+      summary: 세션 재개
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: 재개 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/InterviewSessionTransitionData'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                sessionResumeSuccess:
+                  value:
+                    success: true
+                    data:
+                      sessionId: 901
+                      status: in_progress
+                      updatedAt: '2026-03-17T10:38:00Z'
+                    meta: *id001
+      description: 일시정지된 세션을 재개한다. v1 자동 일시정지 정책은 재개 요청 진입 시점에도 `lastActivityAt` 기준으로 먼저
+        평가한다.
   /interview/sessions/{sessionId}/answers:
     post:
       tags:
@@ -2462,6 +2565,23 @@ paths:
                       - field: answerText
                         reason: min_50
                     meta: *id001
+        '409':
+          description: 진행 가능한 세션이 아님
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                sessionNotActive:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_SESSION_NOT_ACTIVE
+                      message: 진행 가능한 면접 세션이 아닙니다. 재개 후 다시 시도해주세요.
+                      retryable: false
+                    meta: *id001
+      description: 세션 답변을 저장한다. 일반 답변은 `in_progress` 상태에서만 허용한다. v1 자동 일시정지는 답변 제출 요청 진입
+        시점에도 `lastActivityAt` 기준으로 평가하며, 30분 초과 상태의 세션은 `paused`로 정규화한 뒤 답변 제출을 막는다.
   /interview/sessions/{sessionId}/complete:
     post:
       tags:
