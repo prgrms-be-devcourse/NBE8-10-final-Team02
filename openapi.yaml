@@ -2298,10 +2298,58 @@ paths:
           type: integer
           format: int64
       responses:
+        '400':
+          description: 마지막 남은 질문은 삭제할 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lastQuestionDeleteRejected:
+                  value:
+                    success: false
+                    error:
+                      code: REQUEST_VALIDATION_FAILED
+                      message: 질문 세트는 최소 1개 질문을 유지해야 합니다.
+                      retryable: false
+                      fieldErrors:
+                      - field: questionId
+                        reason: min_1
+                    meta: *id001
+        '404':
+          description: 질문 세트 또는 질문을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                interviewQuestionNotFound:
+                  value:
+                    success: false
+                    error:
+                      code: RESOURCE_NOT_FOUND
+                      message: 질문을 찾을 수 없습니다.
+                      retryable: false
+                    meta: *id001
+        '409':
+          description: 이미 시작된 질문 세트는 편집할 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                deleteQuestionSetNotEditable:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_QUESTION_SET_NOT_EDITABLE
+                      message: 이미 면접이 시작된 질문 세트는 수정할 수 없습니다.
+                      retryable: false
+                    meta: *id001
         '204':
           description: 질문 삭제 성공
       description: 세션 시작 전 질문 세트에서 질문을 hard delete 한다. 삭제 후 남은 질문의 questionOrder는 서버가 빈 번호 없이
-        1..N 형태로 다시 정렬한다.
+        1..N 형태로 다시 정렬한다. 질문 세트는 최소 1개 질문을 유지해야 하므로 마지막 남은 질문 삭제는 허용하지 않는다.
   /interview/sessions:
     post:
       tags:

@@ -26,6 +26,7 @@ applies_to: interview-domain
 - 질문 세트 편집은 세션 시작 전까지만 허용한다.
 - 세션이 한 번이라도 시작된 질문 세트에 대한 편집 요청은 `INTERVIEW_QUESTION_SET_NOT_EDITABLE`로 거절한다.
 - 질문 세트 편집 1차 범위는 질문 개별 삭제와 수동 질문 추가다.
+- 질문 세트는 최소 1개 질문을 유지해야 하므로 마지막 남은 질문 삭제는 허용하지 않는다.
 - 질문 삭제는 `hard delete`로 처리하고, 삭제 후 남은 질문의 `question_order`는 서버가 빈 번호 없이 `1..N`으로 재정렬한다.
 - 수동 질문 추가 1차 범위는 독립 질문만 허용하며 `follow_up`, `parentQuestionId`는 받지 않는다.
 - 질문 세트 편집 시 `question_order`는 클라이언트가 직접 정하지 않고 서버가 관리한다.
