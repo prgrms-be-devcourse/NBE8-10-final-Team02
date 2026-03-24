@@ -68,6 +68,43 @@ public class InterviewQuestionSetService {
         return interviewResponseMapper.toInterviewQuestionResponse(savedQuestion);
     }
 
+    @Transactional
+    public void deleteQuestion(long userId, long questionSetId, long questionId) {
+        InterviewQuestionSet questionSet = getOwnedQuestionSet(userId, questionSetId);
+        validateEditable(questionSet.getId());
+
+        InterviewQuestion question = interviewQuestionRepository.findByIdAndQuestionSetId(questionId, questionSetId)
+                .orElseThrow(() -> new ServiceException(
+                        ErrorCode.RESOURCE_NOT_FOUND,
+                        HttpStatus.NOT_FOUND,
+                        "질문을 찾을 수 없습니다."
+                ));
+
+        List<InterviewQuestion> questions = interviewQuestionRepository.findAllByQuestionSetIdOrderByQuestionOrderAsc(questionSetId);
+        if (questions.size() <= 1) {
+            throw new ServiceException(
+                    ErrorCode.REQUEST_VALIDATION_FAILED,
+                    HttpStatus.BAD_REQUEST,
+                    "질문 세트는 최소 1개 질문을 유지해야 합니다.",
+                    false,
+                    List.of(new FieldErrorDetail("questionId", "min_1"))
+            );
+        }
+
+        interviewQuestionRepository.delete(question);
+        interviewQuestionRepository.flush();
+
+        List<InterviewQuestion> remainingQuestions = questions.stream()
+                .filter(candidate -> !candidate.getId().equals(questionId))
+                .toList();
+
+        for (int index = 0; index < remainingQuestions.size(); index++) {
+            remainingQuestions.get(index).changeQuestionOrder(index + 1);
+        }
+
+        questionSet.changeQuestionCount(remainingQuestions.size());
+    }
+
     private InterviewQuestionSet getOwnedQuestionSet(long userId, long questionSetId) {
         return interviewQuestionSetRepository.findByIdAndUserId(questionSetId, userId)
                 .orElseThrow(() -> new ServiceException(
