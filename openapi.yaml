@@ -221,7 +221,7 @@ components:
           enum:
           - draft
           - ready
-          description: 'draft: 작업 중, ready: 면접 질문 생성과 이후 흐름에 사용할 기준 데이터 준비 완료'
+          description: 'draft: 작업 중, ready: jobRole, 1개 이상 source, 1개 이상 question, 모든 question의 유효 답변이 준비되어 면접 질문 생성과 이후 흐름에 사용할 수 있는 상태'
         createdAt:
           type: string
           format: date-time
@@ -354,6 +354,106 @@ components:
       - id
       - questionSetId
       - status
+    InterviewSessionCurrentQuestion:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        questionOrder:
+          type: integer
+        questionType:
+          type: string
+          enum:
+          - experience
+          - project
+          - technical_cs
+          - technical_stack
+          - behavioral
+          - follow_up
+        difficultyLevel:
+          type: string
+          enum:
+          - easy
+          - medium
+          - hard
+        questionText:
+          type: string
+      required:
+      - id
+      - questionOrder
+      - questionType
+      - difficultyLevel
+      - questionText
+    InterviewSessionDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        questionSetId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+          - ready
+          - in_progress
+          - paused
+          - completed
+          - feedback_completed
+          description: 'ready: 시작 전, in_progress: 진행 중, paused: 일시중지, completed: 종료,
+            feedback_completed: 피드백 완료'
+        currentQuestion:
+          allOf:
+          - $ref: '#/components/schemas/InterviewSessionCurrentQuestion'
+          nullable: true
+        totalQuestionCount:
+          type: integer
+        answeredQuestionCount:
+          type: integer
+        remainingQuestionCount:
+          type: integer
+        resumeAvailable:
+          type: boolean
+        lastActivityAt:
+          type: string
+          format: date-time
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - id
+      - questionSetId
+      - status
+      - totalQuestionCount
+      - answeredQuestionCount
+      - remainingQuestionCount
+      - resumeAvailable
+    InterviewSessionTransitionData:
+      type: object
+      properties:
+        sessionId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+          - in_progress
+          - paused
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - sessionId
+      - status
+      - updatedAt
     ErrorDetail:
       type: object
       properties:
@@ -1547,6 +1647,7 @@ paths:
                   enum:
                   - draft
                   - ready
+                  description: ready는 jobRole, 1개 이상 source, 1개 이상 question, 모든 question의 유효 답변이 준비된 경우에만 허용한다.
                 applicationType:
                   type: string
       responses:
@@ -1581,6 +1682,21 @@ paths:
                       createdAt: '2026-03-17T10:32:00Z'
                       updatedAt: '2026-03-17T10:33:10Z'
                       applicationType: 신입
+                    meta: *id001
+        '409':
+          description: ready 승격 조건을 만족하지 못함
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                applicationStatusConflict:
+                  value:
+                    success: false
+                    error:
+                      code: APPLICATION_STATUS_CONFLICT
+                      message: 지원 준비가 아직 완료되지 않았습니다. source, 문항, 답변을 확인해주세요.
+                      retryable: false
                     meta: *id001
     delete:
       tags:
@@ -2040,6 +2156,104 @@ paths:
                         sourceApplicationQuestionId: null
                       createdAt: '2026-03-17T10:34:00Z'
                     meta: *id001
+      description: 질문 세트 상세를 조회한다. 세션 시작 전에는 이 상세 화면을 기준으로 질문 검토와 편집을 진행한다.
+  /interview/question-sets/{questionSetId}/questions:
+    post:
+      tags:
+      - Interview
+      summary: 면접 질문 세트에 수동 질문 추가
+      parameters:
+      - name: questionSetId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                questionText:
+                  type: string
+                questionType:
+                  type: string
+                  enum:
+                  - experience
+                  - project
+                  - technical_cs
+                  - technical_stack
+                  - behavioral
+                  description: 1차 범위에서는 독립 질문만 허용하며 follow_up은 받지 않는다.
+                difficultyLevel:
+                  type: string
+                  enum:
+                  - easy
+                  - medium
+                  - hard
+              required:
+              - questionText
+              - questionType
+              - difficultyLevel
+      responses:
+        '201':
+          description: 수동 질문 추가 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/InterviewQuestion'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                manualQuestionAddSuccess:
+                  value:
+                    success: true
+                    data:
+                      id: 803
+                      questionOrder: 3
+                      questionType: behavioral
+                      difficultyLevel: medium
+                      questionText: 이 회사에 지원한 이유를 설명해주세요.
+                      parentQuestionId: null
+                      sourceApplicationQuestionId: null
+                    meta: *id001
+      description: 세션 시작 전 질문 세트에 수동 질문을 추가한다. questionOrder는 요청으로 받지 않으며 서버가 마지막 순번 다음 값으로
+        자동 부여한다. 1차 범위에서는 독립 질문만 허용하고 parentQuestionId는 받지 않는다.
+  /interview/question-sets/{questionSetId}/questions/{questionId}:
+    delete:
+      tags:
+      - Interview
+      summary: 면접 질문 세트에서 질문 개별 삭제
+      parameters:
+      - name: questionSetId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: questionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '204':
+          description: 질문 삭제 성공
+      description: 세션 시작 전 질문 세트에서 질문을 hard delete 한다. 삭제 후 남은 질문의 questionOrder는 서버가 빈 번호 없이
+        1..N 형태로 다시 정렬한다.
   /interview/sessions:
     post:
       tags:
@@ -2090,7 +2304,7 @@ paths:
                       endedAt: null
                     meta: *id001
         '409':
-          description: 이미 진행 중인 세션이 존재함
+          description: 이미 활성 세션이 존재함
           content:
             application/json:
               schema:
@@ -2101,10 +2315,11 @@ paths:
                     success: false
                     error:
                       code: INTERVIEW_SESSION_ALREADY_ACTIVE
-                      message: 이미 진행 중인 면접 세션이 있습니다.
+                      message: 이미 활성 면접 세션이 있습니다.
                       retryable: false
                     meta: *id001
-      description: 면접 세션을 시작한다. 사용자당 동시에 진행 가능한 활성 세션은 1개다.
+      description: 면접 세션을 시작한다. 사용자당 동시에 진행 가능한 활성 세션은 1개다. 활성 세션은 `in_progress`와 `paused`
+        를 포함한다. 세션 시작 전 질문 세트는 실제 사용 질문 수 기준 3개 이상 20개 이하인지 검증한다.
     get:
       tags:
       - Interview
@@ -2167,7 +2382,7 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    $ref: '#/components/schemas/InterviewSession'
+                    $ref: '#/components/schemas/InterviewSessionDetail'
                   meta:
                     $ref: '#/components/schemas/Meta'
                 required:
@@ -2178,8 +2393,110 @@ paths:
                 sessionDetailSuccess:
                   value:
                     success: true
-                    data: *id006
+                    data:
+                      id: 901
+                      questionSetId: 701
+                      status: paused
+                      currentQuestion:
+                        id: 802
+                        questionOrder: 2
+                        questionType: project
+                        difficultyLevel: medium
+                        questionText: 프로젝트에서 가장 어려웠던 장애 대응 경험을 설명해주세요.
+                      totalQuestionCount: 5
+                      answeredQuestionCount: 1
+                      remainingQuestionCount: 4
+                      resumeAvailable: true
+                      lastActivityAt: '2026-03-17T10:36:00Z'
+                      startedAt: '2026-03-17T10:35:00Z'
+                      endedAt: null
                     meta: *id001
+      description: 세션 복원 화면이 한 번의 조회로 그려질 수 있도록 현재 질문, 진행률, 남은 질문 수, resume 가능 여부, 마지막 활동 시각을 함께 반환한다.
+        v1 자동 일시정지는 이 조회 요청 진입 시점에도 `lastActivityAt` 기준으로 평가하며, 30분 초과 상태의 `in_progress`
+        세션은 `paused`로 정규화한다.
+  /interview/sessions/{sessionId}/pause:
+    post:
+      tags:
+      - Interview
+      summary: 세션 일시정지
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: 일시정지 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/InterviewSessionTransitionData'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                sessionPauseSuccess:
+                  value:
+                    success: true
+                    data:
+                      sessionId: 901
+                      status: paused
+                      updatedAt: '2026-03-17T10:37:00Z'
+                    meta: *id001
+      description: 진행 중인 세션을 명시적으로 일시정지한다. `pause/resume`은 일반 상태 필드 수정이 아니라 액션 API로 처리한다.
+  /interview/sessions/{sessionId}/resume:
+    post:
+      tags:
+      - Interview
+      summary: 세션 재개
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: 재개 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/InterviewSessionTransitionData'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                sessionResumeSuccess:
+                  value:
+                    success: true
+                    data:
+                      sessionId: 901
+                      status: in_progress
+                      updatedAt: '2026-03-17T10:38:00Z'
+                    meta: *id001
+      description: 일시정지된 세션을 재개한다. v1 자동 일시정지 정책은 재개 요청 진입 시점에도 `lastActivityAt` 기준으로 먼저
+        평가한다.
   /interview/sessions/{sessionId}/answers:
     post:
       tags:
@@ -2264,6 +2581,23 @@ paths:
                       - field: answerText
                         reason: min_50
                     meta: *id001
+        '409':
+          description: 진행 가능한 세션이 아님
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                sessionNotActive:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_SESSION_NOT_ACTIVE
+                      message: 진행 가능한 면접 세션이 아닙니다. 재개 후 다시 시도해주세요.
+                      retryable: false
+                    meta: *id001
+      description: 세션 답변을 저장한다. 일반 답변은 `in_progress` 상태에서만 허용한다. v1 자동 일시정지는 답변 제출 요청 진입
+        시점에도 `lastActivityAt` 기준으로 평가하며, 30분 초과 상태의 세션은 `paused`로 정규화한 뒤 답변 제출을 막는다.
   /interview/sessions/{sessionId}/complete:
     post:
       tags:
