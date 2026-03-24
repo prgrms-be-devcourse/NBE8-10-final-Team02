@@ -33,6 +33,10 @@ public class PromptLoader {
         return cache.computeIfAbsent(filePath, this::loadFromClasspath);
     }
 
+    /**
+     * classpath에서 파일을 읽어 문자열로 반환
+     * ConcurrentHashMap.computeIfAbsent()의 매핑 함수로 사용되며, 키당 1회만 실행
+     */
     private String loadFromClasspath(String filePath) {
         String fullPath = BASE_PATH + filePath;
         ClassPathResource resource = new ClassPathResource(fullPath);

@@ -30,6 +30,11 @@ class AiPipelineTest {
     private ValidationRegistry validationRegistry;
     private AiPipeline pipeline;
 
+    /**
+     * AiClient, ValidationRegistry는 mock으로 격리하여 AI 호출/검증 결과를 제어
+     * PromptTemplateRegistry, PromptLoader, JsonSchemaValidator는 실제 인스턴스 사용
+     * → 템플릿 조회, 프롬프트 로딩, JSON 파싱은 실제 동작을 검증
+     */
     @BeforeEach
     void setUp() {
         router = mock(AiClientRouter.class);
@@ -49,7 +54,7 @@ class AiPipelineTest {
         );
     }
 
-    // 성공 흐름
+    // ── #38: 성공 흐름 테스트 ──────────────────────────────────────
 
     @Test
     @DisplayName("정상 응답이 오면 검증 통과 후 JsonNode를 반환한다")
@@ -75,7 +80,7 @@ class AiPipelineTest {
         assertThat(result).isNotNull();
     }
 
-    // 재시도/실패 케이스
+    // ── #39: 재시도/실패 케이스 테스트 ────────────────────────────────
 
     @Test
     @DisplayName("1회 파싱 실패 후 재시도 성공")
@@ -132,6 +137,7 @@ class AiPipelineTest {
         verify(mockAiClient, times(1)).call(any());
     }
 
+    /** 테스트용 AiResponse 생성 헬퍼 — TokenUsage는 고정값 사용 */
     private AiResponse response(String content) {
         return new AiResponse(content, new AiResponse.TokenUsage(100, 200, 300));
     }

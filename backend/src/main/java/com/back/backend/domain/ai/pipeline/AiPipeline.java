@@ -32,6 +32,13 @@ public class AiPipeline {
     private final PromptLoader promptLoader;
     private final JsonSchemaValidator jsonSchemaValidator;
 
+    /**
+     * @param router              AI provider 라우터 — getDefault()로 기본 provider의 AiClient 반환
+     * @param templateRegistry    6개 프롬프트 템플릿 조회 (templateId → PromptTemplate)
+     * @param validationRegistry  6개 응답 검증기 조회 (templateId → AiResponseValidator)
+     * @param promptLoader        classpath .txt 프롬프트 파일 로딩 (캐싱)
+     * @param jsonSchemaValidator AI 응답 JSON 파싱 및 schema 검증
+     */
     public AiPipeline(
         AiClientRouter router,
         PromptTemplateRegistry templateRegistry,
@@ -70,6 +77,8 @@ public class AiPipeline {
             template.maxTokens()
         );
 
+        // 재시도 루프: maxRetries=2이면 최대 3회 시도 (attempt: 0, 1, 2)
+        // 파싱/검증 실패만 재시도, AiClientException(네트워크/API 오류)은 즉시 전파
         int maxRetries = template.retryPolicy().maxRetries();
         List<String> lastErrors = List.of();
 

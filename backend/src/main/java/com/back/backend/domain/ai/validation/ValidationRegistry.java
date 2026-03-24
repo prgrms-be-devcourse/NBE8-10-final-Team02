@@ -16,6 +16,14 @@ public class ValidationRegistry {
         this.validators = validators;
     }
 
+    /**
+     * templateId에 해당하는 검증기를 반환
+     * AiPipeline에서 AI 응답 검증 시 사용
+     *
+     * @param templateId 프롬프트 템플릿 ID (예: "ai.portfolio.summary.v1")
+     * @return 해당 템플릿의 AiResponseValidator
+     * @throws IllegalArgumentException 등록되지 않은 templateId
+     */
     public AiResponseValidator get(String templateId) {
         AiResponseValidator validator = validators.get(templateId);
         if (validator == null) {
