@@ -523,6 +523,7 @@ applies_to: error-classification-and-response
 
 - `INTERVIEW_QUESTION_GENERATION_FAILED`
 - `INTERVIEW_QUESTION_RESULT_INVALID`
+- `INTERVIEW_QUESTION_SET_NOT_EDITABLE`
 - `INTERVIEW_SESSION_NOT_FOUND`
 - `INTERVIEW_SESSION_ALREADY_ACTIVE`
 - `INTERVIEW_SESSION_ALREADY_COMPLETED`
@@ -554,6 +555,7 @@ applies_to: error-classification-and-response
 | 포트폴리오 데이터 없음 | 422 | APPLICATION_SOURCE_REQUIRED | 포트폴리오 데이터를 먼저 등록해주세요. | false |
 | 지원 단위를 ready로 변경할 수 없음 | 409 | APPLICATION_STATUS_CONFLICT | 지원 준비가 아직 완료되지 않았습니다. source, 문항, 답변을 확인해주세요. | false |
 | 자소서 생성 timeout | 503 | SELF_INTRO_GENERATION_TIMEOUT | 생성 시간이 길어지고 있습니다. 잠시 후 다시 시도해주세요. | true |
+| 세션이 시작된 질문 세트를 수정하려고 함 | 409 | INTERVIEW_QUESTION_SET_NOT_EDITABLE | 이미 면접이 시작된 질문 세트는 수정할 수 없습니다. | false |
 | 활성 세션이 이미 존재함 | 409 | INTERVIEW_SESSION_ALREADY_ACTIVE | 이미 활성 면접 세션이 있습니다. | false |
 | 일시정지 등 진행 불가 상태에서 답변 제출 | 409 | INTERVIEW_SESSION_NOT_ACTIVE | 진행 가능한 면접 세션이 아닙니다. 재개 후 다시 시도해주세요. | false |
 | 면접 답변이 50자 미만 | 400 | INTERVIEW_ANSWER_TOO_SHORT | 답변은 50자 이상 입력해주세요. | false |
