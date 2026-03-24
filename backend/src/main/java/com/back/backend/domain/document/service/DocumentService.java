@@ -2,6 +2,7 @@ package com.back.backend.domain.document.service;
 
 import com.back.backend.domain.application.repository.ApplicationSourceDocumentRepository;
 import com.back.backend.domain.document.dto.DocumentResponse;
+import com.back.backend.domain.document.event.DocumentUploadedEvent;
 import com.back.backend.domain.document.repository.DocumentRepository;
 import com.back.backend.domain.document.storage.DocumentStorageService;
 import com.back.backend.domain.document.entity.Document;
@@ -12,6 +13,7 @@ import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import com.back.backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +54,8 @@ public class DocumentService {
     private final UserRepository userRepository;
     private final ApplicationSourceDocumentRepository applicationSourceDocumentRepository;
     private final Clock clock;
+    // 업로드 완료 후 텍스트 추출 파이프라인을 비동기로 트리거하기 위한 publisher
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 업로드 전 유효성을 검사한다.
@@ -135,7 +139,13 @@ public class DocumentService {
             .uploadedAt(clock.instant())
             .build();
 
-        return DocumentResponse.from(documentRepository.save(document));
+        Document saved = documentRepository.save(document);
+
+        // 트랜잭션 커밋 후 DocumentExtractionService가 이 이벤트를 수신해 비동기로 텍스트 추출을 시작한다
+        eventPublisher.publishEvent(
+            new DocumentUploadedEvent(saved.getId(), saved.getStoragePath(), saved.getMimeType()));
+
+        return DocumentResponse.from(saved);
     }
 
     // 사용자의 전체 문서 목록을 반환한다

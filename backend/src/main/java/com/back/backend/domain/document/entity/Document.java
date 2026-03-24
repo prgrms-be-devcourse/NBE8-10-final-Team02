@@ -94,4 +94,27 @@ public class Document extends BaseEntity {
     /** 텍스트 추출 완료 시각. 추출 전이거나 실패한 경우 null이다. */
     @Column(name = "extracted_at")
     private Instant extractedAt;
+
+    /**
+     * 텍스트 추출이 성공한 경우 호출한다.
+     * extractStatus를 SUCCESS로, extractedText와 extractedAt을 설정한다.
+     *
+     * @param text      추출된 텍스트 (마스킹 전 원문; 이후 PII 마스킹 파이프라인에서 처리 예정)
+     * @param extractedAt 추출 완료 시각
+     */
+    public void markExtracted(String text, Instant extractedAt) {
+        this.extractedText = text;
+        this.extractedAt = extractedAt;
+        this.extractStatus = DocumentExtractStatus.SUCCESS;
+    }
+
+    /**
+     * 텍스트 추출이 실패한 경우 호출한다.
+     * extractStatus를 FAILED로 설정하고 텍스트 관련 필드는 null로 유지한다.
+     */
+    public void markFailed() {
+        this.extractStatus = DocumentExtractStatus.FAILED;
+        this.extractedText = null;
+        this.extractedAt = null;
+    }
 }
