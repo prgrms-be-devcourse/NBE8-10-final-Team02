@@ -1,0 +1,49 @@
+package com.back.backend.domain.ai.validation;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * AI 응답 검증기 레지스트리
+ * templateId → AiResponseValidator 조회
+ * 생성 후 불변 — 외부에서 추가/수정 불가
+ */
+public class ValidationRegistry {
+
+    private final Map<String, AiResponseValidator> validators;
+
+    private ValidationRegistry(Map<String, AiResponseValidator> validators) {
+        this.validators = validators;
+    }
+
+    public AiResponseValidator get(String templateId) {
+        AiResponseValidator validator = validators.get(templateId);
+        if (validator == null) {
+            throw new IllegalArgumentException("등록되지 않은 templateId: " + templateId);
+        }
+        return validator;
+    }
+
+    /**
+     * 6개 기본 검증기가 모두 등록된 불변 레지스트리를 생성
+     */
+    public static ValidationRegistry createDefault(JsonSchemaValidator jsonSchemaValidator) {
+        Map<String, AiResponseValidator> map = new HashMap<>();
+
+        AiResponseValidator[] validators = {
+            new PortfolioSummaryValidator(jsonSchemaValidator),
+            new SelfIntroGenerateValidator(jsonSchemaValidator),
+            new InterviewQuestionsGenerateValidator(jsonSchemaValidator),
+            new InterviewFollowupGenerateValidator(jsonSchemaValidator),
+            new InterviewEvaluateValidator(jsonSchemaValidator),
+            new InterviewSummaryValidator(jsonSchemaValidator)
+        };
+
+        for (AiResponseValidator validator : validators) {
+            map.put(validator.getTemplateId(), validator);
+        }
+
+        // Map.copyOf()로 불변 맵 생성 — 이후 수정 시도 시 UnsupportedOperationException
+        return new ValidationRegistry(Map.copyOf(map));
+    }
+}
