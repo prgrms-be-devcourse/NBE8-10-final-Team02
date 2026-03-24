@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Collection;
 
 /**
  * Document entity에 대한 데이터 접근 인터페이스.
