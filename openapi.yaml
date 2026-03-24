@@ -221,7 +221,7 @@ components:
           enum:
           - draft
           - ready
-          description: 'draft: 작업 중, ready: 면접 질문 생성과 이후 흐름에 사용할 기준 데이터 준비 완료'
+          description: 'draft: 작업 중, ready: jobRole, 1개 이상 source, 1개 이상 question, 모든 question의 유효 답변이 준비되어 면접 질문 생성과 이후 흐름에 사용할 수 있는 상태'
         createdAt:
           type: string
           format: date-time
@@ -1647,6 +1647,7 @@ paths:
                   enum:
                   - draft
                   - ready
+                  description: ready는 jobRole, 1개 이상 source, 1개 이상 question, 모든 question의 유효 답변이 준비된 경우에만 허용한다.
                 applicationType:
                   type: string
       responses:
@@ -1681,6 +1682,21 @@ paths:
                       createdAt: '2026-03-17T10:32:00Z'
                       updatedAt: '2026-03-17T10:33:10Z'
                       applicationType: 신입
+                    meta: *id001
+        '409':
+          description: ready 승격 조건을 만족하지 못함
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                applicationStatusConflict:
+                  value:
+                    success: false
+                    error:
+                      code: APPLICATION_STATUS_CONFLICT
+                      message: 지원 준비가 아직 완료되지 않았습니다. source, 문항, 답변을 확인해주세요.
+                      retryable: false
                     meta: *id001
     delete:
       tags:
