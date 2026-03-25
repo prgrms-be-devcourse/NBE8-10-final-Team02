@@ -6,11 +6,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Component;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 @Component
 public class SelfIntroPayloadBuilder {
@@ -22,7 +19,6 @@ public class SelfIntroPayloadBuilder {
     private static final int LONG_TARGET_CHARS = 1400;
     private static final int LONG_MAX_CHARS = 1800;
 
-    private static final String CONFIDENCE_HIGH = "high";
     private static final String CONFIDENCE_MEDIUM = "medium";
 
     private final ObjectMapper objectMapper;
@@ -40,31 +36,22 @@ public class SelfIntroPayloadBuilder {
     ) {
     }
 
-    public record CommitInput(
-        String repoName,
-        String commitMessage
-    ) {
-    }
-
     /**
      * @param jobRole       직무 (필수)
      * @param companyName   회사명 (nullable — 없으면 범용 답변 생성)
      * @param questions     생성 대상 문항 목록
-     * @param documentTexts Document.extractedText 목록 (extractStatus=SUCCESS만)
-     * @param commits       GithubCommit (userCommit=true만), repoName + commitMessage
+     * @param documentTexts Document.extractedText 목록 (PII 마스킹 완료 플레인텍스트, extractStatus=SUCCESS만)
      * @return AiPipeline.execute() 에 전달할 JSON payload 문자열
      */
     public String build(
         String jobRole,
         String companyName,
         List<QuestionInput> questions,
-        List<String> documentTexts,
-        List<CommitInput> commits
+        List<String> documentTexts
     ) {
         Objects.requireNonNull(jobRole, "jobRole must not be null");
         Objects.requireNonNull(questions, "questions must not be null");
         Objects.requireNonNull(documentTexts, "documentTexts must not be null");
-        Objects.requireNonNull(commits, "commits must not be null");
 
         ObjectNode root = objectMapper.createObjectNode();
 
@@ -74,7 +61,7 @@ public class SelfIntroPayloadBuilder {
         }
 
         buildQuestionList(root, questions);
-        buildPortfolioEvidence(root, documentTexts, commits);
+        buildPortfolioEvidence(root, documentTexts);
         buildWritingConstraints(root);
         root.putArray("existingEditedAnswers");
 
@@ -97,7 +84,7 @@ public class SelfIntroPayloadBuilder {
         }
     }
 
-    private void buildPortfolioEvidence(ObjectNode root, List<String> documentTexts, List<CommitInput> commits) {
+    private void buildPortfolioEvidence(ObjectNode root, List<String> documentTexts) {
         ArrayNode evidence = root.putArray("portfolioEvidence");
 
         int docIndex = 1;
@@ -109,24 +96,6 @@ public class SelfIntroPayloadBuilder {
             ev.putArray("evidenceBullets");
             ev.put("confidence", CONFIDENCE_MEDIUM);
             docIndex++;
-        }
-
-        Map<String, List<String>> commitsByRepo = commits.stream()
-            .collect(Collectors.groupingBy(
-                CommitInput::repoName,
-                LinkedHashMap::new,
-                Collectors.mapping(CommitInput::commitMessage, Collectors.toList())
-            ));
-
-        for (Map.Entry<String, List<String>> entry : commitsByRepo.entrySet()) {
-            ObjectNode ev = evidence.addObject();
-            ev.put("projectKey", "repo_" + entry.getKey().replaceAll("[^a-zA-Z0-9_]", "_"));
-            ev.put("projectName", entry.getKey());
-            ev.put("summary", "GitHub commits from " + entry.getKey());
-            ev.putArray("signals");
-            ArrayNode bullets = ev.putArray("evidenceBullets");
-            entry.getValue().forEach(bullets::add);
-            ev.put("confidence", CONFIDENCE_HIGH);
         }
     }
 

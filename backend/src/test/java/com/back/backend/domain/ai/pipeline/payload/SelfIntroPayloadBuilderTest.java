@@ -30,7 +30,7 @@ class SelfIntroPayloadBuilderTest {
         @Test
         @DisplayName("jobRole이 null이면 NullPointerException을 던진다")
         void null_jobRole() {
-            assertThatThrownBy(() -> builder.build(null, "회사", List.of(), List.of(), List.of()))
+            assertThatThrownBy(() -> builder.build(null, "회사", List.of(), List.of()))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("jobRole");
         }
@@ -38,7 +38,7 @@ class SelfIntroPayloadBuilderTest {
         @Test
         @DisplayName("questions가 null이면 NullPointerException을 던진다")
         void null_questions() {
-            assertThatThrownBy(() -> builder.build("백엔드", "회사", null, List.of(), List.of()))
+            assertThatThrownBy(() -> builder.build("백엔드", "회사", null, List.of()))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("questions");
         }
@@ -46,17 +46,9 @@ class SelfIntroPayloadBuilderTest {
         @Test
         @DisplayName("documentTexts가 null이면 NullPointerException을 던진다")
         void null_documentTexts() {
-            assertThatThrownBy(() -> builder.build("백엔드", "회사", List.of(), null, List.of()))
+            assertThatThrownBy(() -> builder.build("백엔드", "회사", List.of(), null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("documentTexts");
-        }
-
-        @Test
-        @DisplayName("commits가 null이면 NullPointerException을 던진다")
-        void null_commits() {
-            assertThatThrownBy(() -> builder.build("백엔드", "회사", List.of(), List.of(), null))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("commits");
         }
     }
 
@@ -67,7 +59,7 @@ class SelfIntroPayloadBuilderTest {
         @Test
         @DisplayName("jobRole과 companyName이 payload에 포함된다")
         void jobRole_and_companyName() throws Exception {
-            String payload = builder.build("백엔드 개발자", "카카오", List.of(), List.of(), List.of());
+            String payload = builder.build("백엔드 개발자", "카카오", List.of(), List.of());
             JsonNode root = objectMapper.readTree(payload);
 
             assertThat(root.get("jobRole").asText()).isEqualTo("백엔드 개발자");
@@ -77,7 +69,7 @@ class SelfIntroPayloadBuilderTest {
         @Test
         @DisplayName("companyName이 null이면 payload에 포함되지 않는다")
         void null_companyName_excluded() throws Exception {
-            String payload = builder.build("백엔드 개발자", null, List.of(), List.of(), List.of());
+            String payload = builder.build("백엔드 개발자", null, List.of(), List.of());
             JsonNode root = objectMapper.readTree(payload);
 
             assertThat(root.has("companyName")).isFalse();
@@ -86,7 +78,7 @@ class SelfIntroPayloadBuilderTest {
         @Test
         @DisplayName("companyName이 공백이면 payload에 포함되지 않는다")
         void blank_companyName_excluded() throws Exception {
-            String payload = builder.build("백엔드 개발자", "  ", List.of(), List.of(), List.of());
+            String payload = builder.build("백엔드 개발자", "  ", List.of(), List.of());
             JsonNode root = objectMapper.readTree(payload);
 
             assertThat(root.has("companyName")).isFalse();
@@ -103,7 +95,7 @@ class SelfIntroPayloadBuilderTest {
             var question = new SelfIntroPayloadBuilder.QuestionInput(
                 1, "지원 동기를 작성해주세요.", "formal", "medium", "프로젝트 경험"
             );
-            String payload = builder.build("백엔드", null, List.of(question), List.of(), List.of());
+            String payload = builder.build("백엔드", null, List.of(question), List.of());
             JsonNode q = objectMapper.readTree(payload).get("questionList").get(0);
 
             assertThat(q.get("questionOrder").asInt()).isEqualTo(1);
@@ -119,7 +111,7 @@ class SelfIntroPayloadBuilderTest {
             var question = new SelfIntroPayloadBuilder.QuestionInput(
                 1, "지원 동기를 작성해주세요.", null, null, null
             );
-            String payload = builder.build("백엔드", null, List.of(question), List.of(), List.of());
+            String payload = builder.build("백엔드", null, List.of(question), List.of());
             JsonNode q = objectMapper.readTree(payload).get("questionList").get(0);
 
             assertThat(q.has("toneOption")).isFalse();
@@ -130,7 +122,7 @@ class SelfIntroPayloadBuilderTest {
         @Test
         @DisplayName("문항이 없으면 questionList가 빈 배열이다")
         void empty_questionList() throws Exception {
-            String payload = builder.build("백엔드", null, List.of(), List.of(), List.of());
+            String payload = builder.build("백엔드", null, List.of(), List.of());
             JsonNode questionList = objectMapper.readTree(payload).get("questionList");
 
             assertThat(questionList.isArray()).isTrue();
@@ -146,7 +138,7 @@ class SelfIntroPayloadBuilderTest {
         @DisplayName("문서가 독립 증거 항목으로 변환된다")
         void document_becomes_evidence() throws Exception {
             String payload = builder.build("백엔드", null, List.of(),
-                List.of("Spring Boot 프로젝트 경험"), List.of());
+                List.of("Spring Boot 프로젝트 경험"));
             JsonNode ev = objectMapper.readTree(payload).get("portfolioEvidence").get(0);
 
             assertThat(ev.get("projectKey").asText()).isEqualTo("doc_1");
@@ -158,7 +150,7 @@ class SelfIntroPayloadBuilderTest {
         @DisplayName("여러 문서는 doc_1, doc_2 순으로 key가 부여된다")
         void multiple_documents_indexed() throws Exception {
             String payload = builder.build("백엔드", null, List.of(),
-                List.of("문서1", "문서2"), List.of());
+                List.of("문서1", "문서2"));
             JsonNode evidence = objectMapper.readTree(payload).get("portfolioEvidence");
 
             assertThat(evidence.get(0).get("projectKey").asText()).isEqualTo("doc_1");
@@ -166,34 +158,13 @@ class SelfIntroPayloadBuilderTest {
         }
 
         @Test
-        @DisplayName("커밋이 repo 단위로 그룹화되어 evidenceBullets에 포함된다")
-        void commits_grouped_by_repo() throws Exception {
-            var commits = List.of(
-                new SelfIntroPayloadBuilder.CommitInput("my-repo", "feat: 로그인 구현"),
-                new SelfIntroPayloadBuilder.CommitInput("my-repo", "fix: 버그 수정")
-            );
-            String payload = builder.build("백엔드", null, List.of(), List.of(), commits);
-            JsonNode ev = objectMapper.readTree(payload).get("portfolioEvidence").get(0);
-
-            assertThat(ev.get("projectName").asText()).isEqualTo("my-repo");
-            assertThat(ev.get("confidence").asText()).isEqualTo("high");
-            JsonNode bullets = ev.get("evidenceBullets");
-            assertThat(bullets).hasSize(2);
-            assertThat(bullets.get(0).asText()).isEqualTo("feat: 로그인 구현");
-            assertThat(bullets.get(1).asText()).isEqualTo("fix: 버그 수정");
-        }
-
-        @Test
-        @DisplayName("서로 다른 repo의 커밋은 별도 증거 항목으로 분리된다")
-        void different_repos_become_separate_evidence() throws Exception {
-            var commits = List.of(
-                new SelfIntroPayloadBuilder.CommitInput("repo-a", "feat: A 기능"),
-                new SelfIntroPayloadBuilder.CommitInput("repo-b", "feat: B 기능")
-            );
-            String payload = builder.build("백엔드", null, List.of(), List.of(), commits);
+        @DisplayName("문서가 없으면 portfolioEvidence가 빈 배열이다")
+        void empty_evidence() throws Exception {
+            String payload = builder.build("백엔드", null, List.of(), List.of());
             JsonNode evidence = objectMapper.readTree(payload).get("portfolioEvidence");
 
-            assertThat(evidence).hasSize(2);
+            assertThat(evidence.isArray()).isTrue();
+            assertThat(evidence.isEmpty()).isTrue();
         }
     }
 
@@ -204,7 +175,7 @@ class SelfIntroPayloadBuilderTest {
         @Test
         @DisplayName("고정 정책 필드가 올바르게 포함된다")
         void fixed_policy_fields() throws Exception {
-            String payload = builder.build("백엔드", null, List.of(), List.of(), List.of());
+            String payload = builder.build("백엔드", null, List.of(), List.of());
             JsonNode constraints = objectMapper.readTree(payload).get("writingConstraints");
 
             assertThat(constraints.get("forbidMadeUpMetrics").asBoolean()).isTrue();
@@ -215,7 +186,7 @@ class SelfIntroPayloadBuilderTest {
         @Test
         @DisplayName("lengthPolicy의 short/medium/long 글자 수 정책이 포함된다")
         void length_policy_included() throws Exception {
-            String payload = builder.build("백엔드", null, List.of(), List.of(), List.of());
+            String payload = builder.build("백엔드", null, List.of(), List.of());
             JsonNode lengthPolicy = objectMapper.readTree(payload)
                 .get("writingConstraints").get("lengthPolicy");
 
