@@ -30,22 +30,16 @@ public record ApplicationAnswerGenerationResponse(
         }
     }
 
-    public static ApplicationAnswerGenerationResponse from(
-        Long applicationId, boolean regenerate, List<ApplicationQuestion> questions
+    public static ApplicationAnswerGenerationResponse of(
+        Long applicationId, boolean regenerate,
+        int generatedCount, List<ApplicationQuestion> questions
     ) {
         List<AnswerItem> answers = questions.stream()
             .map(AnswerItem::from)
             .toList();
 
-        long generatedCount = questions.stream()
-            .filter(q -> q.getGeneratedAnswer() != null)
-            .count();
-
         return new ApplicationAnswerGenerationResponse(
-            applicationId,
-            (int) generatedCount,
-            regenerate,
-            answers
+            applicationId, generatedCount, regenerate, answers
         );
     }
 }
