@@ -135,6 +135,12 @@ public class AnalysisPipelineService {
                     HttpStatus.FORBIDDEN, "접근 권한이 없는 저장소입니다.");
         }
 
+        // 커밋 동기화가 완료되지 않은 repo는 분석 불가
+        if (!commitRepository.existsByRepository(repo)) {
+            throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
+                    HttpStatus.UNPROCESSABLE_ENTITY, "커밋 동기화를 먼저 완료해주세요.");
+        }
+
         // 이미 PENDING/IN_PROGRESS 상태이면 중복 실행 방지 (git lock 충돌 예방)
         syncStatusService.getStatus(userId, repositoryId).ifPresent(existing -> {
             if (existing.status() == SyncStatus.PENDING || existing.status() == SyncStatus.IN_PROGRESS) {

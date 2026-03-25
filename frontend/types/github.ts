@@ -21,6 +21,7 @@ export interface GithubRepository {
   visibility: 'public' | 'private' | 'internal';
   defaultBranch: string | null;
   isSelected: boolean;
+  hasCommits: boolean; // 커밋 동기화 완료 여부
 }
 
 export interface RepositorySelectionResponse {

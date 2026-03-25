@@ -88,7 +88,6 @@ function OwnedTab() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [syncingIds, setSyncingIds] = useState<Set<number>>(new Set());
   const [syncErrors, setSyncErrors] = useState<Record<number, string>>({});
-  const [syncedIds, setSyncedIds] = useState<Set<number>>(new Set());
   const [analysisStatuses, setAnalysisStatuses] = useState<Record<number, RepoSyncStatus>>({});
   const [analyzingIds, setAnalyzingIds] = useState<Set<number>>(new Set());
   const [analyzeErrors, setAnalyzeErrors] = useState<Record<number, string>>({});
@@ -176,10 +175,10 @@ function OwnedTab() {
   async function handleSyncCommits(repoId: number) {
     setSyncingIds((prev) => new Set(prev).add(repoId));
     setSyncErrors((prev) => { const n = { ...prev }; delete n[repoId]; return n; });
-    setSyncedIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });
     try {
       await syncCommits(repoId);
-      setSyncedIds((prev) => new Set(prev).add(repoId));
+      // 동기화 완료 → hasCommits 낙관적 업데이트 (페이지 새로고침 없이 분석 버튼 활성화)
+      setRepos((prev) => prev.map((r) => r.id === repoId ? { ...r, hasCommits: true } : r));
     } catch (err) {
       setSyncErrors((prev) => ({ ...prev, [repoId]: err instanceof Error ? err.message : '동기화 오류' }));
     } finally {
@@ -229,7 +228,6 @@ function OwnedTab() {
       <ul className="flex flex-col gap-3">
         {repos.map((repo) => {
           const isSyncing = syncingIds.has(repo.id);
-          const isSynced = syncedIds.has(repo.id);
           const isAnalyzing = analyzingIds.has(repo.id);
           const analysisStatus = analysisStatuses[repo.id];
           const isAnalysisActive = isAnalyzing ||
@@ -258,7 +256,9 @@ function OwnedTab() {
                     <p className="mt-0.5 text-xs text-zinc-400">기본 브랜치: {repo.defaultBranch}</p>
                   )}
                   {syncErrors[repo.id] && <p className="mt-1 text-xs text-red-600">{syncErrors[repo.id]}</p>}
-                  {isSynced && <p className="mt-1 text-xs text-green-600">커밋 동기화가 시작되었습니다.</p>}
+                  {!repo.hasCommits && selectedIds.has(repo.id) && !isSyncing && (
+                    <p className="mt-1 text-xs text-amber-600">커밋 동기화 후 포트폴리오 분석을 시작할 수 있습니다.</p>
+                  )}
                   {analyzeErrors[repo.id] && <p className="mt-1 text-xs text-red-600">{analyzeErrors[repo.id]}</p>}
                   {analysisStatus && <AnalysisStatusBadge status={analysisStatus} />}
                 </div>
@@ -272,7 +272,7 @@ function OwnedTab() {
                   </button>
                   <button
                     onClick={() => handleAnalyze(repo.id)}
-                    disabled={isAnalysisActive || !isSynced || !selectedIds.has(repo.id)}
+                    disabled={isAnalysisActive || !repo.hasCommits || !selectedIds.has(repo.id)}
                     className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs text-indigo-700 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {isAnalysisActive ? '분석 중...' : '포트폴리오 분석'}
