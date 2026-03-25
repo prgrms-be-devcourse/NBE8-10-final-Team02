@@ -75,6 +75,7 @@ class InterviewSessionApiTest extends ApiTestBase {
                     assertThat(session.getQuestionSet().getId()).isEqualTo(questionSet.getId());
                     assertThat(session.getStatus()).isEqualTo(InterviewSessionStatus.IN_PROGRESS);
                     assertThat(session.getStartedAt()).isNotNull();
+                    assertThat(session.getLastActivityAt()).isEqualTo(session.getStartedAt());
                     assertThat(session.getEndedAt()).isNull();
                 });
     }
@@ -226,6 +227,7 @@ class InterviewSessionApiTest extends ApiTestBase {
                 .questionSet(questionSet)
                 .status(status)
                 .startedAt(NOW)
+                .lastActivityAt(NOW)
                 .endedAt(null)
                 .build();
         entityManager.persist(session);
