@@ -41,6 +41,9 @@ class DocumentExtractionServiceTest {
     private DocumentTextExtractor textExtractor;
 
     @Mock
+    private PiiMaskingService piiMaskingService;
+
+    @Mock
     private DocumentRepository documentRepository;
 
     @Mock
@@ -58,18 +61,41 @@ class DocumentExtractionServiceTest {
     // =========================================================
 
     @Test
-    void onDocumentUploaded_updatesStatusToSuccess() {
+    void onDocumentUploaded_updatesStatusToSuccessWithMaskedText() {
         Document doc = pendingDocument();
         given(documentRepository.findById(1L)).willReturn(Optional.of(doc));
-        given(textExtractor.extract("uploads/test.pdf", "application/pdf")).willReturn("extracted text");
+        given(textExtractor.extract("uploads/test.pdf", "application/pdf")).willReturn("이름: 홍길동");
+        given(piiMaskingService.mask("이름: 홍길동")).willReturn("이름: 홍*동");
         given(clock.instant()).willReturn(FIXED_NOW);
 
         extractionService.performExtraction(
             new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf"));
 
         assertThat(doc.getExtractStatus()).isEqualTo(DocumentExtractStatus.SUCCESS);
-        assertThat(doc.getExtractedText()).isEqualTo("extracted text");
+        assertThat(doc.getExtractedText()).isEqualTo("이름: 홍*동");
         assertThat(doc.getExtractedAt()).isEqualTo(FIXED_NOW);
+        then(piiMaskingService).should().mask("이름: 홍길동");
+        then(documentRepository).should().save(doc);
+    }
+
+    // =========================================================
+    // 마스킹 실패 → 원문 저장, SUCCESS 유지
+    // =========================================================
+
+    @Test
+    void onDocumentUploaded_savesRawTextWhenMaskingFails() {
+        Document doc = pendingDocument();
+        given(documentRepository.findById(1L)).willReturn(Optional.of(doc));
+        given(textExtractor.extract("uploads/test.pdf", "application/pdf")).willReturn("raw text");
+        given(piiMaskingService.mask("raw text")).willThrow(new RuntimeException("masking error"));
+        given(clock.instant()).willReturn(FIXED_NOW);
+
+        extractionService.performExtraction(
+            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf"));
+
+        // 추출 자체는 성공이므로 SUCCESS, 원문이 저장됨
+        assertThat(doc.getExtractStatus()).isEqualTo(DocumentExtractStatus.SUCCESS);
+        assertThat(doc.getExtractedText()).isEqualTo("raw text");
         then(documentRepository).should().save(doc);
     }
 
