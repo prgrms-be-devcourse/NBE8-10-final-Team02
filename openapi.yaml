@@ -2662,7 +2662,7 @@ paths:
               - questionId
               - answerOrder
               - isSkipped
-              description: isSkipped=false인 경우 answerText는 최소 50자 이상이어야 한다.
+              description: isSkipped=false인 경우 answerText는 최소 50자 이상이어야 하며, questionId와 answerOrder는 현재 순번과 일치해야 한다.
       responses:
         '201':
           description: 답변 저장
@@ -2694,12 +2694,23 @@ paths:
                       submittedAt: '2026-03-17T10:36:00Z'
                     meta: *id001
         '400':
-          description: 답변 길이 검증 실패
+          description: 답변 필수 또는 길이 검증 실패
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
+                answerRequired:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_ANSWER_REQUIRED
+                      message: 답변을 입력해주세요.
+                      retryable: false
+                      fieldErrors:
+                      - field: answerText
+                        reason: required
+                    meta: *id001
                 answerTooShort:
                   value:
                     success: false
@@ -2711,8 +2722,23 @@ paths:
                       - field: answerText
                         reason: min_50
                     meta: *id001
+        '404':
+          description: 세션 또는 질문을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                sessionOrQuestionNotFound:
+                  value:
+                    success: false
+                    error:
+                      code: RESOURCE_NOT_FOUND
+                      message: 세션 또는 질문을 찾을 수 없습니다.
+                      retryable: false
+                    meta: *id001
         '409':
-          description: 진행 가능한 세션이 아님
+          description: 진행 가능한 세션이 아니거나 이미 종료된 세션임
           content:
             application/json:
               schema:
@@ -2726,7 +2752,16 @@ paths:
                       message: 진행 가능한 면접 세션이 아닙니다. 재개 후 다시 시도해주세요.
                       retryable: false
                     meta: *id001
-      description: 세션 답변을 저장한다. 일반 답변은 `in_progress` 상태에서만 허용한다. v1 자동 일시정지는 답변 제출 요청 진입
+                sessionAlreadyCompleted:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_SESSION_ALREADY_COMPLETED
+                      message: 이미 종료된 면접 세션입니다.
+                      retryable: false
+                    meta: *id001
+      description: 세션 답변을 저장한다. 일반 답변은 `in_progress` 상태에서만 허용한다. questionId와 answerOrder는 현재 순번과
+        일치해야 한다. 세션 또는 질문이 현재 사용자 범위에서 없으면 404를 반환한다. v1 자동 일시정지는 답변 제출 요청 진입
         시점에도 `lastActivityAt` 기준으로 평가하며, 30분 초과 상태의 세션은 `paused`로 정규화한 뒤 답변 제출을 막는다.
   /interview/sessions/{sessionId}/complete:
     post:

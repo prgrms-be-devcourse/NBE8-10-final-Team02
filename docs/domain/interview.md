@@ -35,11 +35,14 @@ applies_to: interview-domain
 - 질문 수 `3..20` 검증은 편집 시점이 아니라 세션 시작 시점에 수행한다.
 - 질문 수가 `3..20` 범위를 벗어난 질문 세트는 `REQUEST_VALIDATION_FAILED`로 세션 시작을 거절한다.
 - `ready` 상태는 시작 전 상태이며 답변 제출을 허용하지 않는다.
+- 답변 제출은 현재 사용자 소유 세션과 해당 세션에서 진행 중인 질문에 대해서만 허용한다.
+- 답변 제출 요청의 `questionId`, `answerOrder`는 현재 순번과 일치해야 하며 어긋나면 `REQUEST_VALIDATION_FAILED`로 거절한다.
 - `in_progress` 상태의 세션만 일반 답변 제출을 허용한다.
 - `paused` 상태는 재개 후 `in_progress`로 전환한 뒤 답변을 제출한다.
 - `pause/resume`은 상태 필드 일반 수정이 아니라 명시적 액션 API로 처리한다.
 - `completed`, `feedback_completed` 세션에는 추가 답변을 허용하지 않는다.
 - 세션 상세 조회는 복원 화면 기준으로 `currentQuestion`, 진행률 계산용 count, `resumeAvailable`, `lastActivityAt`를 함께 반환한다.
+- 건너뛰기 아닌 일반 답변이 비어 있으면 `INTERVIEW_ANSWER_REQUIRED`로 거절한다.
 - 일반 답변은 50자 이상 1000자 이하로 검증하고, 건너뛰기는 예외로 처리한다.
 - 사용자 1명당 동시에 진행 가능한 활성 세션은 1개다.
 - 활성 세션은 `in_progress + paused`로 본다.
