@@ -3,6 +3,7 @@ package com.back.backend.domain.interview.controller;
 import com.back.backend.domain.interview.dto.request.StartInterviewSessionRequest;
 import com.back.backend.domain.interview.dto.request.SubmitInterviewAnswerRequest;
 import com.back.backend.domain.interview.dto.response.InterviewAnswerSubmitResponse;
+import com.back.backend.domain.interview.dto.response.InterviewSessionCompletionResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionDetailResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionTransitionResponse;
@@ -51,6 +52,19 @@ public class InterviewSessionController {
     ) {
         return ApiResponse.success(
                 interviewSessionService.getSessionDetail(
+                        currentUserResolver.resolveUserId(authentication),
+                        sessionId
+                )
+        );
+    }
+
+    @PostMapping("/{sessionId}/complete")
+    public ApiResponse<InterviewSessionCompletionResponse> completeSession(
+            Authentication authentication,
+            @PathVariable long sessionId
+    ) {
+        return ApiResponse.success(
+                interviewSessionService.completeSession(
                         currentUserResolver.resolveUserId(authentication),
                         sessionId
                 )
