@@ -55,24 +55,27 @@ public class RepoCloneService {
             log.info("Fetching existing clone: userId={}, repoId={}", userId, repositoryId);
             try {
                 fetch(repoPath);
+                return repoPath;
             } catch (ServiceException e) {
                 // fetch 실패(lock 파일, 손상된 clone 등) → 디렉토리 삭제 후 fresh clone 재시도
-                log.warn("Fetch failed ({}), falling back to fresh clone: userId={}, repoId={}",
+                log.warn("Fetch failed ({}), removing for fresh clone: userId={}, repoId={}",
                         e.getMessage(), userId, repositoryId);
-                deleteRepo(userId, repositoryId);
-                log.info("Re-cloning repo after fetch failure: {} → {}", repoUrl, repoPath);
-                clone(repoUrl, repoPath);
+                forceDelete(repoPath);
             }
-        } else {
-            // 이전 실패 run이 남긴 불완전한 디렉토리(no .git) 정리 후 clone
-            if (Files.exists(repoPath)) {
-                log.warn("Stale directory found (no .git), removing before clone: {}", repoPath);
-                deleteRepo(userId, repositoryId);
-            }
-            log.info("Cloning repo: {} → {}", repoUrl, repoPath);
-            clone(repoUrl, repoPath);
+        } else if (Files.exists(repoPath)) {
+            // 이전 실패 run이 남긴 불완전한 디렉토리(no .git) 정리
+            log.warn("Stale directory found (no .git), removing before clone: {}", repoPath);
+            forceDelete(repoPath);
         }
 
+        // 삭제가 실패한 경우 clone이 "already exists"로 실패하는 대신 명확한 오류를 냄
+        if (Files.exists(repoPath)) {
+            throw new ServiceException(ErrorCode.INTERNAL_SERVER_ERROR, HttpStatus.INTERNAL_SERVER_ERROR,
+                    "이전 분석 디렉토리 삭제 실패 — 잠시 후 다시 시도해주세요: " + repoPath.getFileName());
+        }
+
+        log.info("Cloning repo: {} → {}", repoUrl, repoPath);
+        clone(repoUrl, repoPath);
         return repoPath;
     }
 
@@ -169,21 +172,44 @@ public class RepoCloneService {
     public void deleteRepo(Long userId, Long repositoryId) {
         Path repoPath = buildRepoPath(userId, repositoryId);
         if (!Files.exists(repoPath)) return;
-        try {
-            deleteRecursively(repoPath);
+        forceDelete(repoPath);
+        if (Files.exists(repoPath)) {
+            log.warn("Could not fully delete repo clone (some files remain): userId={}, repoId={}", userId, repositoryId);
+        } else {
             log.info("Deleted repo clone: userId={}, repoId={}", userId, repositoryId);
-        } catch (IOException e) {
-            log.warn("Failed to delete repo clone: userId={}, repoId={}, error={}", userId, repositoryId, e.getMessage());
         }
     }
 
-    private void deleteRecursively(Path path) throws IOException {
+    /**
+     * 디렉토리를 강제 삭제한다.
+     *
+     * 1단계: Java Files.walk로 파일 순차 삭제 (일반적인 경우)
+     * 2단계: 디렉토리가 남아 있으면 OS 명령(rm -rf)으로 재시도 (git lock 파일 등 잔여물 대응)
+     */
+    private void forceDelete(Path path) {
+        // 1단계: Java 삭제
         try (var stream = Files.walk(path)) {
             stream.sorted(java.util.Comparator.reverseOrder())
                   .forEach(p -> {
                       try { Files.delete(p); }
-                      catch (IOException e) { log.warn("Failed to delete: {}", p); }
+                      catch (IOException e) { log.debug("Java delete failed for {}: {}", p, e.getMessage()); }
                   });
+        } catch (IOException e) {
+            log.warn("Files.walk failed for {}: {}", path, e.getMessage());
+        }
+
+        // 2단계: 아직 남아 있으면 OS rm -rf 재시도
+        if (Files.exists(path)) {
+            log.warn("Directory still exists after Java delete, retrying with rm -rf: {}", path);
+            try {
+                Process process = new ProcessBuilder("rm", "-rf", path.toString())
+                        .redirectErrorStream(true)
+                        .start();
+                process.waitFor(30, TimeUnit.SECONDS);
+            } catch (IOException | InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("rm -rf fallback failed for {}: {}", path, e.getMessage());
+            }
         }
     }
 
