@@ -1,4 +1,4 @@
-package com.back.backend.domain.github.service;
+package com.back.backend.domain.github.analysis;
 
 /**
  * 분석 파이프라인의 진행 상태.

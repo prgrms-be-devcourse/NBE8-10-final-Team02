@@ -1,7 +1,7 @@
 package com.back.backend.domain.github.dto.response;
 
-import com.back.backend.domain.github.service.SyncStatus;
-import com.back.backend.domain.github.service.SyncStatusService;
+import com.back.backend.domain.github.analysis.SyncStatus;
+import com.back.backend.domain.github.analysis.SyncStatusService;
 
 import java.time.Instant;
 

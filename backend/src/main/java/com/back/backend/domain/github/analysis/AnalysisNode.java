@@ -1,4 +1,4 @@
-package com.back.backend.domain.github.service;
+package com.back.backend.domain.github.analysis;
 
 import com.back.backend.domain.github.entity.NodeType;
 

@@ -1,4 +1,4 @@
-package com.back.backend.domain.github.service;
+package com.back.backend.domain.github.portfolio;
 
 import com.back.backend.domain.github.entity.MergedSummary;
 import com.back.backend.domain.github.entity.RepoSummary;

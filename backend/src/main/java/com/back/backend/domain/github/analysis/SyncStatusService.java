@@ -1,4 +1,4 @@
-package com.back.backend.domain.github.service;
+package com.back.backend.domain.github.analysis;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;

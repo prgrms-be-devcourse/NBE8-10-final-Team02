@@ -1,6 +1,10 @@
-package com.back.backend.domain.github.service;
+package com.back.backend.domain.github.portfolio;
 
 import com.back.backend.domain.ai.pipeline.AiPipeline;
+import com.back.backend.domain.github.analysis.CodeIndexService;
+import com.back.backend.domain.github.analysis.ContributionExtractorService;
+import com.back.backend.domain.github.analysis.DiffEntry;
+import com.back.backend.domain.github.analysis.RepoCloneService;
 import com.back.backend.domain.github.entity.CodeIndex;
 import com.back.backend.domain.github.entity.GithubRepository;
 import com.back.backend.domain.github.entity.RepoSummary;
