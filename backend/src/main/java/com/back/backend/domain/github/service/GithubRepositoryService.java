@@ -1,7 +1,9 @@
 package com.back.backend.domain.github.service;
 
 import com.back.backend.domain.github.analysis.AnalysisPipelineService;
+import com.back.backend.domain.github.analysis.SyncStatusService;
 import com.back.backend.domain.github.dto.response.GithubRepositoryResponse;
+import com.back.backend.domain.github.dto.response.RepoSyncStatusResponse;
 import com.back.backend.domain.github.dto.response.RepositorySelectionResponse;
 import com.back.backend.domain.github.entity.GithubConnection;
 import com.back.backend.domain.github.entity.GithubRepository;
@@ -30,6 +32,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -49,6 +52,7 @@ public class GithubRepositoryService {
     private final UserRepository userRepository;
     private final MergedSummaryService mergedSummaryService;
     private final AnalysisPipelineService analysisPipelineService;
+    private final SyncStatusService syncStatusService;
     private final CodeIndexRepository codeIndexRepository;
     private final RepoSummaryRepository repoSummaryRepository;
 
@@ -59,6 +63,7 @@ public class GithubRepositoryService {
             UserRepository userRepository,
             MergedSummaryService mergedSummaryService,
             @Lazy AnalysisPipelineService analysisPipelineService,
+            SyncStatusService syncStatusService,
             CodeIndexRepository codeIndexRepository,
             RepoSummaryRepository repoSummaryRepository
     ) {
@@ -68,6 +73,7 @@ public class GithubRepositoryService {
         this.userRepository = userRepository;
         this.mergedSummaryService = mergedSummaryService;
         this.analysisPipelineService = analysisPipelineService;
+        this.syncStatusService = syncStatusService;
         this.codeIndexRepository = codeIndexRepository;
         this.repoSummaryRepository = repoSummaryRepository;
     }
@@ -94,7 +100,17 @@ public class GithubRepositoryService {
                 ? Set.of()
                 : commitRepository.findRepositoryIdsWithCommits(pageRepoIds);
 
-        return repoPage.map(repo -> GithubRepositoryResponse.from(repo, reposWithCommits.contains(repo.getId())));
+        // 이 페이지의 모든 repo 분석 상태를 Redis MGET 1회로 조회
+        Map<Long, SyncStatusService.SyncStatusData> statusMap = pageRepoIds.isEmpty()
+                ? Map.of()
+                : syncStatusService.getStatusBulk(userId, pageRepoIds);
+
+        return repoPage.map(repo -> {
+            RepoSyncStatusResponse analysisStatus = statusMap.containsKey(repo.getId())
+                    ? RepoSyncStatusResponse.from(statusMap.get(repo.getId()))
+                    : null;
+            return GithubRepositoryResponse.from(repo, reposWithCommits.contains(repo.getId()), analysisStatus);
+        });
     }
 
     /**

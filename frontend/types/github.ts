@@ -22,6 +22,7 @@ export interface GithubRepository {
   defaultBranch: string | null;
   isSelected: boolean;
   hasCommits: boolean; // 커밋 동기화 완료 여부
+  analysisStatus: RepoSyncStatus | null; // 분석 상태 (미요청 또는 TTL 만료 시 null)
 }
 
 export interface RepositorySelectionResponse {
