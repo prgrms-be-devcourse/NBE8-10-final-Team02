@@ -58,7 +58,6 @@ public class SelfIntroGenerateService {
             );
         }
 
-        // regenerate=false이면 generatedAnswer가 이미 있는 문항 건너뜀
         List<ApplicationQuestion> targetQuestions = regenerate
             ? allQuestions
             : allQuestions.stream()
@@ -69,7 +68,7 @@ public class SelfIntroGenerateService {
             return allQuestions;
         }
 
-        // ApplicationSourceDocument → Document.extractedText (PII 마스킹 완료 플레인텍스트)
+        // Document.extractedText 수집 (PII 마스킹 완료 플레인텍스트)
         List<String> documentTexts = sourceDocumentBindingRepository
             .findAllByApplicationId(applicationId).stream()
             .map(ApplicationSourceDocument::getDocument)
@@ -77,7 +76,7 @@ public class SelfIntroGenerateService {
             .map(Document::getExtractedText)
             .toList();
 
-        // SelfIntroPayloadBuilder.build(...)
+        // Payload 빌드
         List<QuestionInput> questionInputs = targetQuestions.stream()
             .map(q -> new QuestionInput(
                 q.getQuestionOrder(),
@@ -95,10 +94,10 @@ public class SelfIntroGenerateService {
             documentTexts
         );
 
-        // AiPipeline.execute
+        // AI 파이프라인 실행
         JsonNode responseNode = aiPipeline.execute(TEMPLATE_ID, payload);
 
-        // JsonNode answers[] → questionOrder 매칭 → updateGeneratedAnswer()
+        // questionOrder 매칭 → updateGeneratedAnswer()
         Map<Integer, ApplicationQuestion> questionByOrder = targetQuestions.stream()
             .collect(Collectors.toMap(ApplicationQuestion::getQuestionOrder, Function.identity()));
 
@@ -111,7 +110,7 @@ public class SelfIntroGenerateService {
             }
         }
 
-        // 저장된 문항 목록 반환
+        // 전체 문항 목록 반환
         return allQuestions;
     }
 }
