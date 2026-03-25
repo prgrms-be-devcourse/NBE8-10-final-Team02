@@ -9,7 +9,8 @@ import com.back.backend.domain.user.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -42,6 +43,7 @@ public class RepoSummaryGeneratorService {
     private final ContributionExtractorService contributionExtractorService;
     private final RepoCloneService repoCloneService;
     private final RepoSummaryRepository repoSummaryRepository;
+    private final TransactionTemplate transactionTemplate;
 
     public RepoSummaryGeneratorService(
             AiPipeline aiPipeline,
@@ -49,7 +51,8 @@ public class RepoSummaryGeneratorService {
             CodeIndexService codeIndexService,
             ContributionExtractorService contributionExtractorService,
             RepoCloneService repoCloneService,
-            RepoSummaryRepository repoSummaryRepository
+            RepoSummaryRepository repoSummaryRepository,
+            PlatformTransactionManager transactionManager
     ) {
         this.aiPipeline = aiPipeline;
         this.promptBuilder = promptBuilder;
@@ -57,6 +60,7 @@ public class RepoSummaryGeneratorService {
         this.contributionExtractorService = contributionExtractorService;
         this.repoCloneService = repoCloneService;
         this.repoSummaryRepository = repoSummaryRepository;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     /**
@@ -68,7 +72,6 @@ public class RepoSummaryGeneratorService {
      * @param triggerReason new_repo | significant_commits | manual
      * @return 저장된 RepoSummary 엔티티
      */
-    @Transactional
     public RepoSummary generate(User user, GithubRepository repo,
                                 String authorEmail, String triggerReason) {
         log.info("Generating repo summary: userId={}, repoId={}, trigger={}",
@@ -97,21 +100,23 @@ public class RepoSummaryGeneratorService {
         // 5. AI 호출
         String summaryJson = aiPipeline.execute(TEMPLATE_ID, userMessage).toString();
 
-        // 6. 버전 계산 및 저장
-        int nextVersion = getNextVersion(user, repo);
-        RepoSummary summary = RepoSummary.builder()
-                .user(user)
-                .githubRepository(repo)
-                .summaryVersion(nextVersion)
-                .data(summaryJson)
-                .triggerReason(triggerReason)
-                .significanceScore(null)
-                .generatedAt(Instant.now())
-                .build();
-
-        RepoSummary saved = repoSummaryRepository.save(summary);
-        log.info("Repo summary saved: repoId={}, version={}, tokenUsage=unknown",
-                repo.getId(), nextVersion);
+        // 6. 버전 계산 + 저장 — 하나의 트랜잭션으로 묶어 버전 중복 방지
+        //    AI 호출이 끝난 뒤 짧은 트랜잭션만 커넥션을 점유한다.
+        RepoSummary saved = transactionTemplate.execute(status -> {
+            int nextVersion = getNextVersion(user, repo);
+            RepoSummary summary = RepoSummary.builder()
+                    .user(user)
+                    .githubRepository(repo)
+                    .summaryVersion(nextVersion)
+                    .data(summaryJson)
+                    .triggerReason(triggerReason)
+                    .significanceScore(null)
+                    .generatedAt(Instant.now())
+                    .build();
+            RepoSummary result = repoSummaryRepository.save(summary);
+            log.info("Repo summary saved: repoId={}, version={}", repo.getId(), nextVersion);
+            return result;
+        });
         return saved;
     }
 
