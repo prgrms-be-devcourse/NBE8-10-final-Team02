@@ -4,6 +4,7 @@ import com.back.backend.domain.github.dto.response.GithubRepositoryResponse;
 import com.back.backend.domain.github.dto.response.RepositorySelectionResponse;
 import com.back.backend.domain.github.entity.GithubConnection;
 import com.back.backend.domain.github.entity.GithubRepository;
+import com.back.backend.domain.github.portfolio.MergedSummaryService;
 import com.back.backend.domain.github.repository.GithubCommitRepository;
 import com.back.backend.domain.github.repository.GithubConnectionRepository;
 import com.back.backend.domain.github.repository.GithubRepositoryRepository;
@@ -12,6 +13,8 @@ import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import com.back.backend.global.response.Pagination;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -19,6 +22,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -31,21 +35,26 @@ import java.util.Set;
 @Service
 public class GithubRepositoryService {
 
+    private static final Logger log = LoggerFactory.getLogger(GithubRepositoryService.class);
+
     private final GithubConnectionRepository connectionRepository;
     private final GithubRepositoryRepository repositoryRepository;
     private final GithubCommitRepository commitRepository;
     private final UserRepository userRepository;
+    private final MergedSummaryService mergedSummaryService;
 
     public GithubRepositoryService(
             GithubConnectionRepository connectionRepository,
             GithubRepositoryRepository repositoryRepository,
             GithubCommitRepository commitRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            MergedSummaryService mergedSummaryService
     ) {
         this.connectionRepository = connectionRepository;
         this.repositoryRepository = repositoryRepository;
         this.commitRepository = commitRepository;
         this.userRepository = userRepository;
+        this.mergedSummaryService = mergedSummaryService;
     }
 
     /**
@@ -86,6 +95,9 @@ public class GithubRepositoryService {
         // 현재 선택된 repo 전체를 해제
         List<GithubRepository> currentlySelected =
                 repositoryRepository.findByGithubConnectionAndSelectedTrue(connection);
+        Set<Long> newSelectedIds = new HashSet<>(repositoryIds);
+        boolean anyDeselected = currentlySelected.stream()
+                .anyMatch(repo -> !newSelectedIds.contains(repo.getId()));
         currentlySelected.forEach(repo -> repo.updateSelection(false));
 
         // 요청한 repo들이 모두 이 사용자 소유인지 확인 후 선택 상태로 변경
@@ -99,6 +111,17 @@ public class GithubRepositoryService {
         }
 
         toSelect.forEach(repo -> repo.updateSelection(true));
+
+        // deselect가 발생한 경우 즉시 MergedSummary 재집계
+        if (anyDeselected) {
+            User user = userRepository.findById(userId).orElseThrow();
+            try {
+                mergedSummaryService.rebuild(user);
+            } catch (IllegalStateException e) {
+                // 선택된 repo에 요약본이 없으면 rebuild 불필요
+                log.debug("No summaries to rebuild after deselection: userId={}", userId);
+            }
+        }
 
         List<Long> selectedIds = toSelect.stream().map(GithubRepository::getId).toList();
         return RepositorySelectionResponse.of(selectedIds);

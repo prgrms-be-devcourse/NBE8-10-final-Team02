@@ -207,9 +207,10 @@ public class MergedSummaryService {
      */
     private List<RepoSummary> getLatestPerRepo(User user) {
         List<RepoSummary> all = repoSummaryRepository.findAllByUserOrderBySummaryVersionDesc(user);
-        // repo별 첫 번째(최신) 항목만 유지
+        // repo별 첫 번째(최신) 항목만 유지, 선택 해제된 repo는 제외
         Set<Long> seen = new LinkedHashSet<>();
         return all.stream()
+                .filter(s -> s.getGithubRepository().isSelected())
                 .filter(s -> seen.add(s.getGithubRepository().getId()))
                 .toList();
     }
