@@ -66,6 +66,31 @@ public class LocalDocumentStorageService implements DocumentStorageService {
     }
 
     /**
+     * storagePath에 해당하는 물리 파일을 삭제한다.
+     *
+     * <p>storagePath에서 파일명만 추출해 uploadDir 기준으로 resolve한다.
+     * 파일이 존재하지 않으면 무시하고, 삭제 실패 시 WARN 로그만 남긴다.
+     * DB 삭제가 이미 완료된 시점에서 호출되므로 예외를 던지지 않는다.</p>
+     */
+    @Override
+    public void delete(String storagePath) {
+        if (storagePath == null || storagePath.isBlank()) {
+            return;
+        }
+        try {
+            // storagePath 형식: "uploads/uuid_filename.pdf" → 파일명만 추출
+            String filename = Paths.get(storagePath).getFileName().toString();
+            Path filePath = uploadDir.resolve(filename);
+            boolean deleted = Files.deleteIfExists(filePath);
+            if (deleted) {
+                log.info("Physical file deleted: {}", filename);
+            }
+        } catch (IOException e) {
+            log.warn("Failed to delete physical file for storagePath={}: {}", storagePath, e.getMessage());
+        }
+    }
+
+    /**
      * 파일명에서 영문자, 숫자, ., _, - 외의 문자를 _로 치환한다.
      * null이거나 빈 값이면 "unnamed"를 반환한다.
      */
