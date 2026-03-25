@@ -256,6 +256,9 @@ function OwnedTab() {
                     <p className="mt-0.5 text-xs text-zinc-400">기본 브랜치: {repo.defaultBranch}</p>
                   )}
                   {syncErrors[repo.id] && <p className="mt-1 text-xs text-red-600">{syncErrors[repo.id]}</p>}
+                  {repo.hasCommits && !isSyncing && (
+                    <p className="mt-1 text-xs text-green-600">✓ 커밋 동기화됨</p>
+                  )}
                   {!repo.hasCommits && selectedIds.has(repo.id) && !isSyncing && (
                     <p className="mt-1 text-xs text-amber-600">커밋 동기화 후 포트폴리오 분석을 시작할 수 있습니다.</p>
                   )}
@@ -265,10 +268,10 @@ function OwnedTab() {
                 <div className="flex shrink-0 flex-col gap-1.5">
                   <button
                     onClick={() => handleSyncCommits(repo.id)}
-                    disabled={isSyncing || isAnalysisActive || !selectedIds.has(repo.id)}
+                    disabled={isSyncing || isAnalysisActive || repo.hasCommits || !selectedIds.has(repo.id)}
                     className="rounded border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {isSyncing ? '동기화 중...' : '커밋 동기화'}
+                    {isSyncing ? '동기화 중...' : repo.hasCommits ? '동기화됨' : '커밋 동기화'}
                   </button>
                   <button
                     onClick={() => handleAnalyze(repo.id)}
