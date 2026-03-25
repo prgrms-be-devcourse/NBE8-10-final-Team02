@@ -64,7 +64,7 @@ class SelfIntroGenerateServiceTest {
             applicationRepository,
             applicationQuestionRepository,
             sourceDocumentBindingRepository,
-            new SelfIntroPayloadBuilder(objectMapper),
+            new SelfIntroPayloadBuilder(),
             aiPipeline
         );
     }

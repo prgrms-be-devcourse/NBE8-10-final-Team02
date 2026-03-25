@@ -21,11 +21,7 @@ public class SelfIntroPayloadBuilder {
 
     private static final String CONFIDENCE_MEDIUM = "medium";
 
-    private final ObjectMapper objectMapper;
-
-    public SelfIntroPayloadBuilder(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public record QuestionInput(
         int questionOrder,

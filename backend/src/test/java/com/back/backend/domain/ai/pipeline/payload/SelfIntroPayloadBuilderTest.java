@@ -2,7 +2,6 @@ package com.back.backend.domain.ai.pipeline.payload;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -14,14 +13,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SelfIntroPayloadBuilderTest {
 
-    private SelfIntroPayloadBuilder builder;
-    private ObjectMapper objectMapper;
-
-    @BeforeEach
-    void setUp() {
-        objectMapper = new ObjectMapper();
-        builder = new SelfIntroPayloadBuilder(objectMapper);
-    }
+    private final SelfIntroPayloadBuilder builder = new SelfIntroPayloadBuilder();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Nested
     @DisplayName("null 파라미터 방어")
