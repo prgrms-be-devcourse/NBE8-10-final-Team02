@@ -1,13 +1,16 @@
 package com.back.backend.domain.github.service;
 
+import com.back.backend.domain.github.analysis.AnalysisPipelineService;
 import com.back.backend.domain.github.dto.response.GithubRepositoryResponse;
 import com.back.backend.domain.github.dto.response.RepositorySelectionResponse;
 import com.back.backend.domain.github.entity.GithubConnection;
 import com.back.backend.domain.github.entity.GithubRepository;
 import com.back.backend.domain.github.portfolio.MergedSummaryService;
+import com.back.backend.domain.github.repository.CodeIndexRepository;
 import com.back.backend.domain.github.repository.GithubCommitRepository;
 import com.back.backend.domain.github.repository.GithubConnectionRepository;
 import com.back.backend.domain.github.repository.GithubRepositoryRepository;
+import com.back.backend.domain.github.repository.RepoSummaryRepository;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.global.exception.ErrorCode;
@@ -15,6 +18,7 @@ import com.back.backend.global.exception.ServiceException;
 import com.back.backend.global.response.Pagination;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -44,19 +48,28 @@ public class GithubRepositoryService {
     private final GithubCommitRepository commitRepository;
     private final UserRepository userRepository;
     private final MergedSummaryService mergedSummaryService;
+    private final AnalysisPipelineService analysisPipelineService;
+    private final CodeIndexRepository codeIndexRepository;
+    private final RepoSummaryRepository repoSummaryRepository;
 
     public GithubRepositoryService(
             GithubConnectionRepository connectionRepository,
             GithubRepositoryRepository repositoryRepository,
             GithubCommitRepository commitRepository,
             UserRepository userRepository,
-            MergedSummaryService mergedSummaryService
+            MergedSummaryService mergedSummaryService,
+            @Lazy AnalysisPipelineService analysisPipelineService,
+            CodeIndexRepository codeIndexRepository,
+            RepoSummaryRepository repoSummaryRepository
     ) {
         this.connectionRepository = connectionRepository;
         this.repositoryRepository = repositoryRepository;
         this.commitRepository = commitRepository;
         this.userRepository = userRepository;
         this.mergedSummaryService = mergedSummaryService;
+        this.analysisPipelineService = analysisPipelineService;
+        this.codeIndexRepository = codeIndexRepository;
+        this.repoSummaryRepository = repoSummaryRepository;
     }
 
     /**
@@ -98,8 +111,10 @@ public class GithubRepositoryService {
         List<GithubRepository> currentlySelected =
                 repositoryRepository.findByGithubConnectionAndSelectedTrue(connection);
         Set<Long> newSelectedIds = new HashSet<>(repositoryIds);
-        boolean anyDeselected = currentlySelected.stream()
-                .anyMatch(repo -> !newSelectedIds.contains(repo.getId()));
+        List<Long> deselectedRepoIds = currentlySelected.stream()
+                .filter(repo -> !newSelectedIds.contains(repo.getId()))
+                .map(GithubRepository::getId)
+                .toList();
         currentlySelected.forEach(repo -> repo.updateSelection(false));
 
         // 요청한 repo들이 모두 이 사용자 소유인지 확인 후 선택 상태로 변경
@@ -114,14 +129,34 @@ public class GithubRepositoryService {
 
         toSelect.forEach(repo -> repo.updateSelection(true));
 
-        // deselect가 발생한 경우, 트랜잭션 커밋 후 MergedSummary 재집계
-        // afterCommit 훅 사용 이유: rebuild를 같은 트랜잭션 안에서 호출하면
-        // IllegalStateException 발생 시 트랜잭션이 rollback-only로 마킹되어 선택 저장까지 실패함
-        if (anyDeselected) {
+        // deselect가 발생한 경우, 트랜잭션 커밋 후:
+        //   1. 진행 중인 분석 취소
+        //   2. 관련 데이터(커밋, 코드 인덱스, repo 요약) 삭제
+        //   3. MergedSummary 재집계
+        // afterCommit 훅 사용 이유: 같은 트랜잭션 안에서 호출하면
+        // IllegalStateException 발생 시 rollback-only 마킹으로 선택 저장까지 실패함
+        if (!deselectedRepoIds.isEmpty()) {
             User user = userRepository.findById(userId).orElseThrow();
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
+                    for (Long repoId : deselectedRepoIds) {
+                        try {
+                            // 진행 중인 분석 스레드 취소
+                            analysisPipelineService.cancel(userId, repoId);
+                        } catch (Exception e) {
+                            log.warn("Failed to cancel analysis for repoId={}: {}", repoId, e.getMessage());
+                        }
+                        try {
+                            // 관련 데이터 삭제 (각각 새 트랜잭션으로 실행됨)
+                            repoSummaryRepository.deleteByGithubRepositoryId(repoId);
+                            codeIndexRepository.deleteByGithubRepositoryId(repoId);
+                            commitRepository.deleteByRepositoryId(repoId);
+                            log.info("Deleted data for deselected repoId={}", repoId);
+                        } catch (Exception e) {
+                            log.warn("Failed to delete data for repoId={}: {}", repoId, e.getMessage());
+                        }
+                    }
                     try {
                         mergedSummaryService.rebuild(user);
                     } catch (IllegalStateException e) {

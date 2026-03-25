@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * clone → 정적 분석 → Code Index → RepoSummary → MergedSummary 파이프라인 오케스트레이터.
@@ -53,6 +54,9 @@ public class AnalysisPipelineService {
 
     // 예상 소요 시간 (임시 추정치)
     private static final int ESTIMATED_MINUTES = 5;
+
+    // 실행 중인 파이프라인 스레드 추적 (userId:repoId → Thread)
+    private final ConcurrentHashMap<String, Thread> activeThreads = new ConcurrentHashMap<>();
 
     // TODO: large repo 임계값은 실제 분석 결과를 보며 조정 필요.
     //   현재 300은 초기 추정치. 분석 시간·AI 품질을 모니터링하여 튜닝한다.
@@ -161,6 +165,26 @@ public class AnalysisPipelineService {
         self.executeAsync(userId, repositoryId);
     }
 
+    /**
+     * 진행 중인 분석 파이프라인을 취소한다.
+     *
+     * 실행 중인 스레드가 있으면 interrupt 신호를 보내고 Redis 상태를 FAILED로 갱신한다.
+     * 스레드가 없어도 (이미 완료됐거나 등록 전이면) Redis 상태만 갱신한다.
+     */
+    public void cancel(Long userId, Long repositoryId) {
+        String key = threadKey(userId, repositoryId);
+        Thread t = activeThreads.remove(key);
+        if (t != null && t.isAlive()) {
+            t.interrupt();
+            log.info("Analysis pipeline interrupted: userId={}, repoId={}", userId, repositoryId);
+        }
+        syncStatusService.getStatus(userId, repositoryId).ifPresent(s -> {
+            if (s.status() == SyncStatus.PENDING || s.status() == SyncStatus.IN_PROGRESS) {
+                syncStatusService.setFailed(userId, repositoryId, "분석이 취소되었습니다.");
+            }
+        });
+    }
+
     // ─────────────────────────────────────────────────
     // Async pipeline
     // ─────────────────────────────────────────────────
@@ -171,6 +195,9 @@ public class AnalysisPipelineService {
      */
     @Async("analysisExecutor")
     public void executeAsync(Long userId, Long repositoryId) {
+        // 실행 중인 스레드 등록 (cancel() 호출 시 interrupt를 보낼 수 있도록)
+        activeThreads.put(threadKey(userId, repositoryId), Thread.currentThread());
+
         // 트랜잭션 외부에서 엔티티를 다시 로드 (영속성 컨텍스트 분리)
         User user = userRepository.findById(userId).orElse(null);
         // findByIdWithConnection: githubConnection + user JOIN FETCH → 트랜잭션 없는 비동기 컨텍스트에서
@@ -180,6 +207,7 @@ public class AnalysisPipelineService {
         if (user == null || repo == null) {
             log.error("Pipeline aborted: user or repo not found. userId={}, repoId={}", userId, repositoryId);
             syncStatusService.setFailed(userId, repositoryId, "사용자 또는 저장소를 찾을 수 없습니다.");
+            activeThreads.remove(threadKey(userId, repositoryId));
             return;
         }
 
@@ -189,6 +217,7 @@ public class AnalysisPipelineService {
             log.error("Pipeline failed: userId={}, repoId={}, error={}", userId, repositoryId, e.getMessage(), e);
             syncStatusService.setFailed(userId, repositoryId, summarizeError(e));
         } finally {
+            activeThreads.remove(threadKey(userId, repositoryId));
             repoCloneService.deleteRepo(userId, repositoryId);
         }
     }
@@ -321,5 +350,9 @@ public class AnalysisPipelineService {
         String msg = e.getMessage();
         if (msg == null) return e.getClass().getSimpleName();
         return msg.length() > 200 ? msg.substring(0, 200) + "..." : msg;
+    }
+
+    private static String threadKey(Long userId, Long repositoryId) {
+        return userId + ":" + repositoryId;
     }
 }

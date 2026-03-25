@@ -34,4 +34,10 @@ public interface GithubCommitRepository extends JpaRepository<GithubCommit, Long
     // 커밋이 1건 이상 있는 repositoryId 집합 — getRepositories() 응답에 hasCommits 포함 시 N+1 방지
     @Query("select distinct c.repository.id from GithubCommit c where c.repository.id in :repoIds")
     Set<Long> findRepositoryIdsWithCommits(@Param("repoIds") List<Long> repoIds);
+
+    // repo 제거 시 해당 커밋 일괄 삭제
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("delete from GithubCommit c where c.repository.id = :repoId")
+    void deleteByRepositoryId(@Param("repoId") Long repoId);
 }
