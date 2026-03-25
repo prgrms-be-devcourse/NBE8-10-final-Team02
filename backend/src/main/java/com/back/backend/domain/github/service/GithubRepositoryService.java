@@ -21,6 +21,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.HashSet;
 import java.util.List;
@@ -112,15 +114,24 @@ public class GithubRepositoryService {
 
         toSelect.forEach(repo -> repo.updateSelection(true));
 
-        // deselect가 발생한 경우 즉시 MergedSummary 재집계
+        // deselect가 발생한 경우, 트랜잭션 커밋 후 MergedSummary 재집계
+        // afterCommit 훅 사용 이유: rebuild를 같은 트랜잭션 안에서 호출하면
+        // IllegalStateException 발생 시 트랜잭션이 rollback-only로 마킹되어 선택 저장까지 실패함
         if (anyDeselected) {
             User user = userRepository.findById(userId).orElseThrow();
-            try {
-                mergedSummaryService.rebuild(user);
-            } catch (IllegalStateException e) {
-                // 선택된 repo에 요약본이 없으면 rebuild 불필요
-                log.debug("No summaries to rebuild after deselection: userId={}", userId);
-            }
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        mergedSummaryService.rebuild(user);
+                    } catch (IllegalStateException e) {
+                        log.debug("No summaries to rebuild after deselection: userId={}", userId);
+                    } catch (Exception e) {
+                        log.warn("Failed to rebuild merged summary after deselection: userId={}, error={}",
+                                userId, e.getMessage());
+                    }
+                }
+            });
         }
 
         List<Long> selectedIds = toSelect.stream().map(GithubRepository::getId).toList();
