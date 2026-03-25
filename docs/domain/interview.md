@@ -2,7 +2,7 @@
 owner: 면접 세션/서비스 흐름 + 대시보드/히스토리
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-24
+last_updated: 2026-03-25
 linked_issue_or_pr: docs-sync-requirements-v5
 applies_to: interview-domain
 ---
@@ -31,7 +31,9 @@ applies_to: interview-domain
 - 수동 질문 추가 1차 범위는 독립 질문만 허용하며 `follow_up`, `parentQuestionId`는 받지 않는다.
 - 질문 세트 편집 시 `question_order`는 클라이언트가 직접 정하지 않고 서버가 관리한다.
 - 실사용 세션은 3개 이상 20개 이하 질문으로 진행한다.
+- 세션 시작은 현재 사용자 소유 질문 세트에 대해서만 허용한다.
 - 질문 수 `3..20` 검증은 편집 시점이 아니라 세션 시작 시점에 수행한다.
+- 질문 수가 `3..20` 범위를 벗어난 질문 세트는 `REQUEST_VALIDATION_FAILED`로 세션 시작을 거절한다.
 - `ready` 상태는 시작 전 상태이며 답변 제출을 허용하지 않는다.
 - `in_progress` 상태의 세션만 일반 답변 제출을 허용한다.
 - `paused` 상태는 재개 후 `in_progress`로 전환한 뒤 답변을 제출한다.
