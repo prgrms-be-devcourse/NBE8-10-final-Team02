@@ -2960,6 +2960,14 @@ paths:
                       message: 면접 결과 생성 결과가 완전하지 않습니다.
                       retryable: true
                     meta: *id001
+                resultGenerationFailed:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_RESULT_GENERATION_FAILED
+                      message: 면접 결과 생성 중 오류가 발생했습니다.
+                      retryable: true
+                    meta: *id001
         '503':
           description: 면접 결과 생성 timeout 또는 일시 장애
           content:
@@ -3032,4 +3040,35 @@ paths:
                       startedAt: '2026-03-17T10:35:00Z'
                       endedAt: '2026-03-17T10:40:00Z'
                     meta: *id001
-      description: 세션 결과와 피드백 리포트를 조회한다. 완료 직후에는 결과 생성 지연이 있을 수 있다.
+        '404':
+          description: 세션을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                sessionResultNotFound:
+                  value:
+                    success: false
+                    error:
+                      code: RESOURCE_NOT_FOUND
+                      message: 세션을 찾을 수 없습니다.
+                      retryable: false
+                    meta: *id001
+        '409':
+          description: 결과가 아직 준비되지 않음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                interviewResultIncomplete:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_RESULT_INCOMPLETE
+                      message: 면접 결과가 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.
+                      retryable: true
+                    meta: *id001
+      description: 세션 결과와 피드백 리포트를 조회한다. `feedback_completed` 상태에서만 성공 응답을 반환한다.
+        완료 직후 결과 생성이 아직 끝나지 않은 `completed` 상태에서는 `INTERVIEW_RESULT_INCOMPLETE`를 반환한다.
