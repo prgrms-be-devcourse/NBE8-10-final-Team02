@@ -34,7 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class InterviewSessionDetailApiTest extends ApiTestBase {
 
-    private static final Instant NOW = Instant.parse("2026-03-25T09:00:00Z");
+    private static final Instant NOW = Instant.now().minus(Duration.ofMinutes(5));
 
     @Autowired
     private EntityManager entityManager;
