@@ -1,7 +1,9 @@
 package com.back.backend.domain.interview.mapper;
 
+import com.back.backend.domain.interview.dto.response.InterviewAnswerSubmitResponse;
 import com.back.backend.domain.interview.dto.response.InterviewQuestionResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionResponse;
+import com.back.backend.domain.interview.entity.InterviewAnswer;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewSession;
 import org.springframework.stereotype.Component;
@@ -30,6 +32,16 @@ public class InterviewResponseMapper {
                 session.getSummaryFeedback(),
                 session.getStartedAt(),
                 session.getEndedAt()
+        );
+    }
+
+    public InterviewAnswerSubmitResponse toInterviewAnswerSubmitResponse(InterviewAnswer answer) {
+        return new InterviewAnswerSubmitResponse(
+                answer.getSession().getId(),
+                answer.getQuestion().getId(),
+                answer.getAnswerOrder(),
+                answer.isSkipped(),
+                answer.getCreatedAt()
         );
     }
 }
