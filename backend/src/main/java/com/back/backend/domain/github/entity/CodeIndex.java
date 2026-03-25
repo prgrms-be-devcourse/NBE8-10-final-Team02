@@ -9,6 +9,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -67,6 +69,7 @@ public class CodeIndex extends BaseEntity {
      * JSON 배열 형태로 메서드 목록 저장.
      * 예: [{"name":"doFilter","signature":"doFilter(...)","locStart":20,"locEnd":50}]
      */
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "methods", columnDefinition = "jsonb")
     private String methods;
 

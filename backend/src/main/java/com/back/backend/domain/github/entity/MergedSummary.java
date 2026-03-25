@@ -8,6 +8,8 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -38,6 +40,7 @@ public class MergedSummary extends BaseEntity {
     private int mergedVersion;
 
     /** JSON 배열 형태 repo ID 목록. 예: ["123", "456"] */
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "included_repo_ids", nullable = false, columnDefinition = "jsonb")
     private String includedRepoIds;
 
@@ -45,6 +48,7 @@ public class MergedSummary extends BaseEntity {
      * portfolio-summary.schema.json 형식 JSON + leanSummary 확장 필드.
      * AI 출력(projects, globalStrengths, globalRisks, qualityFlags) + 파생(leanSummary).
      */
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "data", nullable = false, columnDefinition = "jsonb")
     private String data;
 
