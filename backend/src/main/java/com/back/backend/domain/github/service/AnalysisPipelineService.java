@@ -220,10 +220,20 @@ public class AnalysisPipelineService {
 
         // ④ RepoSummary AI 생성 + MergedSummary 재집계
         syncStatusService.setInProgress(userId, repositoryId, "summary");
-
-        // AI를 호출
-        repoSummaryGeneratorService.generate(user, repo, authorEmail, triggerReason);
-        mergedSummaryService.rebuild(user);
+        try {
+            repoSummaryGeneratorService.generate(user, repo, authorEmail, triggerReason);
+            mergedSummaryService.rebuild(user);
+        } catch (Exception e) {
+            // 요약 생성 실패 시 이번 run에서 새로 저장한 CodeIndex를 정리한다.
+            // clone/분석 단계 실패는 이전 성공 run의 CodeIndex를 건드리지 않는다.
+            try {
+                codeIndexService.deleteByRepository(repo);
+                log.info("Cleaned up code index after summary failure: repoId={}", repositoryId);
+            } catch (Exception cleanupEx) {
+                log.warn("Failed to cleanup code index: repoId={}, error={}", repositoryId, cleanupEx.getMessage());
+            }
+            throw e;
+        }
 
         // 완료
         syncStatusService.setCompleted(userId, repositoryId);
