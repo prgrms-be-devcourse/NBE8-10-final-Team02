@@ -20,7 +20,8 @@ import java.util.concurrent.Executor;
  * <ol>
  *   <li>{@link DocumentUploadedEvent} 수신 (트랜잭션 커밋 후)</li>
  *   <li>{@code documentTaskExecutor}에 추출 작업을 제출해 비동기 실행</li>
- *   <li>성공 시: {@code extract_status = SUCCESS}, {@code extracted_text} 저장</li>
+ *   <li>텍스트 추출 후 {@link PiiMaskingService}로 PII 마스킹</li>
+ *   <li>성공 시: {@code extract_status = SUCCESS}, 마스킹된 텍스트를 {@code extracted_text}에 저장</li>
  *   <li>실패 시: {@code extract_status = FAILED} 저장, 오류 로그</li>
  * </ol>
  *
@@ -34,16 +35,19 @@ public class DocumentExtractionService {
     private static final Logger log = LoggerFactory.getLogger(DocumentExtractionService.class);
 
     private final DocumentTextExtractor textExtractor;
+    private final PiiMaskingService piiMaskingService;
     private final DocumentRepository documentRepository;
     private final Clock clock;
     private final Executor documentTaskExecutor;
 
     public DocumentExtractionService(
             DocumentTextExtractor textExtractor,
+            PiiMaskingService piiMaskingService,
             DocumentRepository documentRepository,
             Clock clock,
             @Qualifier("documentTaskExecutor") Executor documentTaskExecutor) {
         this.textExtractor = textExtractor;
+        this.piiMaskingService = piiMaskingService;
         this.documentRepository = documentRepository;
         this.clock = clock;
         this.documentTaskExecutor = documentTaskExecutor;
@@ -70,8 +74,19 @@ public class DocumentExtractionService {
 
         documentRepository.findById(event.documentId()).ifPresentOrElse(doc -> {
             try {
-                String text = textExtractor.extract(event.storagePath(), event.mimeType());
-                doc.markExtracted(text, clock.instant());
+                String rawText = textExtractor.extract(event.storagePath(), event.mimeType());
+
+                // PII 마스킹: 실패 시 원문을 그대로 저장 (추출 자체는 성공이므로 FAILED 처리하지 않음)
+                String textToSave;
+                try {
+                    textToSave = piiMaskingService.mask(rawText);
+                } catch (Exception maskEx) {
+                    log.warn("PII masking failed for document id={}, saving raw text: {}",
+                        event.documentId(), maskEx.getMessage());
+                    textToSave = rawText;
+                }
+
+                doc.markExtracted(textToSave, clock.instant());
                 documentRepository.save(doc);
                 log.info("Text extraction succeeded for document id={}", event.documentId());
             } catch (ServiceException e) {
