@@ -39,6 +39,12 @@ spring:
             clientId: ${KAKAO_CLIENT_ID:}
 
 
+analysis:
+  # 로컬 개발용 경로 (OCI의 /data/repos, /opt/analysis-scripts 대신 사용)
+  # repo-base-path: 백엔드 실행 위치 기준 상대 경로 또는 절대 경로로 재정의 가능
+  repo-base-path: ${user.home}/.dev-repos
+  scripts-base-path: ${user.dir}/../analysis-scripts
+
 logging:
   level:
     root: info
