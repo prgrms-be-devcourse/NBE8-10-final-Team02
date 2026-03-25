@@ -5,11 +5,9 @@ import com.back.backend.domain.interview.dto.response.InterviewAnswerSubmitRespo
 import com.back.backend.domain.interview.entity.InterviewAnswer;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewSession;
-import com.back.backend.domain.interview.entity.InterviewSessionStatus;
 import com.back.backend.domain.interview.mapper.InterviewResponseMapper;
 import com.back.backend.domain.interview.repository.InterviewAnswerRepository;
 import com.back.backend.domain.interview.repository.InterviewQuestionRepository;
-import com.back.backend.domain.interview.repository.InterviewSessionRepository;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import com.back.backend.global.response.FieldErrorDetail;
@@ -18,7 +16,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -26,9 +23,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class InterviewAnswerService {
 
-    private static final Duration AUTO_PAUSE_THRESHOLD = Duration.ofMinutes(30);
-
-    private final InterviewSessionRepository interviewSessionRepository;
+    private final InterviewSessionService interviewSessionService;
     private final InterviewQuestionRepository interviewQuestionRepository;
     private final InterviewAnswerRepository interviewAnswerRepository;
     private final InterviewResponseMapper interviewResponseMapper;
@@ -39,14 +34,8 @@ public class InterviewAnswerService {
             long sessionId,
             SubmitInterviewAnswerRequest request
     ) {
-        InterviewSession session = interviewSessionRepository.findByIdAndUserId(sessionId, userId)
-                .orElseThrow(() -> new ServiceException(
-                        ErrorCode.RESOURCE_NOT_FOUND,
-                        HttpStatus.NOT_FOUND,
-                        "세션 또는 질문을 찾을 수 없습니다."
-                ));
-
-        validateSessionStatus(session);
+        InterviewSession session = interviewSessionService.getOwnedSession(userId, sessionId);
+        interviewSessionService.validateAnswerableSession(session);
 
         long questionId = requirePositiveLong(request.questionId(), "questionId");
         int answerOrder = requirePositiveInt(request.answerOrder(), "answerOrder");
@@ -88,6 +77,8 @@ public class InterviewAnswerService {
         }
 
         String normalizedAnswerText = normalizeAnswerText(request.answerText(), request.isSkipped());
+        Instant submittedAt = Instant.now();
+        session.changeLastActivityAt(submittedAt);
 
         InterviewAnswer savedAnswer = interviewAnswerRepository.save(
                 InterviewAnswer.builder()
@@ -100,47 +91,6 @@ public class InterviewAnswerService {
         );
 
         return interviewResponseMapper.toInterviewAnswerSubmitResponse(savedAnswer);
-    }
-
-    private void validateSessionStatus(InterviewSession session) {
-        InterviewSessionStatus status = session.getStatus();
-        if (status == InterviewSessionStatus.COMPLETED || status == InterviewSessionStatus.FEEDBACK_COMPLETED) {
-            throw new ServiceException(
-                    ErrorCode.INTERVIEW_SESSION_ALREADY_COMPLETED,
-                    HttpStatus.CONFLICT,
-                    "이미 종료된 면접 세션입니다."
-            );
-        }
-
-        if (status == InterviewSessionStatus.IN_PROGRESS && shouldAutoPause(session)) {
-            session.changeStatus(InterviewSessionStatus.PAUSED);
-            throw new ServiceException(
-                    ErrorCode.INTERVIEW_SESSION_NOT_ACTIVE,
-                    HttpStatus.CONFLICT,
-                    "진행 가능한 면접 세션이 아닙니다. 재개 후 다시 시도해주세요."
-            );
-        }
-
-        if (status != InterviewSessionStatus.IN_PROGRESS) {
-            throw new ServiceException(
-                    ErrorCode.INTERVIEW_SESSION_NOT_ACTIVE,
-                    HttpStatus.CONFLICT,
-                    "진행 가능한 면접 세션이 아닙니다. 재개 후 다시 시도해주세요."
-            );
-        }
-    }
-
-    private boolean shouldAutoPause(InterviewSession session) {
-        Instant now = Instant.now();
-        Instant lastActivityAt = interviewAnswerRepository.findTopBySessionIdOrderByCreatedAtDesc(session.getId())
-                .map(InterviewAnswer::getCreatedAt)
-                .orElse(session.getStartedAt());
-
-        if (lastActivityAt == null) {
-            return false;
-        }
-
-        return lastActivityAt.isBefore(now.minus(AUTO_PAUSE_THRESHOLD));
     }
 
     private long requirePositiveLong(Long value, String field) {
