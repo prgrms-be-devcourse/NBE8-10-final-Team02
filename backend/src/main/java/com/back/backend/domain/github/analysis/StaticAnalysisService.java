@@ -27,12 +27,12 @@ import java.util.stream.Collectors;
  * 언어별 정적 분석 디스패처.
  *
  * - Java:       JavaStaticAnalyzer (JavaParser, JVM 내부 실행)
- * - Kotlin:     kotlin_analyzer.py (regex 기반)
- * - Python:     python_analyzer.py (ast stdlib)
+ * - Kotlin:     kotlin_analyzer.py (tree-sitter-kotlin)
+ * - Python:     python_analyzer.py (ast stdlib, no deps)
  * - JS/TS:      ts_analyzer.js (ts-morph)
- * - Go:         go_analyzer.py (regex 기반)
- * - Rust:       rust_analyzer.py (regex 기반)
- * - C/C++:      c_analyzer.py (regex 기반)
+ * - Go:         go_analyzer.py (tree-sitter-go)
+ * - Rust:       rust_analyzer.py (tree-sitter-rust)
+ * - C/C++:      c_analyzer.py (tree-sitter-c / tree-sitter-cpp)
  *
  * 외부 스크립트 미설치 시 해당 언어 파일은 건너뛰고 경고 로그를 남긴다.
  */
