@@ -47,4 +47,8 @@ public class InterviewQuestionSet extends CreatedAtEntity {
     @JdbcTypeCode(SqlTypes.ARRAY)
     @Column(name = "question_types", columnDefinition = "text[]")
     private String[] questionTypes;
+
+    public void changeQuestionCount(int questionCount) {
+        this.questionCount = questionCount;
+    }
 }
