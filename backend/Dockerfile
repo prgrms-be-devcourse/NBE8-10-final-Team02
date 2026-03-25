@@ -38,6 +38,10 @@ RUN java -Djarmode=layertools -jar app.jar extract
 FROM container-registry.oracle.com/graalvm/jdk:25
 WORKDIR /app
 
+# git: RepoCloneService의 git clone/fetch 실행에 필요
+# python3: StaticAnalysisService의 Python 언어 분석 스크립트 실행에 필요
+RUN microdnf install -y git python3 && microdnf clean all
+
 # 한글 인코딩 및 한국 시간대(KST) 설정
 ENV LANG=ko_KR.UTF-8 \
     LC_ALL=ko_KR.UTF-8 \
