@@ -2,7 +2,7 @@
 owner: 플랫폼/공통 기반 + 인프라/배포/관측성
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-03-25
 linked_issue_or_pr: docs-sync-requirements-v5
 applies_to: storage-schema
 ---
@@ -267,10 +267,12 @@ applies_to: storage-schema
 - `total_score`
 - `summary_feedback`
 - `started_at`
+- `last_activity_at`
 - `ended_at`
 
 비고
 - `total_score`는 0~100 범위를 권장한다.
+- `last_activity_at`는 세션 생성, 답변 제출 성공, 재개 성공 시점에 갱신한다.
 
 ## 3.14 interview_answers
 
@@ -371,6 +373,7 @@ applies_to: storage-schema
 - `application_status`는 `draft | ready`로 고정한다.
 - 질문별 점수와 세션 총점은 0~100 정수로 저장한다.
 - `feedback_tags`는 seed 데이터 기반 고정 마스터 테이블로 운영한다.
+- `interview_sessions.last_activity_at`는 자동 일시정지 판단과 세션 복원 화면 기준 시각으로 사용한다.
 
 ## 8. 후속 고도화 항목
 

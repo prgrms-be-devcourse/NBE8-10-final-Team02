@@ -38,8 +38,11 @@ applies_to: interview-domain
 - 답변 제출은 현재 사용자 소유 세션과 해당 세션에서 진행 중인 질문에 대해서만 허용한다.
 - 답변 제출 요청의 `questionId`, `answerOrder`는 현재 순번과 일치해야 하며 어긋나면 `REQUEST_VALIDATION_FAILED`로 거절한다.
 - `in_progress` 상태의 세션만 일반 답변 제출을 허용한다.
+- 명시적 `pause`는 `in_progress` 상태에서만 허용한다.
 - `paused` 상태는 재개 후 `in_progress`로 전환한 뒤 답변을 제출한다.
+- 명시적 `resume`은 `paused` 상태에서만 허용한다.
 - `pause/resume`은 상태 필드 일반 수정이 아니라 명시적 액션 API로 처리한다.
+- 현재 상태에서 허용되지 않는 `pause/resume` 요청은 `INTERVIEW_SESSION_STATUS_CONFLICT`로 거절한다.
 - `completed`, `feedback_completed` 세션에는 추가 답변을 허용하지 않는다.
 - 세션 상세 조회는 복원 화면 기준으로 `currentQuestion`, 진행률 계산용 count, `resumeAvailable`, `lastActivityAt`를 함께 반환한다.
 - 건너뛰기 아닌 일반 답변이 비어 있으면 `INTERVIEW_ANSWER_REQUIRED`로 거절한다.
@@ -49,6 +52,7 @@ applies_to: interview-domain
 - 활성 세션이 있으면 새 세션 시작보다 기존 세션 복귀 또는 재개를 우선한다.
 - 자동 일시정지 v1은 스케줄러보다 `lastActivityAt` 기반 요청 시점 전이로 처리한다.
 - v1 자동 일시정지 조건 평가는 최소 `GET /interview/sessions/{sessionId}`, `POST /interview/sessions/{sessionId}/answers`, `POST /interview/sessions/{sessionId}/resume` 진입 시점에 수행한다.
+- `lastActivityAt`는 `interview_sessions.last_activity_at`에 저장한다.
 - `lastActivityAt`는 세션 생성, 답변 제출 성공, 재개 성공 시점에 갱신한다.
 - 세션 완료와 결과 저장은 논리적으로 일관되게 처리해야 한다.
 
@@ -70,6 +74,7 @@ applies_to: interview-domain
 - `INTERVIEW_QUESTION_SET_NOT_EDITABLE`
 - `INTERVIEW_SESSION_ALREADY_ACTIVE`
 - `INTERVIEW_SESSION_ALREADY_COMPLETED`
+- `INTERVIEW_SESSION_STATUS_CONFLICT`
 - `INTERVIEW_ANSWER_REQUIRED`
 - `INTERVIEW_ANSWER_TOO_SHORT`
 - `INTERVIEW_RESULT_GENERATION_FAILED`

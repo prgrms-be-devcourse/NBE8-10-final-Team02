@@ -50,7 +50,8 @@ class InterviewAnswerApiTest extends ApiTestBase {
     @Test
     void submitAnswer_returns201AndSavesTrimmedAnswer() throws Exception {
         User user = persistUser("answer-submit@example.com", "answer-submit");
-        InterviewSession session = persistInProgressSession(user);
+        Instant previousActivityAt = Instant.now().minus(Duration.ofMinutes(5));
+        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, previousActivityAt);
         InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
         persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
         persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
@@ -76,9 +77,11 @@ class InterviewAnswerApiTest extends ApiTestBase {
         entityManager.clear();
 
         InterviewAnswer savedAnswer = interviewAnswerRepository.findAll().get(0);
+        InterviewSession refreshedSession = entityManager.find(InterviewSession.class, session.getId());
         assertThat(savedAnswer.getAnswerOrder()).isEqualTo(1);
         assertThat(savedAnswer.getAnswerText()).isEqualTo(VALID_ANSWER);
         assertThat(savedAnswer.isSkipped()).isFalse();
+        assertThat(refreshedSession.getLastActivityAt()).isAfter(previousActivityAt);
     }
 
     @Test
@@ -363,6 +366,7 @@ class InterviewAnswerApiTest extends ApiTestBase {
                 .questionSet(questionSet)
                 .status(status)
                 .startedAt(startedAt)
+                .lastActivityAt(startedAt)
                 .endedAt(null)
                 .build();
         entityManager.persist(session);

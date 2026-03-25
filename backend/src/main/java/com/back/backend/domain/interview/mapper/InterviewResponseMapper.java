@@ -3,9 +3,12 @@ package com.back.backend.domain.interview.mapper;
 import com.back.backend.domain.interview.dto.response.InterviewAnswerSubmitResponse;
 import com.back.backend.domain.interview.dto.response.InterviewQuestionResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionResponse;
+import com.back.backend.domain.interview.dto.response.InterviewSessionTransitionResponse;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewSession;
+
+import java.time.Instant;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -42,6 +45,17 @@ public class InterviewResponseMapper {
                 answer.getAnswerOrder(),
                 answer.isSkipped(),
                 answer.getCreatedAt()
+        );
+    }
+
+    public InterviewSessionTransitionResponse toInterviewSessionTransitionResponse(
+            InterviewSession session,
+            Instant updatedAt
+    ) {
+        return new InterviewSessionTransitionResponse(
+                session.getId(),
+                session.getStatus().getValue(),
+                updatedAt
         );
     }
 }
