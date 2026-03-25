@@ -28,6 +28,8 @@ public class InterviewAnswerService {
     private final InterviewAnswerRepository interviewAnswerRepository;
     private final InterviewResponseMapper interviewResponseMapper;
 
+    // auto-pause 대상 세션은 충돌 오류를 반환하더라도 paused 상태 보정은 남겨야 한다.
+    // 그래서 ServiceException이 나와도 세션 상태 변경까지는 롤백하지 않는다.
     @Transactional(noRollbackFor = ServiceException.class)
     public InterviewAnswerSubmitResponse submitAnswer(
             long userId,
@@ -39,6 +41,8 @@ public class InterviewAnswerService {
 
         long questionId = requirePositiveLong(request.questionId(), "questionId");
         int answerOrder = requirePositiveInt(request.answerOrder(), "answerOrder");
+        // 답변은 현재 차례의 질문 하나만 순차 제출할 수 있다.
+        // 이미 저장된 답변 수를 기준으로 다음 차례를 계산해 questionId와 answerOrder를 함께 검증한다.
         int expectedAnswerOrder = Math.toIntExact(interviewAnswerRepository.countBySessionId(sessionId) + 1L);
 
         InterviewQuestion requestedQuestion = interviewQuestionRepository.findByIdAndQuestionSetId(
@@ -143,6 +147,7 @@ public class InterviewAnswerService {
 
     private String normalizeAnswerText(String answerText, boolean skipped) {
         if (skipped) {
+            // 건너뛰기 응답은 open-items 기준상 50자 최소 길이 규칙의 예외다.
             return null;
         }
 

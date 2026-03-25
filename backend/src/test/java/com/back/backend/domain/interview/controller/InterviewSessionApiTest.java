@@ -49,6 +49,7 @@ class InterviewSessionApiTest extends ApiTestBase {
         User user = persistUser("session-start@example.com", "session-start");
         Application application = persistApplication(user, "application-title");
         InterviewQuestionSet questionSet = persistQuestionSet(user, application, 3);
+        // 세션 시작은 3개 이상 20개 이하 질문만 허용되므로 하한을 맞춘 최소 성공 셋업이다.
         persistQuestion(questionSet, 1, "첫 번째 질문");
         persistQuestion(questionSet, 2, "두 번째 질문");
         persistQuestion(questionSet, 3, "세 번째 질문");
@@ -148,6 +149,7 @@ class InterviewSessionApiTest extends ApiTestBase {
     void startSession_returns400WhenQuestionCountIsOutOfRange() throws Exception {
         User user = persistUser("session-question-count@example.com", "session-question-count");
         Application application = persistApplication(user, "application-title");
+        // lower bound 검증을 직접 건드리기 위해 질문 2개짜리 세트를 만든다.
         InterviewQuestionSet questionSet = persistQuestionSet(user, application, 2);
         persistQuestion(questionSet, 1, "첫 번째 질문");
         persistQuestion(questionSet, 2, "두 번째 질문");
