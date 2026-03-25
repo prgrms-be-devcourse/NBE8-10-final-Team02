@@ -28,27 +28,27 @@ import java.util.stream.Collectors;
 /**
  * 외부 분석 스크립트를 상주 프로세스(데몬) 풀로 관리한다.
  *
- * 기존 방식(요청마다 프로세스 생성)의 문제:
- *   - Python/Node 인터프리터 기동 비용이 분석마다 발생 (~200~500ms)
- *   - AST 라이브러리 import 시간 포함 시 더 길어짐
+ * ※ 현재 이 클래스의 데몬 기동 기능은 사용되지 않는다.
  *
- * 데몬 풀 방식:
- *   - @PostConstruct 시점에 각 언어별로 POOL_SIZE개 데몬을 기동
- *   - callRaw()는 BlockingQueue에서 데몬을 꺼내 쓰고 finally에서 반납
- *   - 모든 데몬이 사용 중이면 빈 데몬이 생길 때까지 대기
- *   - 데몬 미기동(스크립트 미설치 등) 시 null 반환 → StaticAnalysisService가 프로세스 방식으로 폴백
+ * 데몬 방식을 채택하지 않은 이유:
+ *   우리 서비스는 레포지토리 전체를 한 번에 분석하는 배치(Batch) 방식이다.
+ *   - 파일 1개 분석: 인터프리터 기동(~0.5s) + 분석(~0.01s) → 기동 비용이 50배 → 데몬이 유리
+ *   - 레포 전체 분석: 인터프리터 기동(~0.5s) + 파일 수백~천 개 분석(수 초) → 기동 비용 10% 미만
+ *   레포 단위 배치 분석에서는 0.5초를 아끼자고 데몬 풀·헬스체크·IPC 파이프라인을
+ *   유지하는 복잡도가 이득보다 크다.
+ *   또한 1회성 프로세스(ProcessBuilder.waitFor)는 분석 완료 후 메모리를 즉시 OS에 반환하므로
+ *   OCI 4CPU/25GB 환경에서 자원 효율이 더 좋다.
  *
- * 풀 크기:
- *   POOL_SIZE = analysisExecutor corePoolSize(2)에 맞춰 언어당 2개.
- *   동시 분석 작업 2개가 같은 언어를 쓸 때 대기 없이 처리된다.
+ * 데몬이 필요해지는 조건 (현재는 해당 없음):
+ *   - 사용자 타이핑마다 실시간 피드백이 필요한 IDE 기능 구현 시
+ *   - 파일 수만 개 규모의 레포에서 변경 파일만 증분 분석할 때
  *
- * 프로토콜 (newline-delimited JSON):
- *   요청: {"repoRoot":"/path","files":["a.kt","b.kt"]}  ← files=null 이면 전체 분석
+ * callRaw()는 항상 null을 반환하므로 StaticAnalysisService는 ProcessBuilder 경로만 사용한다.
+ *
+ * 프로토콜 (newline-delimited JSON, 미래 재활성화 시 참고):
+ *   요청: {"repoRoot":"/path","files":["a.kt","b.kt"]}
  *   응답: [{fqn:..., file_path:..., ...}, ...]
  *   스크립트 측 시작 신호: "READY" 한 줄 출력 후 요청 대기
- *
- * TODO: 스크립트(kotlin_analyzer.py 등)에 --daemon 모드 구현 필요.
- *   현재는 데몬 기동 실패 시 기존 프로세스 방식으로 자동 폴백되므로 점진적 전환 가능.
  */
 @Service
 public class AnalysisDaemonManager implements DisposableBean {
@@ -66,7 +66,7 @@ public class AnalysisDaemonManager implements DisposableBean {
     private static final int POLL_INTERVAL_MS = 100;
 
     // language key → [interpreter, scriptName]
-    // TODO: 스크립트별 데몬 지원 여부에 따라 목록 조정
+    // 데몬 기동 시도용 설정 — 현재 startAll()이 스크립트 미존재로 전부 실패하므로 pools는 항상 비어 있음
     private static final Map<String, String[]> DAEMON_CONFIG = Map.of(
             "kotlin", new String[]{"python3", "kotlin_analyzer.py"},
             "python", new String[]{"python3", "python_analyzer.py"},
