@@ -12,18 +12,24 @@ public record GithubRepositoryResponse(
         String repoName,
         String fullName,
         String htmlUrl,
-        String visibility,   // "public" | "private" | "internal"
+        String visibility,      // "public" | "private" | "internal"
         String defaultBranch,
         boolean isSelected,
-        boolean hasCommits   // 커밋 동기화 완료 여부 (false면 포트폴리오 분석 불가)
+        boolean hasCommits,     // 커밋 동기화 완료 여부 (false면 포트폴리오 분석 불가)
+        RepoSyncStatusResponse analysisStatus  // 분석 상태 (분석 미요청 또는 TTL 만료 시 null)
 ) {
 
-    /** 커밋 여부를 별도로 조회하지 않는 컨텍스트(기여 repo 저장 등)에서 사용 */
+    /** 분석 상태 없이 생성 (기여 repo 저장 등 분석 상태가 불필요한 컨텍스트) */
     public static GithubRepositoryResponse from(GithubRepository repo) {
-        return from(repo, false);
+        return from(repo, false, null);
     }
 
     public static GithubRepositoryResponse from(GithubRepository repo, boolean hasCommits) {
+        return from(repo, hasCommits, null);
+    }
+
+    public static GithubRepositoryResponse from(GithubRepository repo, boolean hasCommits,
+                                                RepoSyncStatusResponse analysisStatus) {
         return new GithubRepositoryResponse(
                 repo.getId(),
                 repo.getGithubRepoId(),
@@ -34,7 +40,8 @@ public record GithubRepositoryResponse(
                 repo.getVisibility().getValue(),
                 repo.getDefaultBranch(),
                 repo.isSelected(),
-                hasCommits
+                hasCommits,
+                analysisStatus
         );
     }
 }

@@ -10,6 +10,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -178,6 +181,38 @@ public class SyncStatusService {
             log.warn("Failed to deserialize sync status for key={}: {}", key, e.getMessage());
             return Optional.empty();
         }
+    }
+
+    /**
+     * 여러 repo의 분석 상태를 한 번의 Redis MGET으로 조회한다.
+     * 상태가 없는 repo(TTL 만료 또는 미등록)는 결과 Map에 포함되지 않는다.
+     *
+     * @param repositoryIds 조회할 repo ID 목록
+     * @return repoId → SyncStatusData (상태 있는 repo만 포함)
+     */
+    public Map<Long, SyncStatusData> getStatusBulk(Long userId, List<Long> repositoryIds) {
+        if (repositoryIds.isEmpty()) return Map.of();
+
+        List<String> keys = repositoryIds.stream()
+                .map(id -> buildKey(userId, id))
+                .toList();
+
+        List<String> values = redisTemplate.opsForValue().multiGet(keys);
+        Map<Long, SyncStatusData> result = new HashMap<>();
+
+        if (values == null) return result;
+
+        for (int i = 0; i < repositoryIds.size(); i++) {
+            String json = values.get(i);
+            if (json == null) continue;
+            try {
+                SyncStatusData data = objectMapper.readValue(json, SyncStatusData.class);
+                result.put(repositoryIds.get(i), data);
+            } catch (JsonProcessingException e) {
+                log.warn("Failed to deserialize sync status for repoId={}: {}", repositoryIds.get(i), e.getMessage());
+            }
+        }
+        return result;
     }
 
     // ─────────────────────────────────────────────────

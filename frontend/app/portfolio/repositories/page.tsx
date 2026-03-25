@@ -8,7 +8,6 @@ import {
   syncCommits,
   analyzeRepository,
   cancelAnalysis,
-  getAnalysisStatus,
   getContributions,
   saveContribution,
   addContributionByUrl,
@@ -92,8 +91,15 @@ function OwnedTab() {
   const [analysisStatuses, setAnalysisStatuses] = useState<Record<number, RepoSyncStatus>>({});
   const [analyzingIds, setAnalyzingIds] = useState<Set<number>>(new Set());
   const [analyzeErrors, setAnalyzeErrors] = useState<Record<number, string>>({});
-  const pollingRef = useRef<Record<number, ReturnType<typeof setInterval>>>({});
 
+  // 분석 상태를 응답에서 추출해 analysisStatuses에 반영 (repos 갱신 시 공통 사용)
+  function applyStatusesFromRepos(data: GithubRepository[]) {
+    const statuses: Record<number, RepoSyncStatus> = {};
+    data.forEach((r) => { if (r.analysisStatus) statuses[r.id] = r.analysisStatus; });
+    setAnalysisStatuses(statuses);
+  }
+
+  // 초기 로드: 로딩 UI 포함, selectedIds도 서버 상태로 초기화
   const loadRepos = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
@@ -101,6 +107,7 @@ function OwnedTab() {
       const { data } = await getRepositories({ page: 1, size: 100 });
       setRepos(data);
       setSelectedIds(new Set(data.filter((r) => r.isSelected).map((r) => r.id)));
+      applyStatusesFromRepos(data);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : '목록을 불러오지 못했습니다.');
     } finally {
@@ -108,28 +115,30 @@ function OwnedTab() {
     }
   }, []);
 
-  useEffect(() => { loadRepos(); }, [loadRepos]);
-  useEffect(() => {
-    const intervals = pollingRef.current;
-    return () => { Object.values(intervals).forEach(clearInterval); };
+  // 폴링용 갱신: 로딩 UI 없음, selectedIds는 건드리지 않음 (사용자 미저장 선택 유지)
+  const refreshRepos = useCallback(async () => {
+    try {
+      const { data } = await getRepositories({ page: 1, size: 100 });
+      setRepos(data);
+      applyStatusesFromRepos(data);
+    } catch { /* 폴링 실패 무시 */ }
   }, []);
 
-  function startPolling(repoId: number) {
-    if (pollingRef.current[repoId]) return;
-    pollingRef.current[repoId] = setInterval(async () => {
-      try {
-        const status = await getAnalysisStatus(repoId);
-        if (status) {
-          setAnalysisStatuses((prev) => ({ ...prev, [repoId]: status }));
-          if (['COMPLETED', 'SKIPPED', 'FAILED'].includes(status.status)) {
-            clearInterval(pollingRef.current[repoId]);
-            delete pollingRef.current[repoId];
-            setAnalyzingIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });
-          }
-        }
-      } catch { /* 폴링 실패 무시 */ }
-    }, 3000);
-  }
+  useEffect(() => { loadRepos(); }, [loadRepos]);
+
+  // PENDING/IN_PROGRESS인 repo가 있을 때만 3초 폴링
+  // 모두 종료(COMPLETED/SKIPPED/FAILED/null)되면 자동으로 폴링 중단
+  const hasActiveAnalysis =
+    analyzingIds.size > 0 ||
+    Object.values(analysisStatuses).some(
+      (s) => s.status === 'PENDING' || s.status === 'IN_PROGRESS'
+    );
+
+  useEffect(() => {
+    if (!hasActiveAnalysis) return;
+    const id = setInterval(refreshRepos, 3000);
+    return () => clearInterval(id);
+  }, [hasActiveAnalysis, refreshRepos]);
 
   async function handleAnalyze(repoId: number) {
     setAnalyzingIds((prev) => new Set(prev).add(repoId));
@@ -137,13 +146,10 @@ function OwnedTab() {
     try {
       const status = await analyzeRepository(repoId);
       if (status) setAnalysisStatuses((prev) => ({ ...prev, [repoId]: status }));
-      startPolling(repoId);
+      // hasActiveAnalysis가 true가 되므로 useEffect가 폴링을 자동으로 시작함
     } catch (err) {
-      // 409: 이미 진행 중인 분석 → 에러 대신 폴링 시작
-      if (err instanceof Error && err.message.includes('409')) {
-        startPolling(repoId);
-        return;
-      }
+      // 409: 이미 진행 중인 분석 → 폴링이 상태를 가져올 것이므로 에러 무시
+      if (err instanceof Error && err.message.includes('409')) return;
       const msg = err instanceof Error ? err.message : '분석 시작 중 오류가 발생했습니다.';
       setAnalyzeErrors((prev) => ({ ...prev, [repoId]: msg }));
       setAnalyzingIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });
@@ -154,11 +160,7 @@ function OwnedTab() {
     try {
       await cancelAnalysis(repoId);
     } catch { /* 취소 실패는 무시 — 폴링이 최종 상태를 반영함 */ }
-    // 폴링 중지 + 로컬 상태 즉시 업데이트
-    if (pollingRef.current[repoId]) {
-      clearInterval(pollingRef.current[repoId]);
-      delete pollingRef.current[repoId];
-    }
+    // 로컬 상태 즉시 업데이트 (낙관적), 폴링이 실제 FAILED 상태를 곧 반영함
     setAnalyzingIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });
     setAnalysisStatuses((prev) => ({
       ...prev,
