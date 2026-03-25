@@ -98,16 +98,24 @@ public class GithubRepositoryService {
     // ─────────────────────────────────────────────────
 
     /**
-     * 사용자의 GitHub 연결을 조회한다. 연결이 없으면 예외를 던진다.
+     * 사용자의 GitHub OAuth 연결을 조회한다.
+     * 연결이 없거나 OAuth token이 없으면 예외를 던진다.
      */
     private GithubConnection findConnectionOrThrow(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ServiceException(
                         ErrorCode.RESOURCE_NOT_FOUND, HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
 
-        return connectionRepository.findByUser(user)
+        GithubConnection connection = connectionRepository.findByUser(user)
                 .orElseThrow(() -> new ServiceException(
                         ErrorCode.GITHUB_CONNECTION_NOT_FOUND, HttpStatus.NOT_FOUND,
-                        "GitHub 연결 정보가 없습니다. 먼저 GitHub를 연동해 주세요."));
+                        "GitHub 연결 정보가 없습니다. GitHub OAuth로 연동해주세요."));
+
+        if (connection.getAccessToken() == null) {
+            throw new ServiceException(ErrorCode.GITHUB_SCOPE_INSUFFICIENT, HttpStatus.FORBIDDEN,
+                    "GitHub OAuth 연동이 필요합니다. GitHub 계정을 연동해주세요.");
+        }
+
+        return connection;
     }
 }
