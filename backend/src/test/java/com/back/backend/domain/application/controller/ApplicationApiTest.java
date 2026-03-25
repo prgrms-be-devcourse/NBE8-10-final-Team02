@@ -154,6 +154,8 @@ class ApplicationApiTest extends ApiTestBase {
         Application application = persistApplication(user, "ready-application", ApplicationStatus.DRAFT);
         GithubRepository repository = persistGithubRepository(user, "team/ready-project");
 
+        // ready 판정은 source 1개 이상과 문항별 usable answer를 함께 본다.
+        // editedAnswer가 없어도 generatedAnswer가 있으면 최소 충족 조건으로 인정되는지 검증한다.
         bindRepositorySource(application, repository);
         persistAnsweredQuestion(application, 1, "지원 동기", "포트폴리오 기반으로 작성된 자소서 초안");
 
