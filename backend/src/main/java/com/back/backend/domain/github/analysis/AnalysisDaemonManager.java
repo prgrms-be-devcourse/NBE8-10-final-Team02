@@ -51,6 +51,7 @@ import java.util.stream.Collectors;
  *   스크립트 측 시작 신호: "READY" 한 줄 출력 후 요청 대기
  */
 @Service
+@Deprecated
 public class AnalysisDaemonManager implements DisposableBean {
 
     private static final Logger log = LoggerFactory.getLogger(AnalysisDaemonManager.class);
