@@ -35,4 +35,8 @@ public interface GithubRepositoryRepository extends JpaRepository<GithubReposito
             @Param("connection") GithubConnection connection,
             @Param("repoIds") List<Long> repoIds
     );
+
+    // githubConnection + user 를 JOIN FETCH — 트랜잭션 없는 비동기 컨텍스트에서 LazyInitializationException 방지
+    @Query("SELECT r FROM GithubRepository r JOIN FETCH r.githubConnection gc JOIN FETCH gc.user WHERE r.id = :id")
+    Optional<GithubRepository> findByIdWithConnection(@Param("id") Long id);
 }

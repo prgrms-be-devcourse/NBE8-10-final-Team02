@@ -139,6 +139,11 @@ function OwnedTab() {
       if (status) setAnalysisStatuses((prev) => ({ ...prev, [repoId]: status }));
       startPolling(repoId);
     } catch (err) {
+      // 409: 이미 진행 중인 분석 → 에러 대신 폴링 시작
+      if (err instanceof Error && err.message.includes('409')) {
+        startPolling(repoId);
+        return;
+      }
       const msg = err instanceof Error ? err.message : '분석 시작 중 오류가 발생했습니다.';
       setAnalyzeErrors((prev) => ({ ...prev, [repoId]: msg }));
       setAnalyzingIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });
@@ -227,6 +232,8 @@ function OwnedTab() {
           const isSynced = syncedIds.has(repo.id);
           const isAnalyzing = analyzingIds.has(repo.id);
           const analysisStatus = analysisStatuses[repo.id];
+          const isAnalysisActive = isAnalyzing ||
+            (analysisStatus?.status === 'PENDING' || analysisStatus?.status === 'IN_PROGRESS');
 
           return (
             <li key={repo.id} className="rounded border border-zinc-200 px-4 py-3">
@@ -258,17 +265,17 @@ function OwnedTab() {
                 <div className="flex shrink-0 flex-col gap-1.5">
                   <button
                     onClick={() => handleSyncCommits(repo.id)}
-                    disabled={isSyncing || !selectedIds.has(repo.id)}
+                    disabled={isSyncing || isAnalysisActive || !selectedIds.has(repo.id)}
                     className="rounded border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {isSyncing ? '동기화 중...' : '커밋 동기화'}
                   </button>
                   <button
                     onClick={() => handleAnalyze(repo.id)}
-                    disabled={isAnalyzing || !isSynced || !selectedIds.has(repo.id)}
+                    disabled={isAnalysisActive || !isSynced || !selectedIds.has(repo.id)}
                     className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs text-indigo-700 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {isAnalyzing ? '분석 중...' : '포트폴리오 분석'}
+                    {isAnalysisActive ? '분석 중...' : '포트폴리오 분석'}
                   </button>
                 </div>
               </div>
