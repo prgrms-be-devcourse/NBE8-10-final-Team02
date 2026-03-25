@@ -15,6 +15,16 @@ import java.util.stream.Collectors;
 @Component
 public class SelfIntroPayloadBuilder {
 
+    private static final int SHORT_TARGET_CHARS = 500;
+    private static final int SHORT_MAX_CHARS = 700;
+    private static final int MEDIUM_TARGET_CHARS = 900;
+    private static final int MEDIUM_MAX_CHARS = 1200;
+    private static final int LONG_TARGET_CHARS = 1400;
+    private static final int LONG_MAX_CHARS = 1800;
+
+    private static final String CONFIDENCE_HIGH = "high";
+    private static final String CONFIDENCE_MEDIUM = "medium";
+
     private final ObjectMapper objectMapper;
 
     public SelfIntroPayloadBuilder(ObjectMapper objectMapper) {
@@ -24,9 +34,9 @@ public class SelfIntroPayloadBuilder {
     public record QuestionInput(
         int questionOrder,
         String questionText,
-        String toneOption,    // nullable
-        String lengthOption,  // nullable
-        String emphasisPoint  // nullable
+        String toneOption,
+        String lengthOption,
+        String emphasisPoint
     ) {
     }
 
@@ -90,7 +100,6 @@ public class SelfIntroPayloadBuilder {
     private void buildPortfolioEvidence(ObjectNode root, List<String> documentTexts, List<CommitInput> commits) {
         ArrayNode evidence = root.putArray("portfolioEvidence");
 
-        // 문서 → 각각 독립 증거 항목
         int docIndex = 1;
         for (String extractedText : documentTexts) {
             ObjectNode ev = evidence.addObject();
@@ -98,11 +107,10 @@ public class SelfIntroPayloadBuilder {
             ev.put("summary", extractedText);
             ev.putArray("signals");
             ev.putArray("evidenceBullets");
-            ev.put("confidence", "medium");
+            ev.put("confidence", CONFIDENCE_MEDIUM);
             docIndex++;
         }
 
-        // 커밋 → repo 단위로 그룹화
         Map<String, List<String>> commitsByRepo = commits.stream()
             .collect(Collectors.groupingBy(
                 CommitInput::repoName,
@@ -118,7 +126,7 @@ public class SelfIntroPayloadBuilder {
             ev.putArray("signals");
             ArrayNode bullets = ev.putArray("evidenceBullets");
             entry.getValue().forEach(bullets::add);
-            ev.put("confidence", "high");
+            ev.put("confidence", CONFIDENCE_HIGH);
         }
     }
 
@@ -129,14 +137,17 @@ public class SelfIntroPayloadBuilder {
         constraints.put("preferStarStructure", true);
 
         ObjectNode lengthPolicy = constraints.putObject("lengthPolicy");
+
         ObjectNode shortPolicy = lengthPolicy.putObject("short");
-        shortPolicy.put("targetChars", 500);
-        shortPolicy.put("hardMaxChars", 700);
+        shortPolicy.put("targetChars", SHORT_TARGET_CHARS);
+        shortPolicy.put("hardMaxChars", SHORT_MAX_CHARS);
+
         ObjectNode mediumPolicy = lengthPolicy.putObject("medium");
-        mediumPolicy.put("targetChars", 900);
-        mediumPolicy.put("hardMaxChars", 1200);
+        mediumPolicy.put("targetChars", MEDIUM_TARGET_CHARS);
+        mediumPolicy.put("hardMaxChars", MEDIUM_MAX_CHARS);
+
         ObjectNode longPolicy = lengthPolicy.putObject("long");
-        longPolicy.put("targetChars", 1400);
-        longPolicy.put("hardMaxChars", 1800);
+        longPolicy.put("targetChars", LONG_TARGET_CHARS);
+        longPolicy.put("hardMaxChars", LONG_MAX_CHARS);
     }
 }
