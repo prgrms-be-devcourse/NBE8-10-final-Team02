@@ -135,6 +135,16 @@ public class AnalysisPipelineService {
                     HttpStatus.FORBIDDEN, "접근 권한이 없는 저장소입니다.");
         }
 
+        // 이미 PENDING/IN_PROGRESS 상태이면 중복 실행 방지 (git lock 충돌 예방)
+        syncStatusService.getStatus(userId, repositoryId).ifPresent(existing -> {
+            if (existing.status() == SyncStatus.PENDING || existing.status() == SyncStatus.IN_PROGRESS) {
+                log.info("Analysis already in progress, ignoring duplicate request: userId={}, repoId={}, status={}",
+                        userId, repositoryId, existing.status());
+                throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
+                        HttpStatus.CONFLICT, "이미 분석이 진행 중입니다. 완료 후 다시 시도해주세요.");
+            }
+        });
+
         // PENDING 상태 등록 (estimatedEndAt = 현재 + ESTIMATED_MINUTES)
         Instant estimatedEnd = Instant.now().plusSeconds(ESTIMATED_MINUTES * 60L);
         syncStatusService.setPending(userId, repositoryId, estimatedEnd);
@@ -157,7 +167,9 @@ public class AnalysisPipelineService {
     public void executeAsync(Long userId, Long repositoryId) {
         // 트랜잭션 외부에서 엔티티를 다시 로드 (영속성 컨텍스트 분리)
         User user = userRepository.findById(userId).orElse(null);
-        GithubRepository repo = repositoryRepository.findById(repositoryId).orElse(null);
+        // findByIdWithConnection: githubConnection + user JOIN FETCH → 트랜잭션 없는 비동기 컨텍스트에서
+        // LazyInitializationException 없이 repo.getGithubConnection().getGithubLogin() 등을 사용 가능
+        GithubRepository repo = repositoryRepository.findByIdWithConnection(repositoryId).orElse(null);
 
         if (user == null || repo == null) {
             log.error("Pipeline aborted: user or repo not found. userId={}, repoId={}", userId, repositoryId);

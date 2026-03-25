@@ -53,8 +53,22 @@ public class RepoCloneService {
 
         if (Files.exists(repoPath.resolve(".git"))) {
             log.info("Fetching existing clone: userId={}, repoId={}", userId, repositoryId);
-            fetch(repoPath);
+            try {
+                fetch(repoPath);
+            } catch (ServiceException e) {
+                // fetch 실패(lock 파일, 손상된 clone 등) → 디렉토리 삭제 후 fresh clone 재시도
+                log.warn("Fetch failed ({}), falling back to fresh clone: userId={}, repoId={}",
+                        e.getMessage(), userId, repositoryId);
+                deleteRepo(userId, repositoryId);
+                log.info("Re-cloning repo after fetch failure: {} → {}", repoUrl, repoPath);
+                clone(repoUrl, repoPath);
+            }
         } else {
+            // 이전 실패 run이 남긴 불완전한 디렉토리(no .git) 정리 후 clone
+            if (Files.exists(repoPath)) {
+                log.warn("Stale directory found (no .git), removing before clone: {}", repoPath);
+                deleteRepo(userId, repositoryId);
+            }
             log.info("Cloning repo: {} → {}", repoUrl, repoPath);
             clone(repoUrl, repoPath);
         }
@@ -124,9 +138,10 @@ public class RepoCloneService {
 
             int exitCode = process.exitValue();
             if (exitCode != 0) {
-                log.error("git command failed: {} exitCode={} output={}", command, exitCode, output);
+                log.error("git command failed: cmd={} exitCode={} output=[{}]", command, exitCode, output);
                 throw new ServiceException(ErrorCode.GITHUB_COMMIT_SYNC_FAILED, HttpStatus.INTERNAL_SERVER_ERROR,
-                        "git 명령 실패 (exit " + exitCode + "): " + command.get(1));
+                        "git 명령 실패 (exit " + exitCode + "): " + command.get(1)
+                        + (output.isBlank() ? "" : " — " + output.lines().findFirst().orElse("")));
             }
 
             log.debug("git {} success: {}", command.get(1), workingDir);
