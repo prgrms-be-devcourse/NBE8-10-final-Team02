@@ -85,7 +85,7 @@ function OwnedTab() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [syncingIds, setSyncingIds] = useState<Set<number>>(new Set());
   const [syncErrors, setSyncErrors] = useState<Record<number, string>>({});
   const [analysisStatuses, setAnalysisStatuses] = useState<Record<number, RepoSyncStatus>>({});
@@ -155,16 +155,24 @@ function OwnedTab() {
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
     });
-    setSaveSuccess(false);
+    setSaveMessage(null);
     setSaveError(null);
   }
 
   async function handleSaveSelection() {
-    setSaving(true); setSaveError(null); setSaveSuccess(false);
+    setSaving(true); setSaveError(null); setSaveMessage(null);
+    // 저장 전에 deselect된 repo 이름 계산
+    const deselectedNames = repos
+      .filter((r) => r.isSelected && !selectedIds.has(r.id))
+      .map((r) => r.repoName);
     try {
       await saveRepositorySelection(Array.from(selectedIds));
-      setSaveSuccess(true);
       await loadRepos();
+      if (deselectedNames.length > 0) {
+        setSaveMessage(`포트폴리오에서 제외됨: ${deselectedNames.join(', ')}`);
+      } else {
+        setSaveMessage('선택이 저장되었습니다.');
+      }
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : '저장 중 오류가 발생했습니다.');
     } finally {
@@ -220,7 +228,11 @@ function OwnedTab() {
         </button>
       </div>
 
-      {saveSuccess && <p className="mb-4 text-sm text-green-700">선택이 저장되었습니다.</p>}
+      {saveMessage && (
+        <p className={`mb-4 text-sm ${saveMessage.startsWith('포트폴리오에서 제외됨') ? 'text-amber-700' : 'text-green-700'}`}>
+          {saveMessage.startsWith('포트폴리오에서 제외됨') ? '✓ ' : ''}{saveMessage}
+        </p>
+      )}
       {saveError && (
         <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{saveError}</div>
       )}
