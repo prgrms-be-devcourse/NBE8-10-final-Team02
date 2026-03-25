@@ -1,5 +1,6 @@
-package com.back.backend.domain.github.service;
+package com.back.backend.domain.github.portfolio;
 
+import com.back.backend.domain.github.analysis.DiffEntry;
 import com.back.backend.domain.github.entity.CodeIndex;
 import com.back.backend.domain.github.entity.GithubRepository;
 import org.springframework.stereotype.Component;

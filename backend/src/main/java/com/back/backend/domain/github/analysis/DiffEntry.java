@@ -1,4 +1,4 @@
-package com.back.backend.domain.github.service;
+package com.back.backend.domain.github.analysis;
 
 /**
  * git log -p에서 추출한 커밋 단위 diff.

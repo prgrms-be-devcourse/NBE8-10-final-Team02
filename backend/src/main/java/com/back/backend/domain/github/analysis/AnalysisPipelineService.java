@@ -1,6 +1,8 @@
-package com.back.backend.domain.github.service;
+package com.back.backend.domain.github.analysis;
 
 import com.back.backend.domain.github.entity.GithubRepository;
+import com.back.backend.domain.github.portfolio.MergedSummaryService;
+import com.back.backend.domain.github.portfolio.RepoSummaryGeneratorService;
 import com.back.backend.domain.github.repository.GithubCommitRepository;
 import com.back.backend.domain.github.repository.GithubRepositoryRepository;
 import com.back.backend.domain.user.entity.User;
