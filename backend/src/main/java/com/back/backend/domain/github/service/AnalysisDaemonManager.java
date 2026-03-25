@@ -15,24 +15,32 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 /**
- * 외부 분석 스크립트를 상주 프로세스(데몬)로 관리한다.
+ * 외부 분석 스크립트를 상주 프로세스(데몬) 풀로 관리한다.
  *
  * 기존 방식(요청마다 프로세스 생성)의 문제:
  *   - Python/Node 인터프리터 기동 비용이 분석마다 발생 (~200~500ms)
  *   - AST 라이브러리 import 시간 포함 시 더 길어짐
  *
- * 데몬 방식:
- *   - @PostConstruct 시점에 각 스크립트를 --daemon 플래그로 한 번 기동
- *   - 이후 stdin/stdout JSON 라인 프로토콜로 통신 (프로세스 재사용)
+ * 데몬 풀 방식:
+ *   - @PostConstruct 시점에 각 언어별로 POOL_SIZE개 데몬을 기동
+ *   - callRaw()는 BlockingQueue에서 데몬을 꺼내 쓰고 finally에서 반납
+ *   - 모든 데몬이 사용 중이면 빈 데몬이 생길 때까지 대기
  *   - 데몬 미기동(스크립트 미설치 등) 시 null 반환 → StaticAnalysisService가 프로세스 방식으로 폴백
+ *
+ * 풀 크기:
+ *   POOL_SIZE = analysisExecutor corePoolSize(2)에 맞춰 언어당 2개.
+ *   동시 분석 작업 2개가 같은 언어를 쓸 때 대기 없이 처리된다.
  *
  * 프로토콜 (newline-delimited JSON):
  *   요청: {"repoRoot":"/path","files":["a.kt","b.kt"]}  ← files=null 이면 전체 분석
@@ -46,6 +54,9 @@ import java.util.stream.Collectors;
 public class AnalysisDaemonManager implements DisposableBean {
 
     private static final Logger log = LoggerFactory.getLogger(AnalysisDaemonManager.class);
+
+    // 언어당 데몬 수 — analysisExecutor corePoolSize(2)에 맞춤
+    private static final int POOL_SIZE = 2;
 
     // 스크립트가 준비됐을 때 stdout으로 출력하는 시그널
     private static final String READY_SIGNAL = "READY";
@@ -66,14 +77,13 @@ public class AnalysisDaemonManager implements DisposableBean {
     );
 
     private final String scriptsBasePath;
-    // 기동 성공한 데몬만 등록됨
-    private final Map<String, DaemonHandle> daemons = new ConcurrentHashMap<>();
+    // language key → pool (기동 성공한 데몬만 포함)
+    private final Map<String, BlockingQueue<DaemonHandle>> pools = new ConcurrentHashMap<>();
 
     private record DaemonHandle(
             Process process,
             BufferedWriter writer,
-            BufferedReader reader,
-            ReentrantLock lock
+            BufferedReader reader
     ) {}
 
     public AnalysisDaemonManager(
@@ -85,17 +95,27 @@ public class AnalysisDaemonManager implements DisposableBean {
     @PostConstruct
     public void startAll() {
         DAEMON_CONFIG.forEach((lang, config) -> {
-            try {
-                startDaemon(lang, config[0], config[1]);
-            } catch (Exception e) {
-                log.warn("[{}] daemon start failed — will use process-per-request fallback: {}",
-                        lang, e.getMessage());
+            BlockingQueue<DaemonHandle> pool = new ArrayBlockingQueue<>(POOL_SIZE);
+            for (int i = 0; i < POOL_SIZE; i++) {
+                try {
+                    DaemonHandle handle = startDaemon(lang, config[0], config[1]);
+                    if (handle != null) pool.add(handle);
+                } catch (Exception e) {
+                    log.warn("[{}] daemon #{} start failed: {}", lang, i + 1, e.getMessage());
+                }
+            }
+            if (!pool.isEmpty()) {
+                pools.put(lang, pool);
+                log.info("[{}] daemon pool ready: {}/{} instances", lang, pool.size(), POOL_SIZE);
+            } else {
+                log.warn("[{}] no daemons started — will use process-per-request fallback", lang);
             }
         });
     }
 
     /**
-     * 지정한 언어의 데몬에 분석 요청을 전송한다.
+     * 지정한 언어의 데몬 풀에서 인스턴스를 하나 꺼내 분석 요청을 전송한다.
+     * 풀이 비어 있으면(모든 데몬 사용 중) 빈 인스턴스가 생길 때까지 대기한다.
      *
      * @param language  언어 키 ("kotlin", "python", "ts", "go", "rust", "c")
      * @param repoRoot  분석할 repo 루트 경로
@@ -103,16 +123,23 @@ public class AnalysisDaemonManager implements DisposableBean {
      * @return 스크립트 응답 JSON 문자열, 또는 null (데몬 없거나 실패 시 → 호출자가 폴백)
      */
     public String callRaw(String language, Path repoRoot, Optional<Set<String>> files) {
-        DaemonHandle handle = daemons.get(language);
-        if (handle == null || !handle.process().isAlive()) {
-            if (handle != null) {
-                log.warn("[{}] daemon died — removing, next call will use process fallback", language);
-                daemons.remove(language);
-            }
+        BlockingQueue<DaemonHandle> pool = pools.get(language);
+        if (pool == null || pool.isEmpty()) return null;
+
+        DaemonHandle handle;
+        try {
+            handle = pool.take(); // 빈 데몬이 생길 때까지 대기
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             return null;
         }
 
-        handle.lock().lock();
+        // 데몬 죽었으면 풀에 돌려놓지 않고 폴백
+        if (!handle.process().isAlive()) {
+            log.warn("[{}] daemon died — removed from pool, using process fallback", language);
+            return null;
+        }
+
         try {
             String filesJson = files
                     .map(set -> set.stream()
@@ -135,10 +162,12 @@ public class AnalysisDaemonManager implements DisposableBean {
 
         } catch (IOException e) {
             log.warn("[{}] daemon communication error: {}", language, e.getMessage());
-            daemons.remove(language);
-            return null;
+            return null; // 죽은 데몬이므로 풀에 반납하지 않음
         } finally {
-            handle.lock().unlock();
+            // 살아있는 데몬만 풀에 반납
+            if (handle.process().isAlive()) {
+                pool.offer(handle);
+            }
         }
     }
 
@@ -146,12 +175,13 @@ public class AnalysisDaemonManager implements DisposableBean {
     // 내부 유틸
     // ─────────────────────────────────────────────────
 
-    private void startDaemon(String language, String interpreter, String scriptName)
+    /** 데몬 1개를 기동하고 READY 신호 확인 후 반환. 실패 시 null. */
+    private DaemonHandle startDaemon(String language, String interpreter, String scriptName)
             throws IOException, InterruptedException {
         Path scriptPath = Path.of(scriptsBasePath, scriptName);
         if (!Files.exists(scriptPath)) {
             log.debug("[{}] script not found at {}, skipping daemon", language, scriptPath);
-            return;
+            return null;
         }
 
         Process process = new ProcessBuilder(interpreter, scriptPath.toString(), "--daemon")
@@ -169,11 +199,11 @@ public class AnalysisDaemonManager implements DisposableBean {
             process.destroyForcibly();
             log.warn("[{}] daemon did not send READY (got: '{}') — using process fallback",
                     language, readyLine);
-            return;
+            return null;
         }
 
-        daemons.put(language, new DaemonHandle(process, writer, reader, new ReentrantLock()));
         log.info("[{}] analysis daemon started (pid={})", language, process.pid());
+        return new DaemonHandle(process, writer, reader);
     }
 
     private String waitForReady(BufferedReader reader, Process process)
@@ -193,8 +223,12 @@ public class AnalysisDaemonManager implements DisposableBean {
 
     @Override
     public void destroy() {
-        daemons.values().forEach(h -> h.process().destroyForcibly());
-        daemons.clear();
+        pools.values().forEach(pool -> {
+            List<DaemonHandle> handles = new ArrayList<>();
+            pool.drainTo(handles);
+            handles.forEach(h -> h.process().destroyForcibly());
+        });
+        pools.clear();
         log.info("All analysis daemons stopped");
     }
 }
