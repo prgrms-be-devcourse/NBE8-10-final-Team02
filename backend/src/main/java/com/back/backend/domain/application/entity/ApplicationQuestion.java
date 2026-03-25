@@ -56,6 +56,10 @@ public class ApplicationQuestion extends BaseTimeEntity {
     private String emphasisPoint;
 
     public void updateGeneratedAnswer(String generatedAnswer) {
+        if (generatedAnswer == null) {
+            throw new IllegalArgumentException("generatedAnswer must not be null");
+        }
         this.generatedAnswer = generatedAnswer;
+        this.editedAnswer = null; // 재생성 시 수동 수정본 초기화
     }
 }
