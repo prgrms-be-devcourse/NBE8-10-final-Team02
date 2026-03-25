@@ -194,6 +194,21 @@ export async function getAnalysisStatus(repositoryId: number): Promise<RepoSyncS
 }
 
 /**
+ * DELETE /github/repositories/{repositoryId}/analyze
+ * 진행 중인 분석 파이프라인을 취소한다. 이미 완료됐어도 200을 반환한다 (idempotent).
+ */
+export async function cancelAnalysis(repositoryId: number): Promise<void> {
+  const res = await fetch(`${base()}/repositories/${repositoryId}/analyze`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseError(res));
+  }
+}
+
+/**
  * GET /github/contributions/discovered?yearsOffset={n}
  * 사용자가 커밋을 기여한 public repo 목록 조회.
  * yearsOffset: 0=최근 2년, 1=2~4년 전, 2=4~6년 전

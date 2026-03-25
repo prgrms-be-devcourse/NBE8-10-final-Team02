@@ -24,6 +24,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -265,6 +266,22 @@ public class GithubController {
                 .map(RepoSyncStatusResponse::from)
                 .orElse(null);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(response));
+    }
+
+    /**
+     * 진행 중인 분석 파이프라인을 취소한다.
+     *
+     * PENDING/IN_PROGRESS 상태의 분석을 중단하고 상태를 FAILED로 변경한다.
+     * 이미 완료됐거나 없는 분석에 대해서도 200을 반환한다 (idempotent).
+     */
+    @DeleteMapping("/repositories/{repositoryId}/analyze")
+    public ResponseEntity<ApiResponse<Void>> cancelAnalysis(
+            Authentication authentication,
+            @PathVariable Long repositoryId
+    ) {
+        Long userId = extractUserId(authentication);
+        analysisPipelineService.cancel(userId, repositoryId);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     // ─────────────────────────────────────────────────

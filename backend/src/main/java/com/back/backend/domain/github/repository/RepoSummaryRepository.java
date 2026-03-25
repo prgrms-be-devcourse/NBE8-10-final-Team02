@@ -23,4 +23,10 @@ public interface RepoSummaryRepository extends JpaRepository<RepoSummary, Long> 
 
     // repo 제거 시 해당 요약 삭제
     void deleteByGithubRepository(GithubRepository githubRepository);
+
+    // ID 기반 일괄 삭제 (detached entity 없이 안전하게 삭제)
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("delete from RepoSummary s where s.githubRepository.id = :repoId")
+    void deleteByGithubRepositoryId(@org.springframework.data.repository.query.Param("repoId") Long repoId);
 }

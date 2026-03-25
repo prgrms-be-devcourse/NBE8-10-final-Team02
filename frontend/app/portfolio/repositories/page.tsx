@@ -7,6 +7,7 @@ import {
   saveRepositorySelection,
   syncCommits,
   analyzeRepository,
+  cancelAnalysis,
   getAnalysisStatus,
   getContributions,
   saveContribution,
@@ -149,6 +150,22 @@ function OwnedTab() {
     }
   }
 
+  async function handleCancelAnalysis(repoId: number) {
+    try {
+      await cancelAnalysis(repoId);
+    } catch { /* 취소 실패는 무시 — 폴링이 최종 상태를 반영함 */ }
+    // 폴링 중지 + 로컬 상태 즉시 업데이트
+    if (pollingRef.current[repoId]) {
+      clearInterval(pollingRef.current[repoId]);
+      delete pollingRef.current[repoId];
+    }
+    setAnalyzingIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });
+    setAnalysisStatuses((prev) => ({
+      ...prev,
+      [repoId]: { ...(prev[repoId] ?? {}), status: 'FAILED', error: '취소됨' } as RepoSyncStatus,
+    }));
+  }
+
   function toggleSelect(id: number) {
     setSelectedIds((prev) => {
       const n = new Set(prev);
@@ -286,11 +303,15 @@ function OwnedTab() {
                     {isSyncing ? '동기화 중...' : repo.hasCommits ? '동기화됨' : '커밋 동기화'}
                   </button>
                   <button
-                    onClick={() => handleAnalyze(repo.id)}
-                    disabled={isAnalysisActive || !repo.hasCommits || !selectedIds.has(repo.id)}
-                    className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs text-indigo-700 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                    onClick={() => isAnalysisActive ? handleCancelAnalysis(repo.id) : handleAnalyze(repo.id)}
+                    disabled={!repo.hasCommits || !selectedIds.has(repo.id)}
+                    className={`rounded border px-3 py-1.5 text-xs disabled:opacity-40 disabled:cursor-not-allowed ${
+                      isAnalysisActive
+                        ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
+                        : 'border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                    }`}
                   >
-                    {isAnalysisActive ? '분석 중...' : '포트폴리오 분석'}
+                    {isAnalysisActive ? '분석 취소' : '포트폴리오 분석'}
                   </button>
                 </div>
               </div>
