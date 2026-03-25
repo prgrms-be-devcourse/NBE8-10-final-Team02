@@ -6,12 +6,14 @@ import com.back.backend.domain.document.entity.DocumentExtractStatus;
 import com.back.backend.domain.document.entity.DocumentType;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
+import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
 import java.util.List;
@@ -21,16 +23,26 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willDoNothing;
 import static org.mockito.BDDMockito.willThrow;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// [API Test 계층]
-// - ApiTestBase: SpringBootTest + Testcontainers + MockMvc 공통 설정 상속
-// - @MockitoBean: Service 대체 → 비즈니스 로직이 아닌 HTTP 레이어에 집중
-// - @WithMockUser: 인증된 사용자 시뮬레이션
+/**
+ * Document API의 HTTP 레이어를 검증하는 통합 테스트.
+ *
+ * <p><b>테스트 전략</b></p>
+ * <ul>
+ *   <li>{@code ApiTestBase}: SpringBootTest + Testcontainers + MockMvc 공통 설정을 상속</li>
+ *   <li>{@code @MockitoBean}: {@link DocumentService}를 mock으로 대체해 HTTP 레이어에만 집중</li>
+ *   <li>{@code authenticated(userId)}: {@link JwtAuthenticationToken}을 직접 주입해
+ *       {@code @AuthenticationPrincipal Long userId}가 실제 값으로 바인딩되도록 한다</li>
+ * </ul>
+ *
+ * <p><b>검증 범위</b>: 인증(401) → 요청 유효성(422) → 서버 오류(500) → 정상 흐름(2xx)</p>
+ */
 class DocumentApiTest extends ApiTestBase {
 
     @MockitoBean
@@ -50,7 +62,6 @@ class DocumentApiTest extends ApiTestBase {
     // --- request validation (422) ---
 
     @Test
-    @WithMockUser
     void uploadDocument_returns422WhenInvalidMimeType() throws Exception {
         willThrow(new ServiceException(
             ErrorCode.DOCUMENT_INVALID_TYPE,
@@ -59,14 +70,14 @@ class DocumentApiTest extends ApiTestBase {
         )).given(documentService).upload(any(), any(), any());
 
         mockMvc.perform(multipart("/api/v1/documents")
-                .file(new MockMultipartFile("file", "photo.png", "image/png", new byte[1024])))
+                .file(new MockMultipartFile("file", "photo.png", "image/png", new byte[1024]))
+                .with(authenticated(1L)))
             .andExpect(status().isUnprocessableEntity())
             .andExpect(jsonPath("$.success").value(false))
             .andExpect(jsonPath("$.error.code").value(ErrorCode.DOCUMENT_INVALID_TYPE.name()));
     }
 
     @Test
-    @WithMockUser
     void uploadDocument_returns422WhenFileTooLarge() throws Exception {
         willThrow(new ServiceException(
             ErrorCode.DOCUMENT_FILE_TOO_LARGE,
@@ -75,14 +86,14 @@ class DocumentApiTest extends ApiTestBase {
         )).given(documentService).upload(any(), any(), any());
 
         mockMvc.perform(multipart("/api/v1/documents")
-                .file(new MockMultipartFile("file", "big.pdf", "application/pdf", new byte[1024])))
+                .file(new MockMultipartFile("file", "big.pdf", "application/pdf", new byte[1024]))
+                .with(authenticated(1L)))
             .andExpect(status().isUnprocessableEntity())
             .andExpect(jsonPath("$.success").value(false))
             .andExpect(jsonPath("$.error.code").value(ErrorCode.DOCUMENT_FILE_TOO_LARGE.name()));
     }
 
     @Test
-    @WithMockUser
     void uploadDocument_returns422WhenDocumentCountExceeded() throws Exception {
         willThrow(new ServiceException(
             ErrorCode.DOCUMENT_UPLOAD_FAILED,
@@ -91,7 +102,8 @@ class DocumentApiTest extends ApiTestBase {
         )).given(documentService).upload(any(), any(), any());
 
         mockMvc.perform(multipart("/api/v1/documents")
-                .file(pdfFile("resume.pdf")))
+                .file(pdfFile("resume.pdf"))
+                .with(authenticated(1L)))
             .andExpect(status().isUnprocessableEntity())
             .andExpect(jsonPath("$.success").value(false))
             .andExpect(jsonPath("$.error.code").value(ErrorCode.DOCUMENT_UPLOAD_FAILED.name()));
@@ -100,7 +112,6 @@ class DocumentApiTest extends ApiTestBase {
     // --- 5xx ---
 
     @Test
-    @WithMockUser
     void uploadDocument_returns500WhenStorageFails() throws Exception {
         willThrow(new ServiceException(
             ErrorCode.DOCUMENT_UPLOAD_FAILED,
@@ -110,7 +121,8 @@ class DocumentApiTest extends ApiTestBase {
         )).given(documentService).upload(any(), any(), any());
 
         mockMvc.perform(multipart("/api/v1/documents")
-                .file(pdfFile("resume.pdf")))
+                .file(pdfFile("resume.pdf"))
+                .with(authenticated(1L)))
             .andExpect(status().isInternalServerError())
             .andExpect(jsonPath("$.success").value(false))
             .andExpect(jsonPath("$.error.code").value(ErrorCode.DOCUMENT_UPLOAD_FAILED.name()));
@@ -119,7 +131,6 @@ class DocumentApiTest extends ApiTestBase {
     // --- 정상 흐름 ---
 
     @Test
-    @WithMockUser
     void uploadDocument_returns201WhenValid() throws Exception {
         DocumentResponse response = new DocumentResponse(
             1L, DocumentType.RESUME.getValue(), "resume.pdf",
@@ -130,7 +141,8 @@ class DocumentApiTest extends ApiTestBase {
         given(documentService.upload(any(), eq(DocumentType.OTHER), any())).willReturn(response);
 
         mockMvc.perform(multipart("/api/v1/documents")
-                .file(pdfFile("resume.pdf")))
+                .file(pdfFile("resume.pdf"))
+                .with(authenticated(1L)))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.mimeType").value("application/pdf"))
@@ -151,7 +163,6 @@ class DocumentApiTest extends ApiTestBase {
     }
 
     @Test
-    @WithMockUser
     void getDocuments_returns200WithList() throws Exception {
         DocumentResponse doc1 = new DocumentResponse(
             1L, DocumentType.RESUME.getValue(), "resume.pdf",
@@ -169,7 +180,7 @@ class DocumentApiTest extends ApiTestBase {
         );
         given(documentService.getDocuments(any())).willReturn(List.of(doc1, doc2));
 
-        mockMvc.perform(get("/api/v1/documents"))
+        mockMvc.perform(get("/api/v1/documents").with(authenticated(1L)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.length()").value(2))
@@ -180,11 +191,10 @@ class DocumentApiTest extends ApiTestBase {
     }
 
     @Test
-    @WithMockUser
     void getDocuments_returns200WithEmptyList() throws Exception {
         given(documentService.getDocuments(any())).willReturn(List.of());
 
-        mockMvc.perform(get("/api/v1/documents"))
+        mockMvc.perform(get("/api/v1/documents").with(authenticated(1L)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.length()").value(0));
@@ -203,7 +213,6 @@ class DocumentApiTest extends ApiTestBase {
     }
 
     @Test
-    @WithMockUser
     void getDocument_returns200WhenFound() throws Exception {
         DocumentResponse doc = new DocumentResponse(
             1L, DocumentType.RESUME.getValue(), "resume.pdf",
@@ -215,7 +224,7 @@ class DocumentApiTest extends ApiTestBase {
         );
         given(documentService.getDocument(any(), eq(1L))).willReturn(doc);
 
-        mockMvc.perform(get("/api/v1/documents/1"))
+        mockMvc.perform(get("/api/v1/documents/1").with(authenticated(1L)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.id").value(1))
@@ -225,7 +234,6 @@ class DocumentApiTest extends ApiTestBase {
     }
 
     @Test
-    @WithMockUser
     void getDocument_returns404WhenNotFound() throws Exception {
         willThrow(new ServiceException(
             ErrorCode.DOCUMENT_NOT_FOUND,
@@ -233,7 +241,7 @@ class DocumentApiTest extends ApiTestBase {
             "문서를 찾을 수 없습니다."
         )).given(documentService).getDocument(any(), eq(99L));
 
-        mockMvc.perform(get("/api/v1/documents/99"))
+        mockMvc.perform(get("/api/v1/documents/99").with(authenticated(1L)))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.success").value(false))
             .andExpect(jsonPath("$.error.code").value(ErrorCode.DOCUMENT_NOT_FOUND.name()));
@@ -252,16 +260,14 @@ class DocumentApiTest extends ApiTestBase {
     }
 
     @Test
-    @WithMockUser
     void deleteDocument_returns204WhenDeleted() throws Exception {
         willDoNothing().given(documentService).deleteDocument(any(), eq(1L));
 
-        mockMvc.perform(delete("/api/v1/documents/1"))
+        mockMvc.perform(delete("/api/v1/documents/1").with(authenticated(1L)))
             .andExpect(status().isNoContent());
     }
 
     @Test
-    @WithMockUser
     void deleteDocument_returns404WhenNotFound() throws Exception {
         willThrow(new ServiceException(
             ErrorCode.DOCUMENT_NOT_FOUND,
@@ -269,14 +275,13 @@ class DocumentApiTest extends ApiTestBase {
             "문서를 찾을 수 없습니다."
         )).given(documentService).deleteDocument(any(), eq(99L));
 
-        mockMvc.perform(delete("/api/v1/documents/99"))
+        mockMvc.perform(delete("/api/v1/documents/99").with(authenticated(1L)))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.success").value(false))
             .andExpect(jsonPath("$.error.code").value(ErrorCode.DOCUMENT_NOT_FOUND.name()));
     }
 
     @Test
-    @WithMockUser
     void deleteDocument_returns409WhenDocumentInUse() throws Exception {
         willThrow(new ServiceException(
             ErrorCode.DOCUMENT_IN_USE,
@@ -284,13 +289,25 @@ class DocumentApiTest extends ApiTestBase {
             "지원 단위에서 참조 중인 문서는 삭제할 수 없습니다."
         )).given(documentService).deleteDocument(any(), eq(1L));
 
-        mockMvc.perform(delete("/api/v1/documents/1"))
+        mockMvc.perform(delete("/api/v1/documents/1").with(authenticated(1L)))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.success").value(false))
             .andExpect(jsonPath("$.error.code").value(ErrorCode.DOCUMENT_IN_USE.name()));
     }
 
+    // =========================================================
+    // Test helpers
+    // =========================================================
+
     private MockMultipartFile pdfFile(String filename) {
         return new MockMultipartFile("file", filename, "application/pdf", new byte[1024]);
+    }
+
+    /** JwtAuthenticationToken을 주입해 @AuthenticationPrincipal Long userId가 실제 값으로 바인딩되도록 한다. */
+    private RequestPostProcessor authenticated(long userId) {
+        return authentication(new JwtAuthenticationToken(
+                userId,
+                AuthorityUtils.createAuthorityList("ROLE_USER")
+        ));
     }
 }

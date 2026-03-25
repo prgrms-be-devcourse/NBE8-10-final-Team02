@@ -51,7 +51,7 @@ management:
 
 app:
   storage:
-    upload-dir: uploads
+    upload-dir: ${APP_STORAGE_UPLOAD_DIR:uploads}
 
 ai:
   provider: gemini

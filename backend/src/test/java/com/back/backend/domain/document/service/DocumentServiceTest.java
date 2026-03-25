@@ -22,6 +22,8 @@ import java.time.Clock;
 import java.time.Instant;
 
 import com.back.backend.domain.application.repository.ApplicationSourceDocumentRepository;
+import com.back.backend.domain.document.event.DocumentUploadedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
 import java.util.Optional;
@@ -57,6 +59,9 @@ class DocumentServiceTest {
 
     @Mock
     private Clock clock;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private DocumentService documentService;
@@ -237,6 +242,37 @@ class DocumentServiceTest {
             .isInstanceOf(ServiceException.class)
             .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.DOCUMENT_IN_USE));
+    }
+
+    // --- 이벤트 발행 ---
+
+    @Test
+    void upload_publishesDocumentUploadedEvent() {
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "resume.pdf", "application/pdf", new byte[1024]);
+
+        User mockUser = user();
+        Document saved = Document.builder()
+            .user(mockUser)
+            .documentType(DocumentType.RESUME)
+            .originalFileName("resume.pdf")
+            .storagePath("uploads/uuid_resume.pdf")
+            .mimeType("application/pdf")
+            .fileSizeBytes(1024L)
+            .extractStatus(DocumentExtractStatus.PENDING)
+            .uploadedAt(FIXED_NOW)
+            .build();
+
+        given(documentRepository.countByUserId(1L)).willReturn(0);
+        given(documentStorageService.store(file)).willReturn("uploads/uuid_resume.pdf");
+        given(userRepository.getReferenceById(1L)).willReturn(mockUser);
+        given(clock.instant()).willReturn(FIXED_NOW);
+        given(documentRepository.save(any())).willReturn(saved);
+
+        documentService.upload(1L, DocumentType.RESUME, file);
+
+        // 업로드 완료 후 DocumentUploadedEvent가 발행되어야 한다
+        then(eventPublisher).should().publishEvent(any(DocumentUploadedEvent.class));
     }
 
     @Test
