@@ -12,11 +12,12 @@ import org.springframework.stereotype.Service;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -43,17 +44,20 @@ public class StaticAnalysisService {
 
     private final JavaStaticAnalyzer javaAnalyzer;
     private final AnalysisDaemonManager daemonManager;
+    private final LanguageDetectionService languageDetectionService;
     private final ObjectMapper objectMapper;
     private final String scriptsBasePath;
 
     public StaticAnalysisService(
             JavaStaticAnalyzer javaAnalyzer,
             AnalysisDaemonManager daemonManager,
+            LanguageDetectionService languageDetectionService,
             ObjectMapper objectMapper,
             @Value("${analysis.scripts-base-path:/opt/analysis-scripts}") String scriptsBasePath
     ) {
         this.javaAnalyzer = javaAnalyzer;
         this.daemonManager = daemonManager;
+        this.languageDetectionService = languageDetectionService;
         this.objectMapper = objectMapper;
         this.scriptsBasePath = scriptsBasePath;
     }
@@ -61,95 +65,47 @@ public class StaticAnalysisService {
     /**
      * repo에 존재하는 모든 언어에 대해 분석기를 실행한다.
      *
-     * 주요 언어 하나만 골라 실행하는 방식에서 변경:
-     * Java + Kotlin 혼합 repo(Spring + Gradle .kts 등)처럼 언어가 섞인 경우에도 누락 없이 분석한다.
-     * 각 언어는 해당 파일이 1개 이상 존재할 때만 분석기를 실행한다.
+     * LanguageDetectionService(tokei 우선, 폴백=확장자 스캔)로 언어별 파일 목록을 먼저 구한 뒤,
+     * 존재하는 언어의 분석기만 선택적으로 실행한다.
      *
      * @param repoRoot    repo clone 루트 경로
      * @param targetFiles 분석 대상 파일 (empty=전체, present=본인 기여 파일만)
      * @return 분석된 코드 노드 목록 (언어별 결과 합산)
      */
     public List<AnalysisNode> analyze(Path repoRoot, Optional<Set<String>> targetFiles) {
-        // Files.walk 1회로 repo 내 존재하는 확장자 전체를 수집 — 언어별 중복 탐색 제거
-        Set<String> presentExts = collectPresentExtensions(repoRoot);
-        if (presentExts.isEmpty()) {
-            log.warn("No source files found in repo: {}", repoRoot);
+        Map<String, Set<String>> detected = languageDetectionService.detect(repoRoot);
+        if (detected.isEmpty()) {
+            log.warn("No supported source files found in repo: {}", repoRoot);
             return List.of();
         }
 
+        log.info("Detected languages: {} in repo: {}", detected.keySet(), repoRoot);
+
         List<AnalysisNode> result = new ArrayList<>();
 
-        runIfPresent(result, repoRoot, targetFiles, presentExts, new String[]{".java"},
+        runIfDetected(result, repoRoot, targetFiles, detected, "java",
                 (root, files) -> analyzeJava(root, files), "Java");
-        runIfPresent(result, repoRoot, targetFiles, presentExts, new String[]{".kt", ".kts"},
+        runIfDetected(result, repoRoot, targetFiles, detected, "kotlin",
                 (root, files) -> analyzeWithScript(root, files, "kotlin_analyzer.py", "python3"), "Kotlin");
-        runIfPresent(result, repoRoot, targetFiles, presentExts, new String[]{".py"},
+        runIfDetected(result, repoRoot, targetFiles, detected, "python",
                 (root, files) -> analyzeWithScript(root, files, "python_analyzer.py", "python3"), "Python");
-        runIfPresent(result, repoRoot, targetFiles, presentExts, new String[]{".ts", ".tsx", ".js", ".jsx"},
+        runIfDetected(result, repoRoot, targetFiles, detected, "ts",
                 (root, files) -> analyzeWithScript(root, files, "ts_analyzer.js", "node"), "TS/JS");
-        runIfPresent(result, repoRoot, targetFiles, presentExts, new String[]{".go"},
+        runIfDetected(result, repoRoot, targetFiles, detected, "go",
                 (root, files) -> analyzeWithScript(root, files, "go_analyzer.py", "python3"), "Go");
-        runIfPresent(result, repoRoot, targetFiles, presentExts, new String[]{".rs"},
+        runIfDetected(result, repoRoot, targetFiles, detected, "rust",
                 (root, files) -> analyzeWithScript(root, files, "rust_analyzer.py", "python3"), "Rust");
-        runIfPresent(result, repoRoot, targetFiles, presentExts, new String[]{".cpp", ".cc", ".cxx", ".hpp", ".c", ".h"},
+        runIfDetected(result, repoRoot, targetFiles, detected, "c",
                 (root, files) -> analyzeWithScript(root, files, "c_analyzer.py", "python3"), "C/C++");
 
         if (result.isEmpty()) {
-            log.warn("No supported source files found in repo: {}", repoRoot);
+            log.warn("All analyzers returned empty results for repo: {}", repoRoot);
         }
         return result;
     }
 
     // ─────────────────────────────────────────────────
-    // 언어 감지
-    // ─────────────────────────────────────────────────
-
-    public Language detectPrimaryLanguage(Path repoRoot) {
-        long javaCount = 0, ktCount = 0, pyCount = 0, jsCount = 0, tsCount = 0,
-             goCount = 0, rustCount = 0, cCount = 0, cppCount = 0;
-
-        try (var stream = Files.walk(repoRoot, 5)) {
-            var files = stream
-                    .filter(Files::isRegularFile)
-                    .map(p -> p.getFileName().toString())
-                    .toList();
-
-            javaCount = files.stream().filter(n -> n.endsWith(".java")).count();
-            ktCount   = files.stream().filter(n -> n.endsWith(".kt") || n.endsWith(".kts")).count();
-            pyCount   = files.stream().filter(n -> n.endsWith(".py")).count();
-            tsCount   = files.stream().filter(n -> n.endsWith(".ts") || n.endsWith(".tsx")).count();
-            jsCount   = files.stream().filter(n -> n.endsWith(".js") || n.endsWith(".jsx")).count();
-            goCount   = files.stream().filter(n -> n.endsWith(".go")).count();
-            rustCount = files.stream().filter(n -> n.endsWith(".rs")).count();
-            cppCount  = files.stream().filter(n -> n.endsWith(".cpp") || n.endsWith(".cc")
-                                                || n.endsWith(".cxx") || n.endsWith(".hpp")).count();
-            cCount    = files.stream().filter(n -> n.endsWith(".c") || n.endsWith(".h")).count();
-        } catch (IOException e) {
-            log.warn("Language detection failed: {}", e.getMessage());
-        }
-
-        // JS + TS를 합산해 비교 (같은 스크립트로 처리)
-        long scriptCount = jsCount + tsCount;
-
-        long max = Math.max(
-                Math.max(Math.max(javaCount, ktCount), Math.max(pyCount, scriptCount)),
-                Math.max(Math.max(goCount, rustCount), Math.max(cCount, cppCount))
-        );
-        if (max == 0) return Language.UNKNOWN;
-        if (max == javaCount)   return Language.JAVA;
-        if (max == ktCount)     return Language.KOTLIN;
-        if (max == pyCount)     return Language.PYTHON;
-        if (max == scriptCount) return tsCount >= jsCount ? Language.TYPESCRIPT : Language.JAVASCRIPT;
-        if (max == goCount)     return Language.GO;
-        if (max == rustCount)   return Language.RUST;
-        if (max == cppCount)    return Language.CPP;
-        return Language.C;
-    }
-
-    public enum Language { JAVA, KOTLIN, PYTHON, JAVASCRIPT, TYPESCRIPT, GO, RUST, C, CPP, UNKNOWN }
-
-    // ─────────────────────────────────────────────────
-    // 언어별 분석 / 파일 존재 여부 / 확장자 필터
+    // 언어별 분석 디스패치
     // ─────────────────────────────────────────────────
 
     @FunctionalInterface
@@ -158,61 +114,33 @@ public class StaticAnalysisService {
     }
 
     /**
-     * repo에 해당 확장자 파일이 존재하고, targetFiles 필터 결과도 비어 있지 않을 때만 분석기를 실행한다.
+     * detected 맵에 langKey가 있을 때만 분석기를 실행한다.
      *
-     * @param presentExts analyze() 진입 시 1회 수집한 repo 내 확장자 집합 (Files.walk 재사용)
+     * targetFiles가 present(large repo)이면 detected 파일 목록과 교집합을 구해 분석 범위를 좁힌다.
+     * 교집합이 비어 있으면 해당 언어에 본인 기여 없음 → 스킵.
      */
-    private void runIfPresent(List<AnalysisNode> result, Path repoRoot,
-                               Optional<Set<String>> targetFiles, Set<String> presentExts,
-                               String[] exts, Analyzer analyzer, String langLabel) {
-        // 수집된 확장자 집합으로 판단 — Files.walk 추가 호출 없음
-        if (Arrays.stream(exts).noneMatch(presentExts::contains)) return;
+    private void runIfDetected(List<AnalysisNode> result, Path repoRoot,
+                                Optional<Set<String>> targetFiles,
+                                Map<String, Set<String>> detected,
+                                String langKey, Analyzer analyzer, String langLabel) {
+        Set<String> langFiles = detected.get(langKey);
+        if (langFiles == null || langFiles.isEmpty()) return;
 
-        Optional<Set<String>> filtered = filterByExt(targetFiles, exts);
-        // targetFiles가 present인데 필터 결과가 비어있으면 해당 언어에 본인 기여 없음 → 스킵
-        if (targetFiles.isPresent() && filtered.isEmpty()) return;
-
-        log.info("Running {} analyzer for repo: {}", langLabel, repoRoot);
-        result.addAll(analyzer.run(repoRoot, filtered));
-    }
-
-    /**
-     * repo 내 파일 확장자 집합을 Files.walk 1회로 수집한다.
-     * 이후 모든 언어 존재 여부 확인에 재사용하여 중복 I/O를 제거한다.
-     */
-    private Set<String> collectPresentExtensions(Path repoRoot) {
-        try (var stream = Files.walk(repoRoot, 5)) {
-            return stream
-                    .filter(Files::isRegularFile)
-                    .map(p -> {
-                        String name = p.getFileName().toString();
-                        int dot = name.lastIndexOf('.');
-                        return dot >= 0 ? name.substring(dot) : "";
-                    })
-                    .filter(ext -> !ext.isEmpty())
+        Optional<Set<String>> scope;
+        if (targetFiles.isEmpty()) {
+            // 전체 분석 — tokei가 찾은 파일 목록을 분석기에 전달
+            scope = Optional.of(langFiles);
+        } else {
+            // large repo — 본인 기여 파일과 교집합
+            Set<String> intersection = targetFiles.get().stream()
+                    .filter(langFiles::contains)
                     .collect(Collectors.toSet());
-        } catch (IOException e) {
-            log.warn("Failed to collect file extensions from repo: {}", e.getMessage());
-            return Set.of();
+            if (intersection.isEmpty()) return; // 해당 언어에 기여 없음
+            scope = Optional.of(intersection);
         }
-    }
 
-    /**
-     * targetFiles를 주어진 확장자들로 필터링한다.
-     * targetFiles가 empty(전체 분석)이면 그대로 반환 — 각 분석기가 repoRoot에서 직접 해당 확장자 파일을 찾는다.
-     * targetFiles가 present이면 해당 확장자 파일만 남긴다. 결과가 비어 있으면 empty 반환(분석기 미실행).
-     */
-    private Optional<Set<String>> filterByExt(Optional<Set<String>> targetFiles, String... exts) {
-        if (targetFiles.isEmpty()) return Optional.empty();
-        Set<String> filtered = targetFiles.get().stream()
-                .filter(path -> {
-                    for (String ext : exts) {
-                        if (path.endsWith(ext)) return true;
-                    }
-                    return false;
-                })
-                .collect(Collectors.toSet());
-        return filtered.isEmpty() ? Optional.empty() : Optional.of(filtered);
+        log.info("Running {} analyzer ({} files) for repo: {}", langLabel, scope.get().size(), repoRoot);
+        result.addAll(analyzer.run(repoRoot, scope));
     }
 
     private List<AnalysisNode> analyzeJava(Path repoRoot, Optional<Set<String>> targetFiles) {
@@ -251,11 +179,30 @@ public class StaticAnalysisService {
         List<String> command = new ArrayList<>(List.of(interpreter, scriptPath.toString(),
                 repoRoot.toString()));
 
-        targetFiles.ifPresent(files -> {
-            command.add("--files");
-            command.addAll(files);
-        });
+        // 파일 목록이 있을 때: 파일 수에 따라 인라인 vs 임시 파일 방식 선택
+        // 인라인(--files): 인자 수가 적을 때 단순
+        // 임시 파일(--files-from): 수백~수천 개 파일 → ARG_MAX 초과 방지
+        Path tempFileList = null;
+        if (targetFiles.isPresent()) {
+            Set<String> files = targetFiles.get();
+            if (files.size() <= 200) {
+                command.add("--files");
+                command.addAll(files);
+            } else {
+                try {
+                    tempFileList = Files.createTempFile("analysis-files-", ".txt");
+                    Files.write(tempFileList, files, StandardCharsets.UTF_8);
+                    command.add("--files-from");
+                    command.add(tempFileList.toString());
+                } catch (IOException e) {
+                    log.warn("Failed to write temp file list, falling back to inline args: {}", e.getMessage());
+                    command.add("--files");
+                    command.addAll(files);
+                }
+            }
+        }
 
+        final Path finalTempFileList = tempFileList;
         try {
             ProcessBuilder pb = new ProcessBuilder(command)
                     .directory(repoRoot.toFile())
@@ -286,6 +233,10 @@ public class StaticAnalysisService {
             Thread.currentThread().interrupt();
             log.warn("Failed to run analysis script {}: {}", scriptName, e.getMessage());
             return List.of();
+        } finally {
+            if (finalTempFileList != null) {
+                try { Files.deleteIfExists(finalTempFileList); } catch (IOException ignored) {}
+            }
         }
     }
 
