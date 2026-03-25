@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface GithubCommitRepository extends JpaRepository<GithubCommit, Long> {
 
@@ -26,4 +27,11 @@ public interface GithubCommitRepository extends JpaRepository<GithubCommit, Long
     @Query("select distinct c.authorEmail from GithubCommit c " +
            "where c.repository = :repo and c.userCommit = true and c.authorEmail is not null")
     List<String> findDistinctAuthorEmailsByRepositoryAndUserCommitTrue(@Param("repo") GithubRepository repo);
+
+    // 커밋 존재 여부 (단건)
+    boolean existsByRepository(GithubRepository repository);
+
+    // 커밋이 1건 이상 있는 repositoryId 집합 — getRepositories() 응답에 hasCommits 포함 시 N+1 방지
+    @Query("select distinct c.repository.id from GithubCommit c where c.repository.id in :repoIds")
+    Set<Long> findRepositoryIdsWithCommits(@Param("repoIds") List<Long> repoIds);
 }

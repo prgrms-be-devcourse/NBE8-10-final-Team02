@@ -4,6 +4,7 @@ import com.back.backend.domain.github.dto.response.GithubRepositoryResponse;
 import com.back.backend.domain.github.dto.response.RepositorySelectionResponse;
 import com.back.backend.domain.github.entity.GithubConnection;
 import com.back.backend.domain.github.entity.GithubRepository;
+import com.back.backend.domain.github.repository.GithubCommitRepository;
 import com.back.backend.domain.github.repository.GithubConnectionRepository;
 import com.back.backend.domain.github.repository.GithubRepositoryRepository;
 import com.back.backend.domain.user.entity.User;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * 저장된 GitHub repo 목록 조회 및 선택 상태 관리를 담당한다.
@@ -31,15 +33,18 @@ public class GithubRepositoryService {
 
     private final GithubConnectionRepository connectionRepository;
     private final GithubRepositoryRepository repositoryRepository;
+    private final GithubCommitRepository commitRepository;
     private final UserRepository userRepository;
 
     public GithubRepositoryService(
             GithubConnectionRepository connectionRepository,
             GithubRepositoryRepository repositoryRepository,
+            GithubCommitRepository commitRepository,
             UserRepository userRepository
     ) {
         this.connectionRepository = connectionRepository;
         this.repositoryRepository = repositoryRepository;
+        this.commitRepository = commitRepository;
         this.userRepository = userRepository;
     }
 
@@ -59,7 +64,13 @@ public class GithubRepositoryService {
                 ? repositoryRepository.findByGithubConnectionAndSelected(connection, selected, pageable)
                 : repositoryRepository.findByGithubConnection(connection, pageable);
 
-        return repoPage.map(GithubRepositoryResponse::from);
+        // 이 페이지의 repo들 중 커밋이 있는 id 집합 (쿼리 1회 — N+1 방지)
+        List<Long> pageRepoIds = repoPage.getContent().stream().map(GithubRepository::getId).toList();
+        Set<Long> reposWithCommits = pageRepoIds.isEmpty()
+                ? Set.of()
+                : commitRepository.findRepositoryIdsWithCommits(pageRepoIds);
+
+        return repoPage.map(repo -> GithubRepositoryResponse.from(repo, reposWithCommits.contains(repo.getId())));
     }
 
     /**
