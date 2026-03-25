@@ -210,7 +210,7 @@ class DocumentServiceTest {
     // --- deleteDocument ---
 
     @Test
-    void deleteDocument_deletesWhenNotInUse() {
+    void deleteDocument_deletesDbAndPhysicalFile() {
         User mockUser = user();
         Document doc = document(mockUser, DocumentType.RESUME, "resume.pdf");
         given(documentRepository.findByIdAndUserId(1L, 1L)).willReturn(Optional.of(doc));
@@ -219,6 +219,7 @@ class DocumentServiceTest {
         documentService.deleteDocument(1L, 1L);
 
         then(documentRepository).should().delete(doc);
+        then(documentStorageService).should().delete("uploads/resume.pdf");
     }
 
     @Test

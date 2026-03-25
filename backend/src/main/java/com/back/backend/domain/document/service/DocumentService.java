@@ -186,5 +186,7 @@ public class DocumentService {
             );
         }
         documentRepository.delete(document);
+        // DB 삭제 후 물리 파일도 삭제 (실패 시 로그만 남기고 예외를 던지지 않음)
+        documentStorageService.delete(document.getStoragePath());
     }
 }
