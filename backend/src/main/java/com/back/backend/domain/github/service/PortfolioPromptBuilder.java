@@ -2,13 +2,8 @@ package com.back.backend.domain.github.service;
 
 import com.back.backend.domain.github.entity.CodeIndex;
 import com.back.backend.domain.github.entity.GithubRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -26,8 +21,6 @@ import java.util.List;
  */
 @Component
 public class PortfolioPromptBuilder {
-
-    private static final Logger log = LoggerFactory.getLogger(PortfolioPromptBuilder.class);
 
     // 토큰 예산 (문자 수 기준, 1 token ≈ 4 chars)
     private static final int OWNED_REPO_CODE_BUDGET    = 30_000 * 4;
@@ -89,20 +82,6 @@ public class PortfolioPromptBuilder {
         sb.append(diffSection).append("\n");
 
         return sb.toString();
-    }
-
-    /**
-     * 시스템 프롬프트 텍스트를 classpath 리소스에서 읽는다.
-     */
-    public String loadSystemPrompt() {
-        return loadResource("ai/templates/system/common-system.txt");
-    }
-
-    /**
-     * 포트폴리오 요약용 developer 프롬프트를 읽는다.
-     */
-    public String loadDeveloperPrompt() {
-        return loadResource("ai/templates/developer/ai.portfolio.summary.v1.txt");
     }
 
     // ─────────────────────────────────────────────────
@@ -172,15 +151,5 @@ public class PortfolioPromptBuilder {
             used += entry.length();
         }
         return sb.toString();
-    }
-
-    private String loadResource(String path) {
-        try {
-            ClassPathResource resource = new ClassPathResource(path);
-            return resource.getContentAsString(StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            log.warn("Failed to load prompt file: {}", path);
-            return "";
-        }
     }
 }

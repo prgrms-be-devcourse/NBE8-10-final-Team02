@@ -1,21 +1,13 @@
 package com.back.backend.domain.github.service;
 
-import com.back.backend.domain.ai.client.AiClient;
-import com.back.backend.domain.ai.client.AiClientRouter;
-import com.back.backend.domain.ai.client.AiRequest;
-import com.back.backend.domain.ai.client.AiResponse;
-import com.back.backend.domain.ai.template.PromptTemplate;
-import com.back.backend.domain.ai.template.PromptTemplateRegistry;
+import com.back.backend.domain.ai.pipeline.AiPipeline;
 import com.back.backend.domain.github.entity.CodeIndex;
 import com.back.backend.domain.github.entity.GithubRepository;
 import com.back.backend.domain.github.entity.RepoSummary;
 import com.back.backend.domain.github.repository.RepoSummaryRepository;
 import com.back.backend.domain.user.entity.User;
-import com.back.backend.global.exception.ErrorCode;
-import com.back.backend.global.exception.ServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,8 +36,7 @@ public class RepoSummaryGeneratorService {
     private static final Logger log = LoggerFactory.getLogger(RepoSummaryGeneratorService.class);
     private static final String TEMPLATE_ID = "ai.portfolio.summary.v1";
 
-    private final AiClientRouter aiClientRouter;
-    private final PromptTemplateRegistry templateRegistry;
+    private final AiPipeline aiPipeline;
     private final PortfolioPromptBuilder promptBuilder;
     private final CodeIndexService codeIndexService;
     private final ContributionExtractorService contributionExtractorService;
@@ -53,16 +44,14 @@ public class RepoSummaryGeneratorService {
     private final RepoSummaryRepository repoSummaryRepository;
 
     public RepoSummaryGeneratorService(
-            AiClientRouter aiClientRouter,
-            PromptTemplateRegistry templateRegistry,
+            AiPipeline aiPipeline,
             PortfolioPromptBuilder promptBuilder,
             CodeIndexService codeIndexService,
             ContributionExtractorService contributionExtractorService,
             RepoCloneService repoCloneService,
             RepoSummaryRepository repoSummaryRepository
     ) {
-        this.aiClientRouter = aiClientRouter;
-        this.templateRegistry = templateRegistry;
+        this.aiPipeline = aiPipeline;
         this.promptBuilder = promptBuilder;
         this.codeIndexService = codeIndexService;
         this.contributionExtractorService = contributionExtractorService;
@@ -106,7 +95,7 @@ public class RepoSummaryGeneratorService {
                 repo, authorEmail, codeEntries, diffs, isOwnedRepo, projectOverview);
 
         // 5. AI 호출
-        String summaryJson = callAi(userMessage);
+        String summaryJson = aiPipeline.execute(TEMPLATE_ID, userMessage).toString();
 
         // 6. 버전 계산 및 저장
         int nextVersion = getNextVersion(user, repo);
@@ -129,44 +118,6 @@ public class RepoSummaryGeneratorService {
     // ─────────────────────────────────────────────────
     // 내부 유틸
     // ─────────────────────────────────────────────────
-
-    private String callAi(String userMessage) {
-        PromptTemplate template = templateRegistry.get(TEMPLATE_ID);
-        AiClient client = aiClientRouter.getDefault();
-
-        AiRequest request = new AiRequest(
-                promptBuilder.loadSystemPrompt(),
-                promptBuilder.loadDeveloperPrompt(),
-                userMessage,
-                template.temperature(),
-                template.maxTokens()
-        );
-
-        int attempts = 0;
-        int maxRetries = template.retryPolicy().maxRetries();
-        Exception lastException = null;
-
-        while (attempts <= maxRetries) {
-            try {
-                AiResponse response = client.call(request);
-                String content = response.content();
-                if (content == null || content.isBlank()) {
-                    throw new ServiceException(ErrorCode.INTERNAL_SERVER_ERROR,
-                            HttpStatus.INTERNAL_SERVER_ERROR, "AI 응답이 비어있습니다.");
-                }
-                return content;
-            } catch (ServiceException e) {
-                throw e;
-            } catch (Exception e) {
-                lastException = e;
-                attempts++;
-                log.warn("AI call attempt {} failed: {}", attempts, e.getMessage());
-            }
-        }
-
-        throw new ServiceException(ErrorCode.INTERNAL_SERVER_ERROR, HttpStatus.INTERNAL_SERVER_ERROR,
-                "AI 호출 실패: " + (lastException != null ? lastException.getMessage() : "unknown"));
-    }
 
     /**
      * 클론된 repo에서 README 및 프로젝트 구조 문서를 읽는다.
