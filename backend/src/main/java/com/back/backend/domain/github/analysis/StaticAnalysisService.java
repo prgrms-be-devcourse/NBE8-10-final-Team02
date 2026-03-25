@@ -139,8 +139,16 @@ public class StaticAnalysisService {
             scope = Optional.of(intersection);
         }
 
-        log.info("Running {} analyzer ({} files) for repo: {}", langLabel, scope.get().size(), repoRoot);
-        result.addAll(analyzer.run(repoRoot, scope));
+        int fileCount = scope.get().size();
+        log.info("Running {} analyzer ({} files) for repo: {}", langLabel, fileCount, repoRoot);
+        long start = System.currentTimeMillis();
+        List<AnalysisNode> nodes = analyzer.run(repoRoot, scope);
+        long elapsedMs = System.currentTimeMillis() - start;
+        double avgMs = fileCount > 0 ? (double) elapsedMs / fileCount : 0.0;
+        log.debug("[timing] {} analyzer: {} files → {} nodes in {}ms (avg {}/file)",
+                langLabel, fileCount, nodes.size(), elapsedMs,
+                String.format("%.1fms", avgMs));
+        result.addAll(nodes);
     }
 
     private List<AnalysisNode> analyzeJava(Path repoRoot, Optional<Set<String>> targetFiles) {
