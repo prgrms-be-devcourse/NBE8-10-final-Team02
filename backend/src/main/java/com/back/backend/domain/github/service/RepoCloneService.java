@@ -147,6 +147,31 @@ public class RepoCloneService {
         }
     }
 
+    /**
+     * 파이프라인 완료 후 clone 디렉토리를 삭제한다.
+     * 실패해도 파이프라인에 영향을 주지 않는다.
+     */
+    public void deleteRepo(Long userId, Long repositoryId) {
+        Path repoPath = buildRepoPath(userId, repositoryId);
+        if (!Files.exists(repoPath)) return;
+        try {
+            deleteRecursively(repoPath);
+            log.info("Deleted repo clone: userId={}, repoId={}", userId, repositoryId);
+        } catch (IOException e) {
+            log.warn("Failed to delete repo clone: userId={}, repoId={}, error={}", userId, repositoryId, e.getMessage());
+        }
+    }
+
+    private void deleteRecursively(Path path) throws IOException {
+        try (var stream = Files.walk(path)) {
+            stream.sorted(java.util.Comparator.reverseOrder())
+                  .forEach(p -> {
+                      try { Files.delete(p); }
+                      catch (IOException e) { log.warn("Failed to delete: {}", p); }
+                  });
+        }
+    }
+
     public Path buildRepoPath(Long userId, Long repositoryId) {
         return Path.of(repoBasePath, userId.toString(), repositoryId.toString());
     }

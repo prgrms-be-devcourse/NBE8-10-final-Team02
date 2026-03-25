@@ -168,6 +168,8 @@ public class AnalysisPipelineService {
         } catch (Exception e) {
             log.error("Pipeline failed: userId={}, repoId={}, error={}", userId, repositoryId, e.getMessage(), e);
             syncStatusService.setFailed(userId, repositoryId, summarizeError(e));
+        } finally {
+            repoCloneService.deleteRepo(userId, repositoryId);
         }
     }
 
