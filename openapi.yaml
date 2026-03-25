@@ -2229,6 +2229,54 @@ paths:
                       parentQuestionId: null
                       sourceApplicationQuestionId: null
                     meta: *id001
+        '400':
+          description: 요청 검증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidManualQuestionRequest:
+                  value:
+                    success: false
+                    error:
+                      code: REQUEST_VALIDATION_FAILED
+                      message: 요청 값을 확인해주세요.
+                      retryable: false
+                      fieldErrors:
+                      - field: questionText
+                        reason: blank
+                    meta: *id001
+        '404':
+          description: 질문 세트를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                questionSetNotFound:
+                  value:
+                    success: false
+                    error:
+                      code: RESOURCE_NOT_FOUND
+                      message: 질문 세트를 찾을 수 없습니다.
+                      retryable: false
+                    meta: *id001
+        '409':
+          description: 이미 시작된 질문 세트는 편집할 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                questionSetNotEditable:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_QUESTION_SET_NOT_EDITABLE
+                      message: 이미 면접이 시작된 질문 세트는 수정할 수 없습니다.
+                      retryable: false
+                    meta: *id001
       description: 세션 시작 전 질문 세트에 수동 질문을 추가한다. questionOrder는 요청으로 받지 않으며 서버가 마지막 순번 다음 값으로
         자동 부여한다. 1차 범위에서는 독립 질문만 허용하고 parentQuestionId는 받지 않는다.
   /interview/question-sets/{questionSetId}/questions/{questionId}:
@@ -2250,10 +2298,58 @@ paths:
           type: integer
           format: int64
       responses:
+        '400':
+          description: 마지막 남은 질문은 삭제할 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lastQuestionDeleteRejected:
+                  value:
+                    success: false
+                    error:
+                      code: REQUEST_VALIDATION_FAILED
+                      message: 질문 세트는 최소 1개 질문을 유지해야 합니다.
+                      retryable: false
+                      fieldErrors:
+                      - field: questionId
+                        reason: min_1
+                    meta: *id001
+        '404':
+          description: 질문 세트 또는 질문을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                interviewQuestionNotFound:
+                  value:
+                    success: false
+                    error:
+                      code: RESOURCE_NOT_FOUND
+                      message: 질문을 찾을 수 없습니다.
+                      retryable: false
+                    meta: *id001
+        '409':
+          description: 이미 시작된 질문 세트는 편집할 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                deleteQuestionSetNotEditable:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_QUESTION_SET_NOT_EDITABLE
+                      message: 이미 면접이 시작된 질문 세트는 수정할 수 없습니다.
+                      retryable: false
+                    meta: *id001
         '204':
           description: 질문 삭제 성공
       description: 세션 시작 전 질문 세트에서 질문을 hard delete 한다. 삭제 후 남은 질문의 questionOrder는 서버가 빈 번호 없이
-        1..N 형태로 다시 정렬한다.
+        1..N 형태로 다시 정렬한다. 질문 세트는 최소 1개 질문을 유지해야 하므로 마지막 남은 질문 삭제는 허용하지 않는다.
   /interview/sessions:
     post:
       tags:
@@ -2303,6 +2399,39 @@ paths:
                       startedAt: '2026-03-17T10:35:00Z'
                       endedAt: null
                     meta: *id001
+        '400':
+          description: 질문 수 검증 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                sessionQuestionCountOutOfRange:
+                  value:
+                    success: false
+                    error:
+                      code: REQUEST_VALIDATION_FAILED
+                      message: 면접 세션은 3개 이상 20개 이하 질문으로만 시작할 수 있습니다.
+                      retryable: false
+                      fieldErrors:
+                      - field: questionCount
+                        reason: out_of_range
+                    meta: *id001
+        '404':
+          description: 질문 세트를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                sessionQuestionSetNotFound:
+                  value:
+                    success: false
+                    error:
+                      code: RESOURCE_NOT_FOUND
+                      message: 질문 세트를 찾을 수 없습니다.
+                      retryable: false
+                    meta: *id001
         '409':
           description: 이미 활성 세션이 존재함
           content:
@@ -2319,7 +2448,8 @@ paths:
                       retryable: false
                     meta: *id001
       description: 면접 세션을 시작한다. 사용자당 동시에 진행 가능한 활성 세션은 1개다. 활성 세션은 `in_progress`와 `paused`
-        를 포함한다. 세션 시작 전 질문 세트는 실제 사용 질문 수 기준 3개 이상 20개 이하인지 검증한다.
+        를 포함한다. 현재 사용자 소유 질문 세트에 대해서만 시작할 수 있으며, 세션 시작 전 질문 세트는 실제 사용 질문 수 기준
+        3개 이상 20개 이하인지 검증한다.
     get:
       tags:
       - Interview
@@ -2454,7 +2584,46 @@ paths:
                       status: paused
                       updatedAt: '2026-03-17T10:37:00Z'
                     meta: *id001
+        '404':
+          description: 세션을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                pauseSessionNotFound:
+                  value:
+                    success: false
+                    error:
+                      code: RESOURCE_NOT_FOUND
+                      message: 세션을 찾을 수 없습니다.
+                      retryable: false
+                    meta: *id001
+        '409':
+          description: 현재 상태에서는 일시정지할 수 없거나 이미 종료된 세션임
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                pauseStatusConflict:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_SESSION_STATUS_CONFLICT
+                      message: 현재 상태에서는 세션 상태를 변경할 수 없습니다.
+                      retryable: false
+                    meta: *id001
+                pauseSessionCompleted:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_SESSION_ALREADY_COMPLETED
+                      message: 이미 종료된 면접 세션입니다.
+                      retryable: false
+                    meta: *id001
       description: 진행 중인 세션을 명시적으로 일시정지한다. `pause/resume`은 일반 상태 필드 수정이 아니라 액션 API로 처리한다.
+        `pause`는 `in_progress` 상태에서만 허용한다.
   /interview/sessions/{sessionId}/resume:
     post:
       tags:
@@ -2495,8 +2664,46 @@ paths:
                       status: in_progress
                       updatedAt: '2026-03-17T10:38:00Z'
                     meta: *id001
+        '404':
+          description: 세션을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                resumeSessionNotFound:
+                  value:
+                    success: false
+                    error:
+                      code: RESOURCE_NOT_FOUND
+                      message: 세션을 찾을 수 없습니다.
+                      retryable: false
+                    meta: *id001
+        '409':
+          description: 현재 상태에서는 재개할 수 없거나 이미 종료된 세션임
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                resumeStatusConflict:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_SESSION_STATUS_CONFLICT
+                      message: 현재 상태에서는 세션 상태를 변경할 수 없습니다.
+                      retryable: false
+                    meta: *id001
+                resumeSessionCompleted:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_SESSION_ALREADY_COMPLETED
+                      message: 이미 종료된 면접 세션입니다.
+                      retryable: false
+                    meta: *id001
       description: 일시정지된 세션을 재개한다. v1 자동 일시정지 정책은 재개 요청 진입 시점에도 `lastActivityAt` 기준으로 먼저
-        평가한다.
+        평가한다. `resume` 성공 시 `lastActivityAt`는 재개 시각으로 갱신한다.
   /interview/sessions/{sessionId}/answers:
     post:
       tags:
@@ -2532,7 +2739,7 @@ paths:
               - questionId
               - answerOrder
               - isSkipped
-              description: isSkipped=false인 경우 answerText는 최소 50자 이상이어야 한다.
+              description: isSkipped=false인 경우 answerText는 최소 50자 이상이어야 하며, questionId와 answerOrder는 현재 순번과 일치해야 한다.
       responses:
         '201':
           description: 답변 저장
@@ -2564,12 +2771,23 @@ paths:
                       submittedAt: '2026-03-17T10:36:00Z'
                     meta: *id001
         '400':
-          description: 답변 길이 검증 실패
+          description: 답변 필수 또는 길이 검증 실패
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
+                answerRequired:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_ANSWER_REQUIRED
+                      message: 답변을 입력해주세요.
+                      retryable: false
+                      fieldErrors:
+                      - field: answerText
+                        reason: required
+                    meta: *id001
                 answerTooShort:
                   value:
                     success: false
@@ -2581,8 +2799,23 @@ paths:
                       - field: answerText
                         reason: min_50
                     meta: *id001
+        '404':
+          description: 세션 또는 질문을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                sessionOrQuestionNotFound:
+                  value:
+                    success: false
+                    error:
+                      code: RESOURCE_NOT_FOUND
+                      message: 세션 또는 질문을 찾을 수 없습니다.
+                      retryable: false
+                    meta: *id001
         '409':
-          description: 진행 가능한 세션이 아님
+          description: 진행 가능한 세션이 아니거나 이미 종료된 세션임
           content:
             application/json:
               schema:
@@ -2596,7 +2829,16 @@ paths:
                       message: 진행 가능한 면접 세션이 아닙니다. 재개 후 다시 시도해주세요.
                       retryable: false
                     meta: *id001
-      description: 세션 답변을 저장한다. 일반 답변은 `in_progress` 상태에서만 허용한다. v1 자동 일시정지는 답변 제출 요청 진입
+                sessionAlreadyCompleted:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_SESSION_ALREADY_COMPLETED
+                      message: 이미 종료된 면접 세션입니다.
+                      retryable: false
+                    meta: *id001
+      description: 세션 답변을 저장한다. 일반 답변은 `in_progress` 상태에서만 허용한다. questionId와 answerOrder는 현재 순번과
+        일치해야 한다. 세션 또는 질문이 현재 사용자 범위에서 없으면 404를 반환한다. v1 자동 일시정지는 답변 제출 요청 진입
         시점에도 `lastActivityAt` 기준으로 평가하며, 30분 초과 상태의 세션은 `paused`로 정규화한 뒤 답변 제출을 막는다.
   /interview/sessions/{sessionId}/complete:
     post:

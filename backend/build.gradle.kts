@@ -71,6 +71,10 @@ dependencies {
 
   // JSON Schema
   implementation("com.networknt:json-schema-validator:1.5.6")
+
+  // 문서 텍스트 추출: PDF(PDFBox), DOCX(Apache POI)
+  implementation("org.apache.pdfbox:pdfbox:3.0.3")
+  implementation("org.apache.poi:poi-ooxml:5.3.0")
 }
 
 tasks.withType<Test> {

@@ -54,4 +54,8 @@ public class InterviewQuestion extends CreatedAtEntity {
 
     @Column(name = "question_text", nullable = false, columnDefinition = "text")
     private String questionText;
+
+    public void changeQuestionOrder(int questionOrder) {
+        this.questionOrder = questionOrder;
+    }
 }

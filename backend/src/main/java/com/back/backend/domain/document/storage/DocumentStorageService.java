@@ -20,4 +20,12 @@ public interface DocumentStorageService {
      * @return 저장된 파일의 경로 문자열 (DB의 {@code storage_path} 컬럼에 저장됨)
      */
     String store(MultipartFile file);
+
+    /**
+     * storagePath에 해당하는 물리 파일을 삭제한다.
+     * 파일이 존재하지 않으면 무시하고, 삭제 실패 시 로그만 남긴다.
+     *
+     * @param storagePath DB에 저장된 경로 문자열 (예: "uploads/uuid_filename.pdf")
+     */
+    void delete(String storagePath);
 }

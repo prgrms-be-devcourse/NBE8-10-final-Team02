@@ -354,6 +354,8 @@ public class ApplicationService {
     }
 
     private void downgradeReadyStatusIfNeeded(Application application) {
+        // ready는 독립 입력값이 아니라 현재 source/question 충족 여부에서 다시 계산되는 파생 상태다.
+        // source나 문항을 바꾼 뒤에도 ready를 유지하면 이후 흐름이 오래된 충족 상태를 믿게 된다.
         if (application.getStatus() == ApplicationStatus.READY && !isReady(application)) {
             application.changeStatus(ApplicationStatus.DRAFT);
         }
