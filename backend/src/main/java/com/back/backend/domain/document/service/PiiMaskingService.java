@@ -36,9 +36,17 @@ public class PiiMaskingService {
         RESIDENT_REG(Pattern.compile(
             "\\d{6}[\\s-]?[1-4]\\d{6}")),
 
-        // 전화번호: 010-1234-5678 또는 01012345678
+        // 전화번호: 모바일(01X), 서울(02), 지역(0XX), 인터넷(070), 대표번호(1XXX)
+        // 구분자: 하이픈, 점, 공백, 괄호 — 예: 010-1234-5678, 010)1234-5678, (02)123-4567, 01012345678
         PHONE(Pattern.compile(
-            "01[0-9][\\s.-]?\\d{3,4}[\\s.-]?\\d{4}")),
+            "\\(?"  // 선택적 여는 괄호
+            + "(?:"
+                + "01[0-9][\\s.)-]?\\d{3,4}[\\s.-]?\\d{4}"     // 모바일
+                + "|02[\\s.)-]?\\d{3,4}[\\s.-]?\\d{4}"          // 서울
+                + "|0[3-6][1-4][\\s.)-]?\\d{3,4}[\\s.-]?\\d{4}" // 지역
+                + "|070[\\s.)-]?\\d{3,4}[\\s.-]?\\d{4}"         // 인터넷전화
+                + "|1[56][0-9]{2}[\\s.-]?\\d{4}"                 // 대표번호
+            + ")")),
 
         // 이메일: user@domain.com
         EMAIL(Pattern.compile(
@@ -155,8 +163,19 @@ public class PiiMaskingService {
 
     /** 전화번호: 가운데 마스킹 — 010-****-5678 */
     private String maskPhone(String value) {
-        // 하이픈/점/공백이 있는 경우
-        String cleaned = value.replaceAll("[\\s.-]", "");
+        // 괄호/하이픈/점/공백 제거 후 순수 숫자만 추출
+        String cleaned = value.replaceAll("[\\s.()\\-]", "");
+
+        // 대표번호 (8자리: 1588-1234)
+        if (cleaned.length() == 8 && cleaned.startsWith("1")) {
+            return cleaned.substring(0, 4) + "-****";
+        }
+        // 서울 유선 (02로 시작, 9~10자리)
+        if (cleaned.startsWith("02") && cleaned.length() >= 9) {
+            String suffix = cleaned.substring(cleaned.length() - 4);
+            return "02-****-" + suffix;
+        }
+        // 모바일/지역/인터넷전화 (3자리 지역번호, 10~11자리)
         if (cleaned.length() >= 10) {
             String prefix = cleaned.substring(0, 3);
             String suffix = cleaned.substring(cleaned.length() - 4);

@@ -76,8 +76,58 @@ class PiiMaskingServiceTest {
         String input = "전화 01012345678";
         String result = piiMaskingService.mask(input);
 
-        // 하이픈 없는 형태도 마스킹되어야 함
         assertThat(result).doesNotContain("01012345678");
+    }
+
+    @Test
+    void mask_phoneWithParenthesis() {
+        String input = "연락처 010)1234-5678";
+        String result = piiMaskingService.mask(input);
+
+        assertThat(result).contains("010-****-5678");
+        assertThat(result).doesNotContain("1234");
+    }
+
+    @Test
+    void mask_phoneWithFullParenthesis() {
+        String input = "전화 (02)1234-5678";
+        String result = piiMaskingService.mask(input);
+
+        assertThat(result).contains("02-****-5678");
+    }
+
+    @Test
+    void mask_seoulLandline() {
+        String input = "전화 02-1234-5678";
+        String result = piiMaskingService.mask(input);
+
+        assertThat(result).contains("02-****-5678");
+        assertThat(result).doesNotContain("02-1234");
+    }
+
+    @Test
+    void mask_regionalLandline() {
+        String input = "연락처 031-123-4567";
+        String result = piiMaskingService.mask(input);
+
+        assertThat(result).contains("031-****-4567");
+        assertThat(result).doesNotContain("031-123");
+    }
+
+    @Test
+    void mask_internetPhone() {
+        String input = "전화 070-1234-5678";
+        String result = piiMaskingService.mask(input);
+
+        assertThat(result).contains("070-****-5678");
+    }
+
+    @Test
+    void mask_representativeNumber() {
+        String input = "고객센터 1588-1234";
+        String result = piiMaskingService.mask(input);
+
+        assertThat(result).doesNotContain("1588-1234");
     }
 
     // =========================================================
