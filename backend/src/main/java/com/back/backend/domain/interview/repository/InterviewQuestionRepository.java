@@ -12,6 +12,8 @@ public interface InterviewQuestionRepository extends JpaRepository<InterviewQues
 
     Optional<InterviewQuestion> findTopByQuestionSetIdOrderByQuestionOrderDesc(Long questionSetId);
 
+    Optional<InterviewQuestion> findByQuestionSetIdAndQuestionOrder(Long questionSetId, Integer questionOrder);
+
     Optional<InterviewQuestion> findByIdAndQuestionSetId(Long id, Long questionSetId);
 
     List<InterviewQuestion> findAllByQuestionSetIdOrderByQuestionOrderAsc(Long questionSetId);

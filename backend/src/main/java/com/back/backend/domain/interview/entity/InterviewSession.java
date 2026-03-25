@@ -48,4 +48,8 @@ public class InterviewSession extends BaseEntity {
 
     @Column(name = "ended_at")
     private Instant endedAt;
+
+    public void changeStatus(InterviewSessionStatus status) {
+        this.status = status;
+    }
 }
