@@ -2,6 +2,7 @@ package com.back.backend.domain.ai.service;
 
 import com.back.backend.domain.ai.pipeline.AiPipeline;
 import com.back.backend.domain.ai.pipeline.payload.SelfIntroPayloadBuilder;
+import com.back.backend.domain.ai.service.SelfIntroGenerateService.GenerateResult;
 import com.back.backend.domain.application.entity.Application;
 import com.back.backend.domain.application.entity.ApplicationLengthOption;
 import com.back.backend.domain.application.entity.ApplicationQuestion;
@@ -87,8 +88,7 @@ class SelfIntroGenerateServiceTest {
         @Test
         @DisplayName("문항이 없으면 APPLICATION_QUESTION_REQUIRED 예외를 던진다")
         void no_questions() {
-            given(applicationRepository.findByIdAndUserId(APPLICATION_ID, USER_ID))
-                .willReturn(Optional.of(application()));
+            givenApplicationExists();
             given(applicationQuestionRepository.findAllByApplicationIdOrderByQuestionOrderAsc(APPLICATION_ID))
                 .willReturn(List.of());
 
@@ -118,8 +118,10 @@ class SelfIntroGenerateServiceTest {
                 { "answers": [{ "questionOrder": 2, "answerText": "AI 생성 답변" }] }
                 """);
 
-            selfIntroGenerateService.generate(USER_ID, APPLICATION_ID, false);
+            GenerateResult result = selfIntroGenerateService.generate(USER_ID, APPLICATION_ID, false);
 
+            assertThat(result.generatedCount()).isEqualTo(1);
+            assertThat(result.allQuestions()).hasSize(2);
             assertThat(answered.getGeneratedAnswer()).isEqualTo("기존 답변");
             assertThat(unanswered.getGeneratedAnswer()).isEqualTo("AI 생성 답변");
         }
@@ -132,10 +134,10 @@ class SelfIntroGenerateServiceTest {
             givenApplicationExists();
             givenQuestions(answered);
 
-            List<ApplicationQuestion> result =
-                selfIntroGenerateService.generate(USER_ID, APPLICATION_ID, false);
+            GenerateResult result = selfIntroGenerateService.generate(USER_ID, APPLICATION_ID, false);
 
-            assertThat(result).hasSize(1);
+            assertThat(result.generatedCount()).isEqualTo(0);
+            assertThat(result.allQuestions()).hasSize(1);
             assertThat(answered.getGeneratedAnswer()).isEqualTo("기존 답변");
             verify(aiPipeline, never()).execute(anyString(), anyString());
         }
@@ -164,8 +166,9 @@ class SelfIntroGenerateServiceTest {
                 }
                 """);
 
-            selfIntroGenerateService.generate(USER_ID, APPLICATION_ID, true);
+            GenerateResult result = selfIntroGenerateService.generate(USER_ID, APPLICATION_ID, true);
 
+            assertThat(result.generatedCount()).isEqualTo(2);
             assertThat(q1.getGeneratedAnswer()).isEqualTo("새 답변1");
             assertThat(q2.getGeneratedAnswer()).isEqualTo("새 답변2");
         }
@@ -214,8 +217,9 @@ class SelfIntroGenerateServiceTest {
                 { "answers": [{ "questionOrder": 1, "answerText": "답변" }] }
                 """);
 
-            selfIntroGenerateService.generate(USER_ID, APPLICATION_ID, false);
+            GenerateResult result = selfIntroGenerateService.generate(USER_ID, APPLICATION_ID, false);
 
+            assertThat(result.generatedCount()).isEqualTo(1);
             assertThat(q.getGeneratedAnswer()).isEqualTo("답변");
             verify(aiPipeline).execute(eq(TEMPLATE_ID), anyString());
         }
@@ -242,10 +246,9 @@ class SelfIntroGenerateServiceTest {
                 }
                 """);
 
-            List<ApplicationQuestion> result =
-                selfIntroGenerateService.generate(USER_ID, APPLICATION_ID, false);
+            GenerateResult result = selfIntroGenerateService.generate(USER_ID, APPLICATION_ID, false);
 
-            assertThat(result).hasSize(1);
+            assertThat(result.allQuestions()).hasSize(1);
             assertThat(q.getGeneratedAnswer()).isEqualTo("답변1");
         }
     }

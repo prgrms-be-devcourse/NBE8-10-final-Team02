@@ -36,8 +36,14 @@ public class SelfIntroGenerateService {
     private final SelfIntroPayloadBuilder payloadBuilder;
     private final AiPipeline aiPipeline;
 
+    public record GenerateResult(
+        List<ApplicationQuestion> allQuestions,
+        int generatedCount
+    ) {
+    }
+
     @Transactional
-    public List<ApplicationQuestion> generate(long userId, long applicationId, boolean regenerate) {
+    public GenerateResult generate(long userId, long applicationId, boolean regenerate) {
         // Application 조회 + 소유권 확인
         Application application = applicationRepository.findByIdAndUserId(applicationId, userId)
             .orElseThrow(() -> new ServiceException(
@@ -65,7 +71,7 @@ public class SelfIntroGenerateService {
             .toList();
 
         if (targetQuestions.isEmpty()) {
-            return allQuestions;
+            return new GenerateResult(allQuestions, 0);
         }
 
         // Document.extractedText 수집 (PII 마스킹 완료 플레인텍스트)
@@ -111,6 +117,6 @@ public class SelfIntroGenerateService {
         }
 
         // 전체 문항 목록 반환
-        return allQuestions;
+        return new GenerateResult(allQuestions, targetQuestions.size());
     }
 }
