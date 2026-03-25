@@ -27,6 +27,8 @@ import java.util.List;
 public class InterviewSessionService {
 
     private static final Duration AUTO_PAUSE_THRESHOLD = Duration.ofMinutes(30);
+    // paused 세션도 사용자가 이어서 재개할 수 있는 활성 세션으로 본다.
+    // 여기서 제외하면 새 세션을 하나 더 시작해 단일 활성 세션 규칙이 깨질 수 있다.
     private static final List<InterviewSessionStatus> ACTIVE_STATUSES = List.of(
             InterviewSessionStatus.IN_PROGRESS,
             InterviewSessionStatus.PAUSED
@@ -81,6 +83,8 @@ public class InterviewSessionService {
     public InterviewSessionTransitionResponse resumeSession(long userId, long sessionId) {
         InterviewSession session = getOwnedSession(userId, sessionId);
         validateNotCompleted(session);
+        // 오래 방치된 in_progress 세션은 먼저 paused로 정규화한 뒤 resume 경로를 탄다.
+        // 사용자는 별도 pause 호출 없이 resume 하나로 만료된 세션을 다시 이어갈 수 있다.
         normalizeAutoPauseIfExpired(session);
 
         if (session.getStatus() != InterviewSessionStatus.PAUSED) {
@@ -127,6 +131,7 @@ public class InterviewSessionService {
     }
 
     public boolean normalizeAutoPauseIfExpired(InterviewSession session) {
+        // 답변 제출과 resume 진입점에서 같은 무응답 정책을 적용하려고 읽는 순간 상태를 보정한다.
         if (session.getStatus() != InterviewSessionStatus.IN_PROGRESS) {
             return false;
         }

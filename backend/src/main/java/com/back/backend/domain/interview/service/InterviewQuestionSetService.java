@@ -98,6 +98,8 @@ public class InterviewQuestionSetService {
                 .filter(candidate -> !candidate.getId().equals(questionId))
                 .toList();
 
+        // question_order는 질문 세트 안에서 면접 진행 순서를 뜻하므로 중간 삭제 후 연속 값으로 다시 맞춘다.
+        // 재정렬하지 않으면 이후 수동 추가와 세션 진행 순서가 빈 번호를 기준으로 어긋날 수 있다.
         for (int index = 0; index < remainingQuestions.size(); index++) {
             remainingQuestions.get(index).changeQuestionOrder(index + 1);
         }
@@ -115,6 +117,7 @@ public class InterviewQuestionSetService {
     }
 
     private void validateEditable(long questionSetId) {
+        // 세션이 한 번이라도 생성된 질문 세트는 과거 질문 순서와 답변 문맥을 보존해야 하므로 잠근다.
         if (interviewSessionRepository.existsByQuestionSetId(questionSetId)) {
             throw new ServiceException(
                     ErrorCode.INTERVIEW_QUESTION_SET_NOT_EDITABLE,
@@ -140,6 +143,7 @@ public class InterviewQuestionSetService {
 
     private InterviewQuestionType parseManualQuestionType(String rawValue) {
         InterviewQuestionType questionType = parseEnum(rawValue, InterviewQuestionType.class, "questionType");
+        // follow_up은 이전 질문과 답변 문맥을 전제로 생성되는 질문이라 수동 추가 대상으로 열지 않는다.
         if (questionType == InterviewQuestionType.FOLLOW_UP) {
             throw new ServiceException(
                     ErrorCode.REQUEST_VALIDATION_FAILED,
