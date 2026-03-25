@@ -5,9 +5,12 @@ import com.back.backend.domain.github.entity.GithubRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface GithubRepositoryRepository extends JpaRepository<GithubRepository, Long> {
 
@@ -25,4 +28,11 @@ public interface GithubRepositoryRepository extends JpaRepository<GithubReposito
 
     // 특정 연결의 선택된 repo 전체 조회 (커밋 동기화 시 사용)
     List<GithubRepository> findByGithubConnectionAndSelectedTrue(GithubConnection connection);
+
+    // 이미 저장된 githubRepoId 집합 조회 (contributions discovered 중복 체크용)
+    @Query("select r.githubRepoId from GithubRepository r where r.githubConnection = :connection and r.githubRepoId in :repoIds")
+    Set<Long> findGithubRepoIdsByGithubConnectionAndGithubRepoIdIn(
+            @Param("connection") GithubConnection connection,
+            @Param("repoIds") List<Long> repoIds
+    );
 }
