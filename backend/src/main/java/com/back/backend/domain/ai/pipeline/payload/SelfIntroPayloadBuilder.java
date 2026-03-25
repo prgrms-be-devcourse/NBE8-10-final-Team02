@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Component
@@ -50,6 +51,11 @@ public class SelfIntroPayloadBuilder {
         List<String> documentTexts,
         List<CommitInput> commits
     ) {
+        Objects.requireNonNull(jobRole, "jobRole must not be null");
+        Objects.requireNonNull(questions, "questions must not be null");
+        Objects.requireNonNull(documentTexts, "documentTexts must not be null");
+        Objects.requireNonNull(commits, "commits must not be null");
+
         ObjectNode root = objectMapper.createObjectNode();
 
         root.put("jobRole", jobRole);
