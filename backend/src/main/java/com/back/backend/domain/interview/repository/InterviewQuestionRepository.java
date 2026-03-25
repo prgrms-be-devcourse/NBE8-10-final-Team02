@@ -8,6 +8,8 @@ import java.util.Optional;
 
 public interface InterviewQuestionRepository extends JpaRepository<InterviewQuestion, Long> {
 
+    long countByQuestionSetId(Long questionSetId);
+
     Optional<InterviewQuestion> findTopByQuestionSetIdOrderByQuestionOrderDesc(Long questionSetId);
 
     Optional<InterviewQuestion> findByIdAndQuestionSetId(Long id, Long questionSetId);
