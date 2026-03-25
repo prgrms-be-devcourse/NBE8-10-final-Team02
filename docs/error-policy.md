@@ -305,6 +305,8 @@ applies_to: error-classification-and-response
 - 답변 제출은 현재 사용자 소유 세션과 해당 세션에서 진행 중인 질문에 대해서만 허용한다.
 - 답변 제출 요청의 `questionId`, `answerOrder`가 현재 순번과 다르면 `REQUEST_VALIDATION_FAILED`로 거절한다.
 - `in_progress` 상태의 세션만 일반 답변 제출을 허용한다.
+- 명시적 `pause`는 `in_progress` 상태에서만 허용하고, 명시적 `resume`은 `paused` 상태에서만 허용한다.
+- 현재 상태에서 허용되지 않는 `pause/resume` 요청은 `INTERVIEW_SESSION_STATUS_CONFLICT`로 거절한다.
 - 건너뛰기 아닌 일반 답변이 비어 있으면 `INTERVIEW_ANSWER_REQUIRED`로 거절한다.
 - `paused` 상태 세션의 답변 제출은 `INTERVIEW_SESSION_NOT_ACTIVE`로 거절한다.
 - `completed`, `feedback_completed` 상태 세션의 추가 답변 저장은 `INTERVIEW_SESSION_ALREADY_COMPLETED`로 거절한다.
@@ -534,6 +536,7 @@ applies_to: error-classification-and-response
 - `INTERVIEW_SESSION_NOT_FOUND`
 - `INTERVIEW_SESSION_ALREADY_ACTIVE`
 - `INTERVIEW_SESSION_ALREADY_COMPLETED`
+- `INTERVIEW_SESSION_STATUS_CONFLICT`
 - `INTERVIEW_SESSION_NOT_ACTIVE`
 - `INTERVIEW_ANSWER_REQUIRED`
 - `INTERVIEW_ANSWER_TOO_SHORT`
@@ -565,6 +568,7 @@ applies_to: error-classification-and-response
 | 세션이 시작된 질문 세트를 수정하려고 함 | 409 | INTERVIEW_QUESTION_SET_NOT_EDITABLE | 이미 면접이 시작된 질문 세트는 수정할 수 없습니다. | false |
 | 세션 시작 질문 수가 범위를 벗어남 | 400 | REQUEST_VALIDATION_FAILED | 면접 세션은 3개 이상 20개 이하 질문으로만 시작할 수 있습니다. | false |
 | 활성 세션이 이미 존재함 | 409 | INTERVIEW_SESSION_ALREADY_ACTIVE | 이미 활성 면접 세션이 있습니다. | false |
+| 현재 상태에서 pause/resume 요청이 허용되지 않음 | 409 | INTERVIEW_SESSION_STATUS_CONFLICT | 현재 상태에서는 세션 상태를 변경할 수 없습니다. | false |
 | 건너뛰기 아닌 답변이 비어 있음 | 400 | INTERVIEW_ANSWER_REQUIRED | 답변을 입력해주세요. | false |
 | 일시정지 등 진행 불가 상태에서 답변 제출 | 409 | INTERVIEW_SESSION_NOT_ACTIVE | 진행 가능한 면접 세션이 아닙니다. 재개 후 다시 시도해주세요. | false |
 | 면접 답변이 50자 미만 | 400 | INTERVIEW_ANSWER_TOO_SHORT | 답변은 50자 이상 입력해주세요. | false |
