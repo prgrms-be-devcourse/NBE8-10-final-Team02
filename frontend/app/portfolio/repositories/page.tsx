@@ -467,7 +467,7 @@ function ContributedTab() {
   return (
     <div>
       <p className="mb-4 text-sm text-zinc-500">
-        최근 {(yearsOffset + 1) * 2}년간 커밋을 기여한 public repository 목록입니다.
+        최근 {yearsOffset + 1}년간 커밋을 기여한 public repository 목록입니다.
         클릭하면 포트폴리오에 추가됩니다.
       </p>
 
@@ -531,7 +531,7 @@ function ContributedTab() {
           disabled={loadingMore}
           className="mb-6 w-full rounded border border-zinc-300 py-2 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
         >
-          {loadingMore ? '불러오는 중...' : `이전 기여 더 불러오기 (${(yearsOffset + 1) * 2}~${(yearsOffset + 2) * 2}년 전)`}
+          {loadingMore ? '불러오는 중...' : `이전 기여 더 불러오기 (${yearsOffset + 1}~${yearsOffset + 2}년 전)`}
         </button>
       ) : (
         !loading && <p className="mb-6 text-center text-xs text-zinc-400">더 이상 불러올 기여 이력이 없습니다.</p>

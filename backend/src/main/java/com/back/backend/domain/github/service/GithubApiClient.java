@@ -414,16 +414,34 @@ public class GithubApiClient {
      * GraphQL contributionsCollection을 사용하며, OAuth 토큰이 없으면 호출할 수 없다.
      * isPrivate=true인 repo는 결과에서 제외한다.
      *
-     * @param yearsOffset 0=최근 2년, 1=2~4년 전, 2=4~6년 전
+     * ── GitHub API 제약 ──────────────────────────────────────────────────
+     * contributionsCollection의 from~to 범위는 최대 1년(365일)이다.
+     * 초과하면 에러 없이 조용히 1년치만 잘라서 반환하므로,
+     * yearsOffset 단위도 1년으로 맞춰 한 번의 API 호출로 정확히 1년치를 가져온다.
+     * ────────────────────────────────────────────────────────────────────
+     *
+     * @param yearsOffset 0=최근 1년, 1=1~2년 전, 2=2~3년 전
      */
     public List<GithubContributedRepo> getContributedRepos(String token, int yearsOffset) {
         log.info("Fetching contributed repos via GraphQL, yearsOffset={}", yearsOffset);
 
         ZonedDateTime now = ZonedDateTime.now(ZoneOffset.UTC);
-        String to   = now.minusYears((long) yearsOffset * 2)
-                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
-        String from = now.minusYears((long) yearsOffset * 2 + 2)
-                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        // yearsOffset=0 → [now-1년, now], yearsOffset=1 → [now-2년, now-1년], ...
+        ZonedDateTime to   = now.minusYears(yearsOffset);
+        ZonedDateTime from = now.minusYears(yearsOffset + 1);
+
+        return fetchContributionsInRange(token, from, to);
+    }
+
+    /**
+     * contributionsCollection을 1년 이하 구간으로 호출한다.
+     * GitHub API 제약상 from~to는 반드시 1년 이내여야 한다.
+     */
+    private List<GithubContributedRepo> fetchContributionsInRange(
+            String token, ZonedDateTime from, ZonedDateTime to) {
+
+        String fromStr = from.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        String toStr   = to.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
 
         String query = """
                 query($from: DateTime!, $to: DateTime!) {
@@ -450,7 +468,7 @@ public class GithubApiClient {
                     .uri("/graphql")
                     .header("Authorization", "Bearer " + token)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of("query", query, "variables", Map.of("from", from, "to", to)))
+                    .body(Map.of("query", query, "variables", Map.of("from", fromStr, "to", toStr)))
                     .retrieve()
                     .onStatus(status -> status.value() == 401,
                             (req, res) -> { throw new ServiceException(
@@ -488,7 +506,7 @@ public class GithubApiClient {
         } catch (ServiceException e) {
             throw e;
         } catch (RestClientException e) {
-            log.warn("GitHub GraphQL call failed: reason: {}", e.getMessage());
+            log.warn("GitHub GraphQL call failed (from={}, to={}): {}", fromStr, toStr, e.getMessage());
             throw new ServiceException(ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
                     HttpStatus.SERVICE_UNAVAILABLE, "GitHub API 호출에 실패했습니다.");
         }
