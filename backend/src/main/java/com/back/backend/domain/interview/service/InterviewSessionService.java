@@ -1,6 +1,7 @@
 package com.back.backend.domain.interview.service;
 
 import com.back.backend.domain.interview.dto.request.StartInterviewSessionRequest;
+import com.back.backend.domain.interview.dto.response.InterviewResultResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionCompletionResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionDetailResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionResponse;
@@ -32,6 +33,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -111,6 +113,25 @@ public class InterviewSessionService {
                 remainingQuestionCount,
                 session.getStatus() == InterviewSessionStatus.PAUSED
         );
+    }
+
+    @Transactional(readOnly = true)
+    public InterviewResultResponse getSessionResult(long userId, long sessionId) {
+        InterviewSession session = getOwnedSession(userId, sessionId);
+        validateResultReadable(session);
+
+        List<InterviewAnswer> answers = interviewAnswerRepository
+                .findAllWithQuestionBySessionIdOrderByAnswerOrderAsc(session.getId());
+        if (answers.isEmpty()) {
+            throw resultNotReady();
+        }
+
+        Map<Long, List<InterviewAnswerTag>> tagsByAnswerId = groupTagsByAnswerId(
+                interviewAnswerTagRepository.findAllWithTagBySessionIdOrderByAnswerOrderAsc(session.getId())
+        );
+        validateReadableAnswers(answers, tagsByAnswerId);
+
+        return interviewResponseMapper.toInterviewResultResponse(session, answers, tagsByAnswerId);
     }
 
     public InterviewSessionCompletionResponse completeSession(long userId, long sessionId) {
@@ -407,6 +428,53 @@ public class InterviewSessionService {
                 ErrorCode.INTERVIEW_RESULT_INCOMPLETE,
                 HttpStatus.BAD_GATEWAY,
                 "면접 결과 생성 결과가 완전하지 않습니다.",
+                true
+        );
+    }
+
+    private void validateResultReadable(InterviewSession session) {
+        if (session.getStatus() != InterviewSessionStatus.FEEDBACK_COMPLETED) {
+            throw resultNotReady();
+        }
+
+        if (session.getTotalScore() == null
+                || session.getSummaryFeedback() == null
+                || session.getSummaryFeedback().isBlank()) {
+            throw resultNotReady();
+        }
+    }
+
+    private void validateReadableAnswers(
+            List<InterviewAnswer> answers,
+            Map<Long, List<InterviewAnswerTag>> tagsByAnswerId
+    ) {
+        for (InterviewAnswer answer : answers) {
+            if (answer.getScore() == null
+                    || answer.getEvaluationRationale() == null
+                    || answer.getEvaluationRationale().isBlank()) {
+                throw resultNotReady();
+            }
+
+            if (tagsByAnswerId.getOrDefault(answer.getId(), List.of()).size() > 3) {
+                throw resultNotReady();
+            }
+        }
+    }
+
+    private Map<Long, List<InterviewAnswerTag>> groupTagsByAnswerId(List<InterviewAnswerTag> answerTags) {
+        Map<Long, List<InterviewAnswerTag>> tagsByAnswerId = new LinkedHashMap<>();
+        for (InterviewAnswerTag answerTag : answerTags) {
+            tagsByAnswerId.computeIfAbsent(answerTag.getAnswer().getId(), ignored -> new ArrayList<>())
+                    .add(answerTag);
+        }
+        return tagsByAnswerId;
+    }
+
+    private ServiceException resultNotReady() {
+        return new ServiceException(
+                ErrorCode.INTERVIEW_RESULT_INCOMPLETE,
+                HttpStatus.CONFLICT,
+                "면접 결과가 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.",
                 true
         );
     }

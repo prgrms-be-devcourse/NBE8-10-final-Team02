@@ -47,6 +47,9 @@ applies_to: interview-domain
 - 명시적 `complete`는 `in_progress`, `paused` 상태에서만 허용한다.
 - 미답변 질문이 남아 있으면 `REQUEST_VALIDATION_FAILED`로 세션 종료를 거절한다.
 - `completed`, `feedback_completed` 세션의 종료 재요청은 `INTERVIEW_SESSION_ALREADY_COMPLETED`로 거절한다.
+- 결과 상세 조회는 `feedback_completed` 상태에서만 성공한다.
+- 결과 상세 조회 대상이 없거나 현재 사용자 소유가 아니면 `RESOURCE_NOT_FOUND`를 반환한다.
+- 결과 상세 조회 시 세션이 `completed` 상태면 `INTERVIEW_RESULT_INCOMPLETE`를 반환한다.
 - 세션 상세 조회는 복원 화면 기준으로 `currentQuestion`, 진행률 계산용 count, `resumeAvailable`, `lastActivityAt`를 함께 반환한다.
 - 건너뛰기 아닌 일반 답변이 비어 있으면 `INTERVIEW_ANSWER_REQUIRED`로 거절한다.
 - 일반 답변은 50자 이상 1000자 이하로 검증하고, 건너뛰기는 예외로 처리한다.
