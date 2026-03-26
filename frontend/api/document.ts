@@ -93,3 +93,26 @@ export async function deleteDocument(documentId: number): Promise<void> {
     throw new Error(await parseError(res));
   }
 }
+
+/**
+ * PATCH /documents/{documentId}/extracted-text
+ * 추출된 텍스트를 업데이트한다.
+ */
+export async function updateExtractedText(
+  documentId: number,
+  extractedText: string,
+): Promise<Document> {
+  const res = await fetch(`${base()}/${documentId}/extracted-text`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ extractedText }),
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseError(res));
+  }
+
+  const body = await res.json();
+  return body.data as Document;
+}
