@@ -62,11 +62,10 @@ public class DocumentTextExtractor {
 
         log.debug("Extracting text from: {} ({})", absolutePath, mimeType);
 
-        String text = switch (mimeType) {
-            case "application/pdf" -> extractPdf(absolutePath);
-            case "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                -> extractDocx(absolutePath);
-            case "text/markdown" -> extractMarkdown(absolutePath);
+        String text = switch (resolveFormat(filename, mimeType)) {
+            case "pdf" -> extractPdf(absolutePath);
+            case "docx" -> extractDocx(absolutePath);
+            case "md" -> extractMarkdown(absolutePath);
             default -> throw new ServiceException(
                 ErrorCode.DOCUMENT_EXTRACT_FAILED,
                 HttpStatus.UNPROCESSABLE_CONTENT,
@@ -83,6 +82,24 @@ public class DocumentTextExtractor {
             );
         }
         return text.strip();
+    }
+
+    /**
+     * MIME type과 파일명 확장자를 조합해 추출 형식("pdf"/"docx"/"md"/unknown)을 결정한다.
+     * Windows 등에서 .md 파일이 application/octet-stream으로 전송될 수 있으므로 확장자를 우선 본다.
+     */
+    private static String resolveFormat(String filename, String mimeType) {
+        String lower = filename.toLowerCase();
+        if (lower.endsWith(".pdf")) return "pdf";
+        if (lower.endsWith(".docx")) return "docx";
+        if (lower.endsWith(".md")) return "md";
+        // 확장자로 판단 불가 시 MIME type으로 fallback
+        return switch (mimeType) {
+            case "application/pdf" -> "pdf";
+            case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> "docx";
+            case "text/markdown", "text/x-markdown", "text/plain" -> "md";
+            default -> "unknown";
+        };
     }
 
     /**

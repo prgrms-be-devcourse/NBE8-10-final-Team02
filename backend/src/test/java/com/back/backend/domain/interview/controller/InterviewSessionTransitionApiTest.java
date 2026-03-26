@@ -133,11 +133,7 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
         User user = persistUser("resume-expired@example.com", "resume-expired");
         // auto-pause 경계를 넘긴 in_progress 세션을 바로 resume했을 때,
         // 내부적으로 paused 정규화를 거친 뒤 같은 요청에서 재개되는 흐름을 검증한다.
-        InterviewSession session = persistSession(
-                user,
-                InterviewSessionStatus.IN_PROGRESS,
-                FIXED_NOW.minus(Duration.ofMinutes(31))
-        );
+        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW.minus(Duration.ofMinutes(31)));
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/resume", session.getId())
                         .with(authenticated(user.getId())))

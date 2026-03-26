@@ -157,6 +157,8 @@ jobs:
             --network global-net \
             --network-alias backend \
             --memory="2g" \
+            -v /data/repos:/data/repos \
+            -v /app/uploads:/app/uploads \
             -e JAVA_TOOL_OPTIONS="-XX:InitialRAMPercentage=50.0 -XX:MaxRAMPercentage=50.0" \
             --env-file .env-prod \
             "${BE_IMAGE}:${IMAGE_TAG}"

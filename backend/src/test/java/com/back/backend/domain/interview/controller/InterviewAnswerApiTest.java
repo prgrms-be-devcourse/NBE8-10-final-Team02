@@ -285,11 +285,7 @@ class InterviewAnswerApiTest extends ApiTestBase {
         User user = persistUser("answer-autopause@example.com", "answer-autopause");
         // 31분 전 활동 시각으로 auto-pause 경계를 넘긴 세션을 만든다.
         // 답변 제출 시 충돌 오류를 내면서도 paused 상태 보정은 저장되는지 본다.
-        InterviewSession session = persistSession(
-                user,
-                InterviewSessionStatus.IN_PROGRESS,
-                FIXED_NOW.minus(Duration.ofMinutes(31))
-        );
+        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW.minus(Duration.ofMinutes(31)));
         InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
         persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
         persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");

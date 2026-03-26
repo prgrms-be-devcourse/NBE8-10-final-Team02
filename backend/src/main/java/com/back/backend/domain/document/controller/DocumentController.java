@@ -46,7 +46,7 @@ public class DocumentController {
     public ApiResponse<DocumentResponse> uploadDocument(
             @AuthenticationPrincipal Long userId,
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "documentType", defaultValue = "OTHER") DocumentType documentType) {
+            @RequestParam(value = "documentType", defaultValue = "other") DocumentType documentType) {
         return ApiResponse.success(documentService.upload(userId, documentType, file));
     }
 

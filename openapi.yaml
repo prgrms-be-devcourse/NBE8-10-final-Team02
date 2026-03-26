@@ -155,6 +155,63 @@ components:
       - htmlUrl
       - visibility
       - isSelected
+    SaveContributionRequest:
+      type: object
+      properties:
+        githubRepoId:
+          type: integer
+          format: int64
+        nameWithOwner:
+          type: string
+          description: 'owner/repo 형식'
+          example: spring-projects/spring-security
+        url:
+          type: string
+        language:
+          type: string
+          nullable: true
+        repoSizeKb:
+          type: integer
+          nullable: true
+      required:
+      - githubRepoId
+      - nameWithOwner
+      - url
+    AddContributionByUrlRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          description: 'GitHub repo URL (예: https://github.com/owner/repo)'
+      required:
+      - url
+    ContributedRepo:
+      type: object
+      properties:
+        githubRepoId:
+          type: integer
+          format: int64
+        nameWithOwner:
+          type: string
+        url:
+          type: string
+        language:
+          type: string
+          nullable: true
+        repoSizeKb:
+          type: integer
+          nullable: true
+        contributionCount:
+          type: integer
+        alreadySaved:
+          type: boolean
+          description: 이미 github_repositories에 저장된 repo 여부
+      required:
+      - githubRepoId
+      - nameWithOwner
+      - url
+      - contributionCount
+      - alreadySaved
     Document:
       type: object
       properties:
@@ -663,6 +720,44 @@ components:
       - repositoryId
       - syncStatus
       - queuedAt
+    RepoSyncStatus:
+      type: object
+      nullable: true
+      properties:
+        repositoryId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+          - PENDING
+          - IN_PROGRESS
+          - COMPLETED
+          - SKIPPED
+          - FAILED
+          description: PENDING=대기중, IN_PROGRESS=처리중, COMPLETED=완료, SKIPPED=변경없음(significance check 미달), FAILED=오류
+        step:
+          type: string
+          nullable: true
+          description: IN_PROGRESS 시 현재 단계 (significance_check|clone|analysis|summary)
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        estimatedEndAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        error:
+          type: string
+          nullable: true
+      required:
+      - repositoryId
+      - status
     ApplicationSourceBindingData:
       type: object
       properties:
@@ -1311,6 +1406,315 @@ paths:
                     meta: *id001
       description: 선택한 repository의 사용자 본인 commit 동기화를 시작한다. private repository는 GitHub
         OAuth 추가 동의가 있는 경우에만 지원한다.
+  /github/repositories/{repositoryId}/analyze:
+    post:
+      tags:
+      - GitHub
+      summary: 저장소 분석 파이프라인 시작
+      description: |
+        clone → 정적 분석 → Code Index 저장 → RepoSummary AI 생성 → MergedSummary 재집계 파이프라인을 비동기로 시작한다.
+        커밋 동기화(sync-commits)가 먼저 완료된 상태에서 호출해야 한다.
+        Significance Check 미달 시 SKIPPED 상태로 종료되고 LLM 호출 없이 반환한다.
+      parameters:
+      - name: repositoryId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '202':
+          description: 분석 파이프라인 시작 (비동기)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/RepoSyncStatus'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+        '404':
+          description: 저장소 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /github/repositories/{repositoryId}/sync-status:
+    get:
+      tags:
+      - GitHub
+      summary: 저장소 커밋 동기화 상태 조회
+      description: 특정 저장소의 커밋 동기화 진행 상태를 Redis에서 조회한다. 상태가 없으면 null을 반환한다.
+      parameters:
+      - name: repositoryId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: 동기화 상태
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/RepoSyncStatus'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                syncInProgress:
+                  value:
+                    success: true
+                    data:
+                      repositoryId: 101
+                      status: IN_PROGRESS
+                      step: "clone"
+                      startedAt: '2026-03-17T10:31:00Z'
+                      estimatedEndAt: '2026-03-17T10:33:00Z'
+                    meta: *id001
+                syncCompleted:
+                  value:
+                    success: true
+                    data:
+                      repositoryId: 101
+                      status: COMPLETED
+                      startedAt: '2026-03-17T10:31:00Z'
+                      completedAt: '2026-03-17T10:32:45Z'
+                    meta: *id001
+                syncNotFound:
+                  value:
+                    success: true
+                    data: null
+                    meta: *id001
+  /github/contributions/discovered:
+    get:
+      tags:
+      - GitHub
+      summary: 기여한 public repo 탐색
+      description: GitHub OAuth 토큰으로 사용자가 커밋을 기여한 public repo 목록을 조회한다. 본인 소유 외에 org, 오픈소스 repo도 포함된다. GitHub OAuth 연동이 필수다.
+      parameters:
+      - name: yearsOffset
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+        description: '조회 기간 오프셋. 0=최근 2년(기본값), 1=2~4년 전, 2=4~6년 전. "이전 기여 더 불러오기" 기능에 사용한다.'
+      responses:
+        '200':
+          description: 기여 repo 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ContributedRepo'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - success
+                - data
+                - meta
+              examples:
+                contributionListSuccess:
+                  value:
+                    success: true
+                    data:
+                    - githubRepoId: 987654
+                      nameWithOwner: prgrms-be-devcourse/NBE8-10-final-Team02
+                      url: https://github.com/prgrms-be-devcourse/NBE8-10-final-Team02
+                      language: Java
+                      repoSizeKb: 8240
+                      contributionCount: 23
+                      alreadySaved: true
+                    - githubRepoId: 111222
+                      nameWithOwner: spring-projects/spring-security
+                      url: https://github.com/spring-projects/spring-security
+                      language: Java
+                      repoSizeKb: 158000
+                      contributionCount: 2
+                      alreadySaved: false
+                    meta: *id001
+        '403':
+          description: GitHub OAuth 연동 없음 (access token 없음)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                noOAuthToken:
+                  value:
+                    success: false
+                    error:
+                      code: GITHUB_SCOPE_INSUFFICIENT
+                      message: 기여 repo 탐색은 GitHub OAuth 연동이 필요합니다.
+                      retryable: false
+                      fieldErrors: []
+                    meta: *id001
+  /github/contributions/save:
+    post:
+      tags:
+      - GitHub
+      summary: 기여 repo 저장
+      description: 기여 탐색 목록에서 선택한 repo를 github_repositories에 저장한다. 이미 저장된 경우 기존 레코드를 그대로 반환한다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveContributionRequest'
+      responses:
+        '201':
+          description: 저장 성공 (또는 기존 레코드 반환)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/GithubRepository'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+              examples:
+                saveSuccess:
+                  value:
+                    success: true
+                    data:
+                      id: 42
+                      githubRepoId: 111222
+                      ownerLogin: spring-projects
+                      repoName: spring-security
+                      fullName: spring-projects/spring-security
+                      htmlUrl: https://github.com/spring-projects/spring-security
+                      visibility: public
+                      defaultBranch: null
+                      isSelected: false
+                    meta: *id001
+        '400':
+          description: 요청 형식 오류 (nameWithOwner 형식 불일치 등)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: GitHub OAuth 연동 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                noOAuth:
+                  value:
+                    success: false
+                    error:
+                      code: GITHUB_SCOPE_INSUFFICIENT
+                      message: GitHub OAuth 연동이 필요합니다.
+                      retryable: false
+                      fieldErrors: []
+                    meta: *id001
+  /github/contributions/add-by-url:
+    post:
+      tags:
+      - GitHub
+      summary: URL로 기여 repo 직접 추가
+      description: 사용자가 직접 입력한 GitHub URL로 기여 repo를 추가한다. 본인(githubLogin)의 커밋이 1개 이상 존재하는 경우에만 저장된다. public repo만 허용한다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddContributionByUrlRequest'
+      responses:
+        '201':
+          description: 추가 성공 (또는 기존 레코드 반환)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/GithubRepository'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          description: URL 형식 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidUrl:
+                  value:
+                    success: false
+                    error:
+                      code: GITHUB_URL_INVALID
+                      message: 유효하지 않은 GitHub repo URL입니다.
+                      retryable: false
+                      fieldErrors: []
+                    meta: *id001
+        '403':
+          description: GitHub OAuth 연동 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                noOAuth:
+                  value:
+                    success: false
+                    error:
+                      code: GITHUB_SCOPE_INSUFFICIENT
+                      message: GitHub OAuth 연동이 필요합니다.
+                      retryable: false
+                      fieldErrors: []
+                    meta: *id001
+        '422':
+          description: 본인 커밋 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                noCommit:
+                  value:
+                    success: false
+                    error:
+                      code: GITHUB_USER_COMMIT_NOT_IDENTIFIED
+                      message: 이 repository에서 본인의 커밋을 찾을 수 없습니다.
+                      retryable: false
+                      fieldErrors: []
+                    meta: *id001
   /documents:
     post:
       tags:

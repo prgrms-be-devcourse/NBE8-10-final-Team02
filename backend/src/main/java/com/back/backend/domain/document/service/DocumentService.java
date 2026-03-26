@@ -39,11 +39,17 @@ public class DocumentService {
     /** 사용자 1명이 보유할 수 있는 최대 문서 수. */
     public static final int MAX_DOCUMENT_COUNT = 5;
 
-    /** 업로드 허용 MIME type 목록: PDF, DOCX, Markdown. */
+    /** 업로드 허용 MIME type 목록: PDF, DOCX, Markdown.
+     * Markdown은 OS/브라우저마다 MIME type이 달라 여러 값을 허용한다.
+     * (text/markdown: RFC 7763 표준, text/x-markdown: 구형 클라이언트,
+     *  text/plain / application/octet-stream: Windows 등에서 미등록 MIME type) */
     static final Set<String> ALLOWED_MIME_TYPES = Set.of(
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "text/markdown"
+        "text/markdown",
+        "text/x-markdown",
+        "text/plain",
+        "application/octet-stream"
     );
 
     /** 업로드 허용 파일 확장자 목록. MIME type과 함께 이중 검증한다. */
