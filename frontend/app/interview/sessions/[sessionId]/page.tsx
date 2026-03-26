@@ -3,7 +3,13 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { getSessionDetail, InterviewApiError, submitSessionAnswer } from '@/api/interview';
+import {
+  getSessionDetail,
+  InterviewApiError,
+  pauseSession,
+  resumeSession,
+  submitSessionAnswer,
+} from '@/api/interview';
 import type { InterviewSessionDetail, InterviewSessionStatus } from '@/types/interview';
 
 const STATUS_LABEL: Record<InterviewSessionStatus, string> = {
@@ -40,6 +46,17 @@ const DIFFICULTY_LABEL: Record<string, string> = {
 const MIN_ANSWER_LENGTH = 50;
 const MAX_ANSWER_LENGTH = 1000;
 
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return '기록 없음';
+  }
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
 export default function InterviewSessionPage() {
   const params = useParams();
   const sessionId = Number(params.sessionId);
@@ -51,8 +68,11 @@ export default function InterviewSessionPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [submittingMode, setSubmittingMode] = useState<'answer' | 'skip' | null>(null);
+  const [transitionError, setTransitionError] = useState<string | null>(null);
+  const [transitionSuccess, setTransitionSuccess] = useState<string | null>(null);
+  const [transitionMode, setTransitionMode] = useState<'pause' | 'resume' | null>(null);
 
-  const loadSession = useCallback(async () => {
+  const loadSession = useCallback(async (options?: { resetAnswerText?: boolean }) => {
     if (!Number.isFinite(sessionId)) {
       setError('올바른 세션 경로가 아닙니다.');
       setLoading(false);
@@ -65,7 +85,9 @@ export default function InterviewSessionPage() {
     try {
       const data = await getSessionDetail(sessionId);
       setSession(data);
-      setAnswerText('');
+      if (options?.resetAnswerText) {
+        setAnswerText('');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '세션 정보를 불러오지 못했습니다.');
     } finally {
@@ -77,13 +99,13 @@ export default function InterviewSessionPage() {
     void loadSession();
   }, [loadSession]);
 
-  function formatSubmitError(err: unknown) {
+  function formatApiError(err: unknown, fallbackMessage: string) {
     if (err instanceof InterviewApiError) {
       const fieldHint = err.fieldErrors[0];
       return fieldHint ? `${err.message} (${fieldHint.field})` : err.message;
     }
 
-    return err instanceof Error ? err.message : '답변을 저장하지 못했습니다.';
+    return err instanceof Error ? err.message : fallbackMessage;
   }
 
   async function handleSubmitAnswer(isSkipped: boolean) {
@@ -111,6 +133,8 @@ export default function InterviewSessionPage() {
     setSubmittingMode(isSkipped ? 'skip' : 'answer');
     setSubmitError(null);
     setSubmitSuccess(null);
+    setTransitionError(null);
+    setTransitionSuccess(null);
 
     try {
       const result = await submitSessionAnswer(session.id, {
@@ -125,23 +149,55 @@ export default function InterviewSessionPage() {
           ? `Q${result.answerOrder}를 건너뛰었습니다. 다음 질문을 불러옵니다.`
           : `Q${result.answerOrder} 답변을 저장했습니다. 다음 질문을 불러옵니다.`,
       );
-      await loadSession();
+      await loadSession({ resetAnswerText: true });
     } catch (err) {
-      setSubmitError(formatSubmitError(err));
+      setSubmitError(formatApiError(err, '답변을 저장하지 못했습니다.'));
     } finally {
       setSubmittingMode(null);
     }
   }
 
+  async function handleTransition(action: 'pause' | 'resume') {
+    if (!session) {
+      return;
+    }
+
+    setTransitionMode(action);
+    setTransitionError(null);
+    setTransitionSuccess(null);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+
+    try {
+      const result = action === 'pause'
+        ? await pauseSession(session.id)
+        : await resumeSession(session.id);
+
+      setTransitionSuccess(
+        result.status === 'paused'
+          ? '세션을 일시정지했습니다. 같은 세션에서 다시 재개할 수 있습니다.'
+          : '세션을 재개했습니다. 이어서 답변을 제출할 수 있습니다.',
+      );
+      await loadSession();
+    } catch (err) {
+      setTransitionError(formatApiError(err, '세션 상태를 변경하지 못했습니다.'));
+    } finally {
+      setTransitionMode(null);
+    }
+  }
+
   const answerLength = answerText.trim().length;
+  const actionBusy = submittingMode !== null || transitionMode !== null;
   const canSubmitAnswer =
     session?.status === 'in_progress' &&
     !!session.currentQuestion &&
     answerLength >= MIN_ANSWER_LENGTH &&
     answerLength <= MAX_ANSWER_LENGTH &&
-    submittingMode === null;
+    !actionBusy;
   const canSkip =
-    session?.status === 'in_progress' && !!session.currentQuestion && submittingMode === null;
+    session?.status === 'in_progress' && !!session.currentQuestion && !actionBusy;
+  const canPause = session?.status === 'in_progress' && !actionBusy;
+  const canResume = session?.status === 'paused' && !actionBusy;
 
   if (loading) {
     return (
@@ -179,7 +235,7 @@ export default function InterviewSessionPage() {
         </Link>
         <h1 className="mt-2 text-2xl font-semibold text-zinc-900">모의 면접 세션</h1>
         <p className="mt-2 text-sm text-zinc-500">
-          세션 시작은 연결됐고, 답변 제출 UI는 다음 단계에서 이어서 붙입니다.
+          답변 제출과 명시적 일시정지/재개를 현재 화면에서 처리합니다. 자동 일시정지 복원 UX와 결과 이동은 다음 단계에서 닫습니다.
         </p>
       </div>
 
@@ -212,7 +268,7 @@ export default function InterviewSessionPage() {
           </div>
         )}
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
           <div className="rounded-xl bg-zinc-50 px-4 py-3">
             <p className="text-xs text-zinc-500">남은 질문</p>
             <p className="mt-1 text-sm font-medium text-zinc-900">{session.remainingQuestionCount}개</p>
@@ -223,6 +279,57 @@ export default function InterviewSessionPage() {
               {session.resumeAvailable ? '가능' : '불가'}
             </p>
           </div>
+          <div className="rounded-xl bg-zinc-50 px-4 py-3">
+            <p className="text-xs text-zinc-500">마지막 활동 시각</p>
+            <p className="mt-1 text-sm font-medium text-zinc-900">
+              {formatDateTime(session.lastActivityAt)}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-zinc-200 px-4 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-zinc-500">세션 상태 전환</p>
+              <p className="mt-1 text-sm text-zinc-600">
+                진행 중에는 `일시정지`, 일시정지 상태에서는 `재개`만 허용합니다.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {session.status === 'in_progress' && (
+                <button
+                  type="button"
+                  onClick={() => void handleTransition('pause')}
+                  disabled={!canPause}
+                  className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {transitionMode === 'pause' ? '일시정지 중...' : '일시정지'}
+                </button>
+              )}
+              {session.status === 'paused' && (
+                <button
+                  type="button"
+                  onClick={() => void handleTransition('resume')}
+                  disabled={!canResume}
+                  className="rounded-full border border-green-300 bg-green-50 px-4 py-2.5 text-sm font-medium text-green-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {transitionMode === 'resume' ? '재개 중...' : '재개'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {transitionError && (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {transitionError}
+            </div>
+          )}
+
+          {transitionSuccess && (
+            <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+              {transitionSuccess}
+            </div>
+          )}
         </div>
 
         <div className="mt-6 rounded-2xl border border-zinc-200 px-4 py-4">
@@ -250,7 +357,7 @@ export default function InterviewSessionPage() {
             rows={8}
             value={answerText}
             onChange={(event) => setAnswerText(event.target.value)}
-            disabled={session.status !== 'in_progress' || !session.currentQuestion || submittingMode !== null}
+            disabled={session.status !== 'in_progress' || !session.currentQuestion || actionBusy}
             placeholder={
               session.status !== 'in_progress'
                 ? '현재 상태에서는 답변을 제출할 수 없습니다.'
@@ -261,7 +368,7 @@ export default function InterviewSessionPage() {
 
           {session.status === 'paused' && (
             <p className="mt-3 text-sm text-amber-700">
-              이 세션은 현재 일시정지 상태입니다. 재개 UI는 다음 작업에서 연결합니다.
+              이 세션은 현재 일시정지 상태입니다. 위의 `재개` 버튼으로 다시 진행할 수 있습니다.
             </p>
           )}
 
