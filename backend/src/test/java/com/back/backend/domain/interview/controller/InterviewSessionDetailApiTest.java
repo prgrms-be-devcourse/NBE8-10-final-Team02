@@ -151,6 +151,32 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.resumeAvailable").value(false));
     }
 
+    @Test
+    void getSessionDetail_returns200ForCompletedSessionHistoryBasicInfo() throws Exception {
+        User user = persistUser("detail-history-completed@example.com", "detail-history-completed");
+        Instant startedAt = FIXED_NOW.minus(Duration.ofMinutes(20));
+        Instant endedAt = FIXED_NOW.minus(Duration.ofMinutes(5));
+        InterviewSession session = persistTerminalSession(user, InterviewSessionStatus.COMPLETED, startedAt, endedAt);
+        InterviewQuestion firstQuestion = findQuestion(session, 1);
+        InterviewQuestion secondQuestion = findQuestion(session, 2);
+        InterviewQuestion thirdQuestion = findQuestion(session, 3);
+        persistAnswer(session, firstQuestion, 1, false, "첫 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.");
+        persistAnswer(session, secondQuestion, 2, false, "두 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.");
+        persistAnswer(session, thirdQuestion, 3, true, null);
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
+                        .with(authenticated(user.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("completed"))
+                .andExpect(jsonPath("$.data.currentQuestion").value(nullValue()))
+                .andExpect(jsonPath("$.data.totalQuestionCount").value(3))
+                .andExpect(jsonPath("$.data.answeredQuestionCount").value(3))
+                .andExpect(jsonPath("$.data.remainingQuestionCount").value(0))
+                .andExpect(jsonPath("$.data.resumeAvailable").value(false))
+                .andExpect(jsonPath("$.data.startedAt").value(startedAt.toString()))
+                .andExpect(jsonPath("$.data.endedAt").value(endedAt.toString()));
+    }
+
     private RequestPostProcessor authenticated(long userId) {
         return authentication(new JwtAuthenticationToken(
                 userId,
@@ -236,6 +262,27 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 .startedAt(activityAt)
                 .lastActivityAt(activityAt)
                 .endedAt(null)
+                .build();
+        entityManager.persist(session);
+        entityManager.flush();
+        return session;
+    }
+
+    private InterviewSession persistTerminalSession(
+            User user,
+            InterviewSessionStatus status,
+            Instant startedAt,
+            Instant endedAt
+    ) {
+        Application application = persistApplication(user, "application-title");
+        InterviewQuestionSet questionSet = persistQuestionSet(user, application);
+        InterviewSession session = InterviewSession.builder()
+                .user(user)
+                .questionSet(questionSet)
+                .status(status)
+                .startedAt(startedAt)
+                .lastActivityAt(endedAt)
+                .endedAt(endedAt)
                 .build();
         entityManager.persist(session);
         entityManager.flush();
