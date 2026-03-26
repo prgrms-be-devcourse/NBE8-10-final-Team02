@@ -123,32 +123,4 @@ public abstract class ApiTestBase {
         registry.add("ai.gemini.base-url", wireMock::baseUrl);
     }
 
-//    테스트에서 쓰는 방법:
-//    @Transactional  // 테스트 종료 시 자동 롤백 — DB 격리 보장
-//    class GithubApiTest extends ApiTestBase {
-//
-//        @Autowired TestFixtures fixtures;
-//        private GithubRepository repo;
-//
-//        @BeforeEach
-//        void setUp() { // setup 데이터를 fixtures로부터 가져온다.
-//            User user = fixtures.createUser("test@test.com", "Test User");
-//            GithubConnection conn = fixtures.createConnection(user);
-//            repo = fixtures.createRepo(conn, "my-project", true);
-//            fixtures.createUserCommit(repo, "feat: add feature");
-//        }
-//
-//        @Test
-//        void someTest() throws Exception {
-//            wireMock.stubFor(get(urlPathMatching("/repos/.*"))
-//                    .willReturn(aResponse().withStatus(200)
-//                            .withHeader("Content-Type", "application/json")
-//                            .withBodyFile("github/repo-response.json")));
-//
-//            mockMvc.perform(get("/api/v1/github/repositories")
-//                            .header("Authorization", "Bearer " + token))
-//                    .andExpect(status().isOk());
-//        }
-//    }
-
 }
