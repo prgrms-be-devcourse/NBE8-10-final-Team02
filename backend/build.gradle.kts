@@ -61,6 +61,7 @@ dependencies {
   testImplementation("org.testcontainers:testcontainers-junit-jupiter")
   testRuntimeOnly("org.junit.platform:junit-platform-launcher")
   testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+  testImplementation("org.wiremock:wiremock:3.12.1")
 
   // API Docs
   implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.4.0")

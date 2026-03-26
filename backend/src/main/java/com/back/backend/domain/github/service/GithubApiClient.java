@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -40,16 +41,14 @@ import java.util.Set;
 public class GithubApiClient {
 
     private static final Logger log = LoggerFactory.getLogger(GithubApiClient.class);
-    private static final String GITHUB_API_BASE = "https://api.github.com";
 
     private final RestClient restClient;
 
-    public GithubApiClient() {
-        // RestClient.Builder를 Spring 컨텍스트에서 주입받지 않고 직접 생성한다.
-        // spring-boot-starter-webmvc 환경에서 RestClient.Builder 자동 구성이 없을 수 있기 때문이다.
+    public GithubApiClient(
+            // test에서는 WireMock DynamicPropertySource설정
+            @Value("${github.api.base-url:https://api.github.com}") String baseUrl) {
         this.restClient = RestClient.builder()
-                .baseUrl(GITHUB_API_BASE)
-                // GitHub API 요청 시 필수 헤더
+                .baseUrl(baseUrl)
                 .defaultHeader("Accept", "application/vnd.github+json")
                 .defaultHeader("X-GitHub-Api-Version", "2022-11-28")
                 .defaultHeader("User-Agent", "interview-platform/1.0")

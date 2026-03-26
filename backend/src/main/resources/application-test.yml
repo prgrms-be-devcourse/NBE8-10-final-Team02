@@ -44,7 +44,7 @@ app:
 ai:
   gemini:
     api-key: test-key-not-real
-    base-url: http://localhost:8089 # MockWebServer 주소
+    base-url: http://localhost:8089  # WireMock이 @DynamicPropertySource로 덮어씀
     model: gemini-2.5-flash
     timeout:
       connect: 1s
