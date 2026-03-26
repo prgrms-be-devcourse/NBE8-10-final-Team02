@@ -1,11 +1,16 @@
 package com.back.backend.support;
 
+import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 
 /**
@@ -18,7 +23,7 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
  * <p>HTTP 계층(인증, 응답 형식, 상태 코드)을 검증하는 테스트.
  * 비즈니스 로직은 {@code @MockitoBean}으로 대체하고 HTTP 레이어에만 집중합니다.
  *
- * <h2>사용 예시</h2>
+ * <h2>Mock 위주 (HTTP 레이어만 검증)</h2>
  * <pre>{@code
  * class UserApiTest extends ApiTestBase {
  *
@@ -29,20 +34,39 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
  *     @Test
  *     void getMe_returns401WhenUnauthenticated() throws Exception {
  *         mockMvc.perform(get("/api/v1/users/me"))
- *                .andExpect(status().isUnauthorized())
- *                .andExpect(jsonPath("$.success").value(false))
- *                .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));
+ *                .andExpect(status().isUnauthorized());
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>TestFixtures + WireMock (실제 DB + 외부 API stub)</h2>
+ * <pre>{@code
+ * @Transactional  // 테스트 종료 시 자동 롤백
+ * class GithubApiTest extends ApiTestBase {
+ *
+ *     @Autowired TestFixtures fixtures;
+ *     private User user;
+ *     private GithubRepository repo;
+ *
+ *     @BeforeEach
+ *     void setUp() {
+ *         user = fixtures.createUser("test@test.com", "Test User");
+ *         GithubConnection conn = fixtures.createConnection(user);
+ *         repo = fixtures.createRepo(conn, "my-project", true);
+ *         fixtures.createUserCommit(repo, "feat: add feature");
  *     }
  *
  *     @Test
- *     @WithMockUser  // 인증된 사용자 시뮬레이션
- *     void getMe_returns200WhenAuthenticated() throws Exception {
- *         given(userService.getMe(any())).willReturn(new UserResponse(...));
+ *     void getRepositories_returnsOk() throws Exception {
+ *         // 외부 GitHub API 호출이 있다면 WireMock으로 stub
+ *         wireMock.stubFor(get(urlPathMatching("/user/repos"))
+ *                 .willReturn(aResponse().withStatus(200)
+ *                         .withHeader("Content-Type", "application/json")
+ *                         .withBodyFile("github/repos.json")));  // src/test/resources/__files/
  *
- *         mockMvc.perform(get("/api/v1/users/me"))
- *                .andExpect(status().isOk())
- *                .andExpect(jsonPath("$.success").value(true))
- *                .andExpect(jsonPath("$.data.email").value("test@test.com"));
+ *         mockMvc.perform(get("/api/v1/github/repositories")
+ *                         .header("Authorization", "Bearer " + jwtFor(user)))
+ *                 .andExpect(status().isOk());
  *     }
  * }
  * }</pre>
@@ -84,4 +108,47 @@ public abstract class ApiTestBase {
                 .apply(springSecurity())
                 .build();
     }
+
+    // GitHub API와 AI API(Gemini) 호출을 가로채는 WireMock 서버.
+    // static: 컨텍스트 로드 전에 포트가 확정되어 @DynamicPropertySource에서 사용 가능.
+    @RegisterExtension
+    static WireMockExtension wireMock = WireMockExtension.newInstance()
+        .options(wireMockConfig().dynamicPort())
+        .build();
+
+    // WireMock 포트를 Spring 프로퍼티로 주입 — GithubApiClient, GeminiClient가 이 URL을 사용함.
+    @DynamicPropertySource
+    static void overrideExternalApiUrls(DynamicPropertyRegistry registry) {
+        registry.add("github.api.base-url", wireMock::baseUrl);
+        registry.add("ai.gemini.base-url", wireMock::baseUrl);
+    }
+
+//    테스트에서 쓰는 방법:
+//    @Transactional  // 테스트 종료 시 자동 롤백 — DB 격리 보장
+//    class GithubApiTest extends ApiTestBase {
+//
+//        @Autowired TestFixtures fixtures;
+//        private GithubRepository repo;
+//
+//        @BeforeEach
+//        void setUp() { // setup 데이터를 fixtures로부터 가져온다.
+//            User user = fixtures.createUser("test@test.com", "Test User");
+//            GithubConnection conn = fixtures.createConnection(user);
+//            repo = fixtures.createRepo(conn, "my-project", true);
+//            fixtures.createUserCommit(repo, "feat: add feature");
+//        }
+//
+//        @Test
+//        void someTest() throws Exception {
+//            wireMock.stubFor(get(urlPathMatching("/repos/.*"))
+//                    .willReturn(aResponse().withStatus(200)
+//                            .withHeader("Content-Type", "application/json")
+//                            .withBodyFile("github/repo-response.json")));
+//
+//            mockMvc.perform(get("/api/v1/github/repositories")
+//                            .header("Authorization", "Bearer " + token))
+//                    .andExpect(status().isOk());
+//        }
+//    }
+
 }
