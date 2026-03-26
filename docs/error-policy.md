@@ -496,6 +496,7 @@ applies_to: error-classification-and-response
 - `AUTH_UNSUPPORTED_PROVIDER`
 - `AUTH_OAUTH_CANCELLED`
 - `AUTH_PROVIDER_RESPONSE_INVALID`
+- `USER_NOT_FOUND`
 - `USER_WITHDRAWN`
 
 ### 17.2 GitHub 연동

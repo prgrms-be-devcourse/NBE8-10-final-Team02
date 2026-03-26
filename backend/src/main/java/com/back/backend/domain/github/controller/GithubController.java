@@ -1,12 +1,20 @@
 package com.back.backend.domain.github.controller;
 
+import com.back.backend.domain.github.dto.request.AddContributionByUrlRequest;
 import com.back.backend.domain.github.dto.request.GithubConnectRequest;
 import com.back.backend.domain.github.dto.request.RepositorySelectionRequest;
+import com.back.backend.domain.github.dto.request.SaveContributionRequest;
+import com.back.backend.domain.github.dto.response.ContributedRepoResponse;
+import com.back.backend.domain.github.dto.response.GithubRepositoryResponse;
 import com.back.backend.domain.github.dto.response.GithubConnectionResponse;
 import com.back.backend.domain.github.dto.response.GithubRepositoryResponse;
+import com.back.backend.domain.github.dto.response.RepoSyncStatusResponse;
 import com.back.backend.domain.github.dto.response.RepositorySelectionResponse;
 import com.back.backend.domain.github.dto.response.RepositorySyncResponse;
+import com.back.backend.domain.github.analysis.AnalysisPipelineService;
+import com.back.backend.domain.github.analysis.SyncStatusService;
 import com.back.backend.domain.github.service.GithubConnectionService;
+import com.back.backend.domain.github.service.GithubDiscoveryService;
 import com.back.backend.domain.github.service.GithubRepositoryService;
 import com.back.backend.domain.github.service.GithubSyncService;
 import com.back.backend.global.response.ApiResponse;
@@ -16,6 +24,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,15 +52,24 @@ public class GithubController {
     private final GithubConnectionService connectionService;
     private final GithubRepositoryService repositoryService;
     private final GithubSyncService syncService;
+    private final GithubDiscoveryService discoveryService;
+    private final SyncStatusService syncStatusService;
+    private final AnalysisPipelineService analysisPipelineService;
 
     public GithubController(
             GithubConnectionService connectionService,
             GithubRepositoryService repositoryService,
-            GithubSyncService syncService
+            GithubSyncService syncService,
+            GithubDiscoveryService discoveryService,
+            SyncStatusService syncStatusService,
+            AnalysisPipelineService analysisPipelineService
     ) {
         this.connectionService = connectionService;
         this.repositoryService = repositoryService;
         this.syncService = syncService;
+        this.discoveryService = discoveryService;
+        this.syncStatusService = syncStatusService;
+        this.analysisPipelineService = analysisPipelineService;
     }
 
     /**
@@ -73,7 +91,7 @@ public class GithubController {
      * GitHub 연결 생성 또는 갱신.
      *
      * mode=oauth: GitHub OAuth 완료 후 token과 함께 호출.
-     * mode=url:   GitHub login을 직접 입력해 public repo만 연동.
+     * Google/Kakao 로그인 사용자도 GitHub 기능 사용 시 이 API를 통해 OAuth 연동해야 한다.
      *
      * 201 Created 반환.
      */
@@ -161,6 +179,123 @@ public class GithubController {
         syncService.syncCommits(userId, repositoryId);
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(ApiResponse.success(RepositorySyncResponse.queued(repositoryId)));
+    }
+
+    /**
+     * 사용자가 기여한 public repo 목록을 조회한다.
+     * GitHub OAuth 연동이 있어야 한다. alreadySaved로 이미 저장된 repo를 구분할 수 있다.
+     *
+     * @param yearsOffset 0=최근 2년(기본값), 1=2~4년 전, 2=4~6년 전
+     */
+    @GetMapping("/contributions/discovered")
+    public ResponseEntity<ApiResponse<List<ContributedRepoResponse>>> getDiscoveredContributions(
+            Authentication authentication,
+            @RequestParam(defaultValue = "0") int yearsOffset
+    ) {
+        Long userId = extractUserId(authentication);
+        List<ContributedRepoResponse> response = discoveryService.findContributedRepos(userId, yearsOffset);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * 기여 탐색 목록에서 선택한 repo를 저장한다.
+     * 이미 저장된 경우 기존 레코드를 그대로 반환한다.
+     * 201 Created 반환.
+     */
+    @PostMapping("/contributions/save")
+    public ResponseEntity<ApiResponse<GithubRepositoryResponse>> saveContribution(
+            Authentication authentication,
+            @RequestBody @Valid SaveContributionRequest request
+    ) {
+        Long userId = extractUserId(authentication);
+        GithubRepositoryResponse response = discoveryService.saveContributionRepo(userId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
+    }
+
+    /**
+     * 사용자가 직접 입력한 GitHub URL로 기여 repo를 추가한다.
+     * 본인 커밋이 존재하는 경우에만 저장되며, 본인 확인은 GitHub API로 수행한다.
+     * 201 Created 반환.
+     */
+    @PostMapping("/contributions/add-by-url")
+    public ResponseEntity<ApiResponse<GithubRepositoryResponse>> addContributionByUrl(
+            Authentication authentication,
+            @RequestBody @Valid AddContributionByUrlRequest request
+    ) {
+        Long userId = extractUserId(authentication);
+        GithubRepositoryResponse response = discoveryService.verifyAndAddContributionByUrl(userId, request.url());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
+    }
+
+    /**
+     * 분석 파이프라인의 진행 상태를 조회한다.
+     *
+     * Redis에 저장된 sync:status:{userId}:{repositoryId} 값을 반환한다.
+     * 상태가 없으면 (분석 미요청 또는 TTL 만료) data: null 반환.
+     *
+     * 클라이언트는 이 API를 폴링하여 PENDING/IN_PROGRESS 상태가 완료될 때까지 대기할 수 있다.
+     */
+    @GetMapping("/repositories/{repositoryId}/sync-status")
+    public ResponseEntity<ApiResponse<RepoSyncStatusResponse>> getSyncStatus(
+            Authentication authentication,
+            @PathVariable Long repositoryId
+    ) {
+        Long userId = extractUserId(authentication);
+        RepoSyncStatusResponse response = syncStatusService.getStatus(userId, repositoryId)
+                .map(RepoSyncStatusResponse::from)
+                .orElse(null);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * 분석 파이프라인(clone → 정적 분석 → Code Index → RepoSummary → MergedSummary)을 비동기로 시작한다.
+     *
+     * 즉시 202 Accepted와 현재 sync 상태를 반환한다.
+     * 진행 상황은 GET /repositories/{repositoryId}/sync-status 폴링으로 확인한다.
+     */
+    @PostMapping("/repositories/{repositoryId}/analyze")
+    public ResponseEntity<ApiResponse<RepoSyncStatusResponse>> analyzeRepository(
+            Authentication authentication,
+            @PathVariable Long repositoryId
+    ) {
+        Long userId = extractUserId(authentication);
+        analysisPipelineService.triggerAnalysis(userId, repositoryId);
+
+        // 방금 등록된 PENDING 상태 반환
+        RepoSyncStatusResponse response = syncStatusService.getStatus(userId, repositoryId)
+                .map(RepoSyncStatusResponse::from)
+                .orElse(null);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(response));
+    }
+
+    /**
+     * 기여 repo를 github_repositories에서 완전히 삭제한다.
+     * 진행 중인 분석 취소 + 관련 데이터(커밋, 코드 인덱스, 요약) 삭제 후 MergedSummary 재집계.
+     */
+    @DeleteMapping("/repositories/{repositoryId}")
+    public ResponseEntity<ApiResponse<Void>> deleteRepository(
+            Authentication authentication,
+            @PathVariable Long repositoryId
+    ) {
+        Long userId = extractUserId(authentication);
+        repositoryService.deleteRepository(userId, repositoryId);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /**
+     * 진행 중인 분석 파이프라인을 취소한다.
+     *
+     * PENDING/IN_PROGRESS 상태의 분석을 중단하고 상태를 FAILED로 변경한다.
+     * 이미 완료됐거나 없는 분석에 대해서도 200을 반환한다 (idempotent).
+     */
+    @DeleteMapping("/repositories/{repositoryId}/analyze")
+    public ResponseEntity<ApiResponse<Void>> cancelAnalysis(
+            Authentication authentication,
+            @PathVariable Long repositoryId
+    ) {
+        Long userId = extractUserId(authentication);
+        analysisPipelineService.cancel(userId, repositoryId);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     // ─────────────────────────────────────────────────

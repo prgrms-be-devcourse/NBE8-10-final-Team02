@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class InterviewSessionApiTest extends ApiTestBase {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final Instant NOW = Instant.parse("2026-03-25T09:00:00Z");
+    private static final Instant NOW = Instant.now();
 
     @Autowired
     private EntityManager entityManager;

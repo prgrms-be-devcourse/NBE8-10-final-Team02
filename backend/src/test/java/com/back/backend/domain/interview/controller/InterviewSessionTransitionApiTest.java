@@ -15,15 +15,20 @@ import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -32,15 +37,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class InterviewSessionTransitionApiTest extends ApiTestBase {
 
-    private static final Instant NOW = Instant.parse("2026-03-25T09:00:00Z");
+    private static final Instant FIXED_NOW = Instant.parse("2026-03-25T09:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
 
     @Autowired
     private EntityManager entityManager;
 
+    @MockitoBean
+    private Clock clock;
+
+    @BeforeEach
+    void setUpClock() {
+        given(clock.instant()).willReturn(FIXED_CLOCK.instant());
+    }
+
     @Test
     void pauseSession_returns200AndChangesStatusToPaused() throws Exception {
         User user = persistUser("pause-success@example.com", "pause-success");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, NOW);
+        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/pause", session.getId())
                         .with(authenticated(user.getId())))
@@ -55,14 +69,14 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
 
         InterviewSession refreshedSession = entityManager.find(InterviewSession.class, session.getId());
         assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.PAUSED);
-        assertThat(refreshedSession.getLastActivityAt()).isEqualTo(NOW);
+        assertThat(refreshedSession.getLastActivityAt()).isEqualTo(FIXED_NOW);
     }
 
     @Test
     void pauseSession_returns404WhenSessionIsNotOwned() throws Exception {
         User owner = persistUser("pause-owner@example.com", "pause-owner");
         User otherUser = persistUser("pause-other@example.com", "pause-other");
-        InterviewSession session = persistSession(owner, InterviewSessionStatus.IN_PROGRESS, NOW);
+        InterviewSession session = persistSession(owner, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/pause", session.getId())
                         .with(authenticated(otherUser.getId())))
@@ -73,7 +87,7 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
     @Test
     void pauseSession_returns409WhenStatusTransitionIsInvalid() throws Exception {
         User user = persistUser("pause-conflict@example.com", "pause-conflict");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.PAUSED, NOW);
+        InterviewSession session = persistSession(user, InterviewSessionStatus.PAUSED, FIXED_NOW);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/pause", session.getId())
                         .with(authenticated(user.getId())))
@@ -84,7 +98,7 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
     @Test
     void pauseSession_returns409WhenSessionAlreadyCompleted() throws Exception {
         User user = persistUser("pause-completed@example.com", "pause-completed");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.COMPLETED, NOW);
+        InterviewSession session = persistSession(user, InterviewSessionStatus.COMPLETED, FIXED_NOW);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/pause", session.getId())
                         .with(authenticated(user.getId())))
@@ -95,7 +109,7 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
     @Test
     void resumeSession_returns200AndUpdatesLastActivityAt() throws Exception {
         User user = persistUser("resume-success@example.com", "resume-success");
-        Instant previousActivityAt = Instant.now().minus(Duration.ofMinutes(10));
+        Instant previousActivityAt = FIXED_NOW.minus(Duration.ofMinutes(10));
         InterviewSession session = persistSession(user, InterviewSessionStatus.PAUSED, previousActivityAt);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/resume", session.getId())
@@ -111,7 +125,7 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
 
         InterviewSession refreshedSession = entityManager.find(InterviewSession.class, session.getId());
         assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.IN_PROGRESS);
-        assertThat(refreshedSession.getLastActivityAt()).isAfter(previousActivityAt);
+        assertThat(refreshedSession.getLastActivityAt()).isEqualTo(FIXED_NOW);
     }
 
     @Test
@@ -119,7 +133,7 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
         User user = persistUser("resume-expired@example.com", "resume-expired");
         // auto-pause 경계를 넘긴 in_progress 세션을 바로 resume했을 때,
         // 내부적으로 paused 정규화를 거친 뒤 같은 요청에서 재개되는 흐름을 검증한다.
-        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, Instant.now().minus(Duration.ofMinutes(31)));
+        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW.minus(Duration.ofMinutes(31)));
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/resume", session.getId())
                         .with(authenticated(user.getId())))
@@ -131,13 +145,13 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
 
         InterviewSession refreshedSession = entityManager.find(InterviewSession.class, session.getId());
         assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.IN_PROGRESS);
-        assertThat(refreshedSession.getLastActivityAt()).isAfter(Instant.now().minus(Duration.ofMinutes(1)));
+        assertThat(refreshedSession.getLastActivityAt()).isEqualTo(FIXED_NOW);
     }
 
     @Test
     void resumeSession_returns409WhenSessionIsAlreadyActive() throws Exception {
         User user = persistUser("resume-conflict@example.com", "resume-conflict");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, Instant.now());
+        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/resume", session.getId())
                         .with(authenticated(user.getId())))
@@ -148,7 +162,7 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
     @Test
     void resumeSession_returns409WhenSessionAlreadyCompleted() throws Exception {
         User user = persistUser("resume-completed@example.com", "resume-completed");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.FEEDBACK_COMPLETED, NOW);
+        InterviewSession session = persistSession(user, InterviewSessionStatus.FEEDBACK_COMPLETED, FIXED_NOW);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/resume", session.getId())
                         .with(authenticated(user.getId())))
