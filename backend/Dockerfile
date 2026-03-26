@@ -20,7 +20,7 @@ RUN chmod +x gradlew && ./gradlew dependencies --no-daemon
 COPY src src
 
 # 애플리케이션 빌드 (CI 파이프라인에서 이미 테스트를 거쳤다고 가정하고 -x test로 빌드 속도 극대화)
-RUN ./gradlew clean build -x test --no-daemon
+RUN ./gradlew build -x test --no-daemon
 
 # =========================
 # 2️⃣ Layer Extract Stage
@@ -39,8 +39,12 @@ FROM container-registry.oracle.com/graalvm/jdk:25
 WORKDIR /app
 
 # git: RepoCloneService의 git clone/fetch 실행에 필요
-# python3: StaticAnalysisService의 Python 언어 분석 스크립트 실행에 필요
-RUN microdnf install -y git python3 && microdnf clean all
+# python3 + pip: Kotlin/Go/Rust/C/C++ 정적 분석 스크립트 (tree-sitter 기반)
+# nodejs: TypeScript/JavaScript 분석 스크립트 (ts-morph)
+RUN microdnf install -y git python3 python3-pip nodejs && microdnf clean all && \
+    pip3 install --no-cache-dir \
+      tree-sitter tree-sitter-kotlin tree-sitter-go \
+      tree-sitter-rust tree-sitter-c tree-sitter-cpp
 
 # 한글 인코딩 및 한국 시간대(KST) 설정
 ENV LANG=ko_KR.UTF-8 \
@@ -48,10 +52,16 @@ ENV LANG=ko_KR.UTF-8 \
     TZ=Asia/Seoul \
     JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8"
 
-# Spring Boot 레이어 복사 (변경 빈도가 낮은 순서대로 배치하여 도커 캐시 효율 극대화)
+# Spring Boot 레이어 복사 — 변경 빈도 오름차순으로 배치해 캐시 효율 극대화
 COPY --from=extractor /app/dependencies/ ./
 COPY --from=extractor /app/spring-boot-loader/ ./
 COPY --from=extractor /app/snapshot-dependencies/ ./
+
+# 분석 스크립트 복사 및 Node.js 의존성 설치 (package-lock.json 기반 재현 가능한 빌드)
+# application 레이어 앞에 배치: 스크립트 변경이 앱 코드 캐시에 영향을 주지 않음
+COPY analysis-scripts /opt/analysis-scripts
+RUN cd /opt/analysis-scripts && npm ci --omit=dev
+
 COPY --from=extractor /app/application/ ./
 
 EXPOSE 8080
