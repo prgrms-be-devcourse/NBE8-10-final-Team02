@@ -77,17 +77,21 @@ public class GithubRepository extends BaseEntity {
     @Column(name = "repo_size_kb")
     private Integer repoSizeKb;
 
+    @Column(name = "language", length = 100)
+    private String language;
+
     /**
      * GitHub API에서 새로 받아온 값으로 repo 정보를 갱신한다.
      * visibility, defaultBranch, htmlUrl은 바뀔 수 있어 매 동기화마다 덮어쓴다.
      */
     public void sync(RepositoryVisibility visibility, String defaultBranch, String htmlUrl,
-                     Instant pushedAt, String ownerType, Instant syncedAt) {
+                     Instant pushedAt, String ownerType, String language, Instant syncedAt) {
         this.visibility = visibility;
         this.defaultBranch = defaultBranch;
         this.htmlUrl = htmlUrl;
         this.pushedAt = pushedAt;
         this.ownerType = ownerType;
+        this.language = language;
         this.syncedAt = syncedAt;
     }
 

@@ -126,6 +126,7 @@ public class GithubDiscoveryService {
                         .selected(false)
                         .pushedAt(null)            // contributionsCollection에는 pushed_at 없음
                         .ownerType("collaborator") // 기여 탭에서 추가한 repo는 항상 collaborator
+                        .language(request.language())
                         .syncedAt(Instant.now())
                         .repoSizeKb(request.repoSizeKb())
                         .build()
@@ -217,6 +218,7 @@ public class GithubDiscoveryService {
                         .selected(false)
                         .pushedAt(null)            // URL 추가 경로에는 pushed_at 없음
                         .ownerType("collaborator") // URL로 추가한 repo도 항상 collaborator
+                        .language(null)            // getRepoDetail에는 language 없음
                         .syncedAt(Instant.now())
                         .repoSizeKb(detail.sizeKb())
                         .build()

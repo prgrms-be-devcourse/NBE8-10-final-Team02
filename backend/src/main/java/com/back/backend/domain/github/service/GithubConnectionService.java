@@ -252,7 +252,7 @@ public class GithubConnectionService {
 
             if (existing.isPresent()) {
                 existing.get().sync(repoInfo.visibility(), repoInfo.defaultBranch(), repoInfo.htmlUrl(),
-                        repoInfo.pushedAt(), ownerType, now);
+                        repoInfo.pushedAt(), ownerType, repoInfo.language(), now);
             } else {
                 repositoryRepository.save(GithubRepository.builder()
                         .githubConnection(connection)
@@ -266,6 +266,7 @@ public class GithubConnectionService {
                         .selected(false)
                         .pushedAt(repoInfo.pushedAt())
                         .ownerType(ownerType)
+                        .language(repoInfo.language())
                         .syncedAt(now)
                         .build());
             }

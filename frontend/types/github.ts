@@ -25,6 +25,7 @@ export interface GithubRepository {
   analysisStatus: RepoSyncStatus | null; // 분석 상태 (미요청 또는 TTL 만료 시 null)
   pushedAt: string | null; // GitHub pushed_at (ISO-8601). 기여/URL 추가 경로는 null
   ownerType: 'owner' | 'collaborator' | null; // 목록 조회 외 경로는 null
+  language: string | null; // primary language
 }
 
 export interface RepositorySelectionResponse {
