@@ -19,10 +19,10 @@ import lombok.NoArgsConstructor;
 @Entity
 @Builder
 @Table(
-        name = "application_questions",
-        uniqueConstraints = {
-                @UniqueConstraint(name = "uk_application_questions_order", columnNames = {"application_id", "question_order"})
-        }
+    name = "application_questions",
+    uniqueConstraints = {
+        @UniqueConstraint(name = "uk_application_questions_order", columnNames = {"application_id", "question_order"})
+    }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -54,4 +54,12 @@ public class ApplicationQuestion extends BaseTimeEntity {
 
     @Column(name = "emphasis_point", length = 255)
     private String emphasisPoint;
+
+    public void updateGeneratedAnswer(String generatedAnswer) {
+        if (generatedAnswer == null) {
+            throw new IllegalArgumentException("generatedAnswer must not be null");
+        }
+        this.generatedAnswer = generatedAnswer;
+        this.editedAnswer = null; // 재생성 시 수동 수정본 초기화
+    }
 }

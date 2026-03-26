@@ -19,6 +19,7 @@ import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -26,7 +27,9 @@ import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,7 +45,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class InterviewSessionCompleteApiTest extends ApiTestBase {
 
-    private static final Instant NOW = Instant.parse("2026-03-25T09:00:00Z");
+    private static final Instant FIXED_NOW = Instant.parse("2026-03-25T09:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
     private static final String VALID_ANSWER =
             "장애 원인을 추적할 때 로그와 메트릭을 비교하고, 사용자 영향 범위를 수치로 확인한 뒤 복구 순서를 정했습니다.";
 
@@ -60,6 +64,14 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
     @MockitoBean
     private InterviewResultGenerationService interviewResultGenerationService;
+
+    @MockitoBean
+    private Clock clock;
+
+    @BeforeEach
+    void setUpClock() {
+        given(clock.instant()).willReturn(FIXED_CLOCK.instant());
+    }
 
     @Test
     void completeSession_returns200AndStoresFeedbackCompletedResult() throws Exception {
@@ -101,7 +113,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.totalScore").value(84))
                 .andExpect(jsonPath("$.data.summaryFeedback")
                         .value("기술 선택 근거는 좋았지만 결과 지표를 더 명확히 제시하면 좋습니다."))
-                .andExpect(jsonPath("$.data.endedAt").isNotEmpty());
+                .andExpect(jsonPath("$.data.endedAt").value(FIXED_NOW.toString()));
 
         entityManager.flush();
         entityManager.clear();
@@ -112,7 +124,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.FEEDBACK_COMPLETED);
         assertThat(refreshedSession.getTotalScore()).isEqualTo(84);
         assertThat(refreshedSession.getSummaryFeedback()).isEqualTo("기술 선택 근거는 좋았지만 결과 지표를 더 명확히 제시하면 좋습니다.");
-        assertThat(refreshedSession.getEndedAt()).isNotNull();
+        assertThat(refreshedSession.getEndedAt()).isEqualTo(FIXED_NOW);
         assertThat(refreshedAnswers)
                 .extracting(InterviewAnswer::getScore)
                 .containsExactly(80, 86, 88);
@@ -147,7 +159,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
     void completeSession_returns409WhenSessionAlreadyCompleted() throws Exception {
         UserFixture fixture = persistAnsweredSession("complete-already");
         fixture.session().changeStatus(InterviewSessionStatus.COMPLETED);
-        fixture.session().changeEndedAt(NOW);
+        fixture.session().changeEndedAt(FIXED_NOW);
         entityManager.flush();
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", fixture.session().getId())
@@ -179,7 +191,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
         InterviewSession refreshedSession = interviewSessionRepository.findById(session.getId()).orElseThrow();
         assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.COMPLETED);
-        assertThat(refreshedSession.getEndedAt()).isNotNull();
+        assertThat(refreshedSession.getEndedAt()).isEqualTo(FIXED_NOW);
         assertThat(refreshedSession.getTotalScore()).isNull();
         assertThat(refreshedSession.getSummaryFeedback()).isNull();
     }
@@ -207,7 +219,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
         InterviewSession refreshedSession = interviewSessionRepository.findById(session.getId()).orElseThrow();
         assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.COMPLETED);
-        assertThat(refreshedSession.getEndedAt()).isNotNull();
+        assertThat(refreshedSession.getEndedAt()).isEqualTo(FIXED_NOW);
         assertThat(refreshedSession.getTotalScore()).isNull();
         assertThat(refreshedSession.getSummaryFeedback()).isNull();
     }
@@ -315,8 +327,8 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 .user(user)
                 .questionSet(questionSet)
                 .status(status)
-                .startedAt(NOW)
-                .lastActivityAt(NOW)
+                .startedAt(FIXED_NOW)
+                .lastActivityAt(FIXED_NOW)
                 .endedAt(null)
                 .build();
         entityManager.persist(session);

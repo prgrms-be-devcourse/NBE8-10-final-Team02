@@ -66,7 +66,7 @@ public class GithubConnectionService {
      * GitHub 연결을 생성하거나 기존 연결을 갱신한다.
      *
      * mode=oauth: accessToken으로 GitHub API 호출 (public + private repo 접근 가능).
-     * mode=url:   githubLogin으로 public 정보만 조회 (token 없음).
+     * Google/Kakao 로그인 사용자도 GitHub 기능 사용 시 OAuth 연동이 필요하다.
      *
      * NOTE: GitHub API 호출은 긴 트랜잭션 안에 넣지 않는다 (backend-conventions.md §9.2).
      */
@@ -150,15 +150,17 @@ public class GithubConnectionService {
                 .orElseThrow(() -> new ServiceException(
                         ErrorCode.RESOURCE_NOT_FOUND, HttpStatus.NOT_FOUND, "GitHub 연결 정보가 없습니다. 먼저 GitHub 연결을 설정하세요."));
 
-        // 2. 저장된 token으로 repo 목록 조회 (트랜잭션 밖)
-        List<GithubApiClient.GithubRepoInfo> repos;
-        if (connection.getAccessToken() != null) {
-            repos = githubApiClient.getAuthenticatedUserRepos(connection.getAccessToken());
-        } else {
-            repos = githubApiClient.getPublicRepos(connection.getGithubLogin());
+        // 2. GitHub OAuth 연동 여부 확인
+        if (connection.getAccessToken() == null) {
+            throw new ServiceException(ErrorCode.GITHUB_SCOPE_INSUFFICIENT, HttpStatus.FORBIDDEN,
+                    "GitHub OAuth 연동이 필요합니다. GitHub 계정을 연동해주세요.");
         }
 
-        // 3. DB 저장 (트랜잭션 안 — self 프록시를 통해 @Transactional 적용)
+        // 3. 저장된 token으로 repo 목록 조회 (트랜잭션 밖)
+        List<GithubApiClient.GithubRepoInfo> repos =
+                githubApiClient.getAuthenticatedUserRepos(connection.getAccessToken());
+
+        // 4. DB 저장 (트랜잭션 안 — self 프록시를 통해 @Transactional 적용)
         GithubApiClient.GithubUserInfo githubUser = new GithubApiClient.GithubUserInfo(
                 connection.getGithubUserId(), connection.getGithubLogin());
         GithubConnectRequest refreshRequest = new GithubConnectRequest(
@@ -180,33 +182,15 @@ public class GithubConnectionService {
                 // 토큰으로 인증된 사용자 정보 조회
                 yield githubApiClient.getAuthenticatedUser(request.accessToken());
             }
-            case "url" -> {
-                if (request.githubLogin() == null || request.githubLogin().isBlank()) {
-                    throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
-                            HttpStatus.BAD_REQUEST, "url 모드에서는 githubLogin이 필요합니다.");
-                }
-                // GitHub login 형식 검증: 영문자, 숫자, 하이픈만 허용. 길이 1~39.
-                // 하이픈으로 시작하거나 끝나거나 연속 하이픈은 GitHub 정책상 불가.
-                if (!request.githubLogin().matches("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$")) {
-                    throw new ServiceException(ErrorCode.GITHUB_URL_INVALID,
-                            HttpStatus.BAD_REQUEST, "올바르지 않은 GitHub 사용자 이름 형식입니다.");
-                }
-                // login으로 공개 사용자 정보 조회 (token 없음)
-                yield githubApiClient.getPublicUser(request.githubLogin());
-            }
             default -> throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
-                    HttpStatus.BAD_REQUEST, "지원하지 않는 mode입니다. oauth 또는 url을 사용하세요.");
+                    HttpStatus.BAD_REQUEST, "지원하지 않는 mode입니다. GitHub OAuth를 통해 연동해주세요.");
         };
     }
 
     private List<GithubApiClient.GithubRepoInfo> fetchRepos(
             GithubConnectRequest request, String login) {
-        if ("oauth".equals(request.mode()) && request.accessToken() != null) {
-            // OAuth token이 있으면 인증된 사용자의 repo 조회 (private 포함 가능)
-            return githubApiClient.getAuthenticatedUserRepos(request.accessToken());
-        }
-        // url 모드 또는 token 없는 경우: public repo만
-        return githubApiClient.getPublicRepos(login);
+        // OAuth token으로 인증된 사용자의 repo 조회 (private 포함 가능)
+        return githubApiClient.getAuthenticatedUserRepos(request.accessToken());
     }
 
     /**
@@ -258,13 +242,17 @@ public class GithubConnectionService {
 
         // repo 목록 upsert
         // 중복 저장 방지: unique 제약(connection + github_repo_id) 기반으로 검사 후 저장
+        String githubLogin = connection.getGithubLogin();
         for (GithubApiClient.GithubRepoInfo repoInfo : repos) {
+            // ownerLogin == 사용자 githubLogin → "owner", 그 외(org, 협업 repo) → "collaborator"
+            String ownerType = githubLogin.equalsIgnoreCase(repoInfo.ownerLogin()) ? "owner" : "collaborator";
+
             Optional<GithubRepository> existing =
                     repositoryRepository.findByGithubConnectionAndGithubRepoId(connection, repoInfo.id());
 
             if (existing.isPresent()) {
-                // 이미 저장된 repo면 최신 값으로 갱신 (visibility, branch, url 변경 가능)
-                existing.get().sync(repoInfo.visibility(), repoInfo.defaultBranch(), repoInfo.htmlUrl(), now);
+                existing.get().sync(repoInfo.visibility(), repoInfo.defaultBranch(), repoInfo.htmlUrl(),
+                        repoInfo.pushedAt(), ownerType, repoInfo.language(), now);
             } else {
                 repositoryRepository.save(GithubRepository.builder()
                         .githubConnection(connection)
@@ -275,7 +263,10 @@ public class GithubConnectionService {
                         .htmlUrl(repoInfo.htmlUrl())
                         .visibility(repoInfo.visibility())
                         .defaultBranch(repoInfo.defaultBranch())
-                        .selected(false)  // 초기값: 미선택
+                        .selected(false)
+                        .pushedAt(repoInfo.pushedAt())
+                        .ownerType(ownerType)
+                        .language(repoInfo.language())
                         .syncedAt(now)
                         .build());
             }
