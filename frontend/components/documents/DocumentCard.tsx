@@ -34,9 +34,10 @@ interface DocumentCardProps {
   doc: Document;
   onDelete: (id: number) => void;
   onReupload: (id: number, file: File, type: DocumentType) => void;
+  onViewDetails?: (doc: Document) => void;
 }
 
-export default function DocumentCard({ doc, onDelete, onReupload }: DocumentCardProps) {
+export default function DocumentCard({ doc, onDelete, onReupload, onViewDetails }: DocumentCardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const status = STATUS_STYLES[doc.extractStatus];
 
@@ -65,6 +66,14 @@ export default function DocumentCard({ doc, onDelete, onReupload }: DocumentCard
           )}
         </div>
         <div className="flex shrink-0 gap-2">
+          {doc.extractStatus === 'success' && onViewDetails && (
+            <button
+              onClick={() => onViewDetails(doc)}
+              className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+            >
+              내용 보기
+            </button>
+          )}
           <button
             onClick={() => fileInputRef.current?.click()}
             className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
@@ -80,7 +89,7 @@ export default function DocumentCard({ doc, onDelete, onReupload }: DocumentCard
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.docx,.md"
+            accept=".pdf,.docx,.md,.txt"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
