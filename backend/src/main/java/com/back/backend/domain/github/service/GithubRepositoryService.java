@@ -87,8 +87,8 @@ public class GithubRepositoryService {
     public Page<GithubRepositoryResponse> getRepositories(Long userId, Boolean selected, int page, int size) {
         GithubConnection connection = findConnectionOrThrow(userId);
 
-        // 최근 동기화 시간 기준 내림차순 정렬
-        PageRequest pageable = PageRequest.of(page - 1, size, Sort.by("syncedAt").descending());
+        // GitHub repo ID 내림차순 — 나중에 생성된 repo가 위에 오고, 선택/해제 시 순서가 바뀌지 않음
+        PageRequest pageable = PageRequest.of(page - 1, size, Sort.by("githubRepoId").descending());
 
         Page<GithubRepository> repoPage = (selected != null)
                 ? repositoryRepository.findByGithubConnectionAndSelected(connection, selected, pageable)

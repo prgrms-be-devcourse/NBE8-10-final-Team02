@@ -124,12 +124,13 @@ public class RepoCloneService {
     }
 
     private void runGit(List<String> command, Path workingDir, int timeoutMinutes) {
+        Process process = null;
         try {
             ProcessBuilder pb = new ProcessBuilder(command)
                     .directory(workingDir.toFile())
                     .redirectErrorStream(true);
 
-            Process process = pb.start();
+            process = pb.start();
             String output = readOutput(process);
 
             boolean finished = process.waitFor(timeoutMinutes, TimeUnit.MINUTES);
@@ -152,6 +153,7 @@ public class RepoCloneService {
         } catch (ServiceException e) {
             throw e;
         } catch (InterruptedException e) {
+            if (process != null) process.destroyForcibly(); // git 프로세스 즉시 종료
             Thread.currentThread().interrupt();
             throw new ServiceException(ErrorCode.INTERNAL_SERVER_ERROR, HttpStatus.INTERNAL_SERVER_ERROR,
                     "git 명령이 취소되었습니다: " + command.get(1));
