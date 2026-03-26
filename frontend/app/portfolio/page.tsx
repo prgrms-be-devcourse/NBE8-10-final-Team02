@@ -46,6 +46,25 @@ export default function PortfolioPage() {
             </Link>
           </div>
         </li>
+
+        {/* Step 3 */}
+        <li className="rounded border border-zinc-200 px-5 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-medium text-zinc-400 mb-0.5">Step 3</p>
+              <p className="text-sm font-medium">문서 업로드</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                이력서, 수상기록 등 문서를 업로드하고 텍스트를 추출합니다.
+              </p>
+            </div>
+            <Link
+              href="/portfolio/documents"
+              className="shrink-0 rounded border border-zinc-300 px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              업로드하기
+            </Link>
+          </div>
+        </li>
       </ol>
     </main>
   );

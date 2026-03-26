@@ -8,15 +8,21 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * GitHub REST API를 호출하는 클라이언트.
@@ -63,7 +69,9 @@ public class GithubApiClient {
             String htmlUrl,
             RepositoryVisibility visibility,
             String defaultBranch,
-            String ownerLogin
+            String ownerLogin,
+            Instant pushedAt,  // GitHub pushed_at. null 가능 (URL 모드 등)
+            String language    // primary language. null 가능
     ) {}
 
     public record GithubCommitInfo(
@@ -73,6 +81,36 @@ public class GithubApiClient {
             String authorName,
             String authorEmail,
             Instant committedAt
+    ) {}
+
+    /** validatePublicRepo 결과 */
+    public record GithubRepoPublicInfo(
+            Long githubRepoId,
+            String nameWithOwner,
+            String url,
+            String language,      // null 가능
+            Integer repoSizeKb    // null 가능
+    ) {}
+
+    /** getRepoDetail 결과 — URL 기여 추가 시 repo 상세 정보 */
+    public record GithubRepoDetail(
+            Long id,
+            String nameWithOwner,
+            String ownerLogin,
+            String repoName,
+            String url,
+            String defaultBranch, // null 가능
+            Integer sizeKb        // null 가능
+    ) {}
+
+    /** getContributedRepos 결과 단건 */
+    public record GithubContributedRepo(
+            Long githubRepoId,
+            String nameWithOwner,
+            String url,
+            String language,      // null 가능
+            Integer repoSizeKb,   // null 가능
+            int contributionCount
     ) {}
 
     // ─────────────────────────────────────────────────
@@ -90,7 +128,9 @@ public class GithubApiClient {
             @JsonProperty("html_url") String htmlUrl,
             @JsonProperty("private") boolean privateRepo,
             @JsonProperty("default_branch") String defaultBranch,
-            GitHubRepoOwner owner
+            GitHubRepoOwner owner,
+            @JsonProperty("pushed_at") Instant pushedAt,  // 마지막 push 시각
+            String language   // primary language. null 가능
     ) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -111,6 +151,63 @@ public class GithubApiClient {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record GitHubCommitUser(String login) {}
+
+    // validatePublicRepo / getRepoDetail 공통 REST 응답
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record GitHubRepoDetailResponse(
+            @JsonProperty("id") Long id,
+            @JsonProperty("full_name") String fullName,
+            @JsonProperty("html_url") String htmlUrl,
+            @JsonProperty("private") boolean privateRepo,
+            @JsonProperty("size") Integer sizeKb,
+            @JsonProperty("default_branch") String defaultBranch,
+            GitHubRepoOwner owner,            // 기존 GitHubRepoOwner 재사용
+            GitHubRepoDetailLanguage language
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record GitHubRepoDetailLanguage(String name) {}
+
+    // countUserCommits 용 단건 응답 (sha만 필요)
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record GitHubCommitShaResponse(String sha) {}
+
+    // GraphQL contributionsCollection 응답 파싱
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record GraphQLResponse(GraphQLData data) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record GraphQLData(GraphQLViewer viewer) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record GraphQLViewer(GraphQLContributions contributionsCollection) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record GraphQLContributions(
+            List<GraphQLRepoContribution> commitContributionsByRepository
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record GraphQLRepoContribution(
+            GraphQLRepository repository,
+            GraphQLContributionCount contributions
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record GraphQLRepository(
+            String nameWithOwner,
+            String url,
+            boolean isPrivate,
+            Long databaseId,
+            Integer diskUsage,          // KB 단위
+            GraphQLLanguage primaryLanguage
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record GraphQLLanguage(String name) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record GraphQLContributionCount(int totalCount) {}
 
     // ─────────────────────────────────────────────────
     // Public API
@@ -199,18 +296,24 @@ public class GithubApiClient {
 
     /**
      * OAuth token으로 인증된 사용자의 repo 목록을 가져온다.
-     * oauth 모드용. access_scope에 repo가 포함되면 private repo도 포함된다.
+     * oauth 모드용. public repository만 반환한다.
+     * visibility=public 파라미터로 GitHub API 수준에서 먼저 필터링하고,
+     * 응답에 private이 섞이는 경우를 대비해 서비스 레벨에서도 필터링한다.
      */
     public List<GithubRepoInfo> getAuthenticatedUserRepos(String token) {
-        log.info("Fetching repos for authenticated GitHub user");
+        log.info("Fetching public repos for authenticated GitHub user");
         // token은 로그에 남기지 않는다
-        List<GitHubRepoResponse> raw = fetchAllPages("/user/repos?per_page=100", token, GitHubRepoResponse[].class);
+        List<GitHubRepoResponse> raw = fetchAllPages(
+                "/user/repos?visibility=public&per_page=100", token, GitHubRepoResponse[].class);
         return raw.stream()
+                .filter(r -> !r.privateRepo())   // 안전망: API 응답에서 private 제거
                 .map(r -> new GithubRepoInfo(
                         r.id(), r.name(), r.fullName(), r.htmlUrl(),
-                        r.privateRepo() ? RepositoryVisibility.PRIVATE : RepositoryVisibility.PUBLIC,
+                        RepositoryVisibility.PUBLIC,
                         r.defaultBranch(),
-                        r.owner() != null ? r.owner().login() : null
+                        r.owner() != null ? r.owner().login() : null,
+                        r.pushedAt(),
+                        r.language()
                 ))
                 .toList();
     }
@@ -226,9 +329,11 @@ public class GithubApiClient {
         return raw.stream()
                 .map(r -> new GithubRepoInfo(
                         r.id(), r.name(), r.fullName(), r.htmlUrl(),
-                        RepositoryVisibility.PUBLIC,  // url 모드는 항상 public
+                        RepositoryVisibility.PUBLIC,
                         r.defaultBranch(),
-                        r.owner() != null ? r.owner().login() : null
+                        r.owner() != null ? r.owner().login() : null,
+                        r.pushedAt(),
+                        r.language()
                 ))
                 .toList();
     }
@@ -252,6 +357,259 @@ public class GithubApiClient {
                         c.commit() != null && c.commit().author() != null ? c.commit().author().date() : null
                 ))
                 .toList();
+    }
+
+    /**
+     * GitHub URL이 public repo인지 검증하고 기본 정보를 반환한다.
+     * token이 없으면 비인증 요청(60 req/h)으로 시도한다.
+     * private repo이거나 존재하지 않으면 GITHUB_REPOSITORY_FORBIDDEN을 던진다.
+     */
+    public GithubRepoPublicInfo validatePublicRepo(String owner, String repo, String token) {
+        log.info("Validating public repo: {}/{}", owner, repo);
+        try {
+            var builder = restClient.get().uri("/repos/{owner}/{repo}", owner, repo);
+            var reqSpec = (token != null)
+                    ? builder.header("Authorization", "Bearer " + token)
+                    : builder;
+
+            GitHubRepoDetailResponse response = reqSpec
+                    .retrieve()
+                    .onStatus(status -> status.value() == 404,
+                            (req, res) -> { throw new ServiceException(
+                                    ErrorCode.GITHUB_REPOSITORY_FORBIDDEN, HttpStatus.FORBIDDEN,
+                                    "비공개 repo이거나 존재하지 않는 repo입니다."); })
+                    .onStatus(status -> status.value() == 403 || status.value() == 429,
+                            (req, res) -> {
+                                String remaining = res.getHeaders().getFirst("X-RateLimit-Remaining");
+                                if ("0".equals(remaining)) {
+                                    throw new ServiceException(ErrorCode.GITHUB_RATE_LIMIT_EXCEEDED,
+                                            HttpStatus.TOO_MANY_REQUESTS,
+                                            "GitHub API 요청 한도를 초과했습니다. GitHub 계정을 연동하면 한도가 늘어납니다.");
+                                }
+                                throw new ServiceException(ErrorCode.GITHUB_REPOSITORY_FORBIDDEN,
+                                        HttpStatus.FORBIDDEN, "비공개 repo이거나 존재하지 않는 repo입니다.");
+                            })
+                    .body(GitHubRepoDetailResponse.class);
+
+            if (response == null) {
+                throw new ServiceException(ErrorCode.GITHUB_REPOSITORY_FORBIDDEN,
+                        HttpStatus.FORBIDDEN, "repo 정보를 가져올 수 없습니다.");
+            }
+            if (response.privateRepo()) {
+                throw new ServiceException(ErrorCode.GITHUB_REPOSITORY_FORBIDDEN,
+                        HttpStatus.FORBIDDEN, "비공개 repo이거나 존재하지 않는 repo입니다.");
+            }
+
+            return new GithubRepoPublicInfo(
+                    response.id(),
+                    response.fullName(),
+                    response.htmlUrl(),
+                    response.language() != null ? response.language().name() : null,
+                    response.sizeKb()
+            );
+
+        } catch (ServiceException e) {
+            throw e;
+        } catch (RestClientException e) {
+            log.warn("GitHub API call failed: GET /repos/{}/{}, reason: {}", owner, repo, e.getMessage());
+            throw new ServiceException(ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                    HttpStatus.SERVICE_UNAVAILABLE, "GitHub API 호출에 실패했습니다.");
+        }
+    }
+
+    /**
+     * GitHub OAuth 토큰으로 사용자가 커밋을 기여한 public repo 목록을 조회한다.
+     * GraphQL contributionsCollection을 사용하며, OAuth 토큰이 없으면 호출할 수 없다.
+     * isPrivate=true인 repo는 결과에서 제외한다.
+     *
+     * ── GitHub API 제약 ──────────────────────────────────────────────────
+     * contributionsCollection의 from~to 범위는 최대 1년(365일)이다.
+     * 초과하면 에러 없이 조용히 1년치만 잘라서 반환하므로,
+     * yearsOffset 단위도 1년으로 맞춰 한 번의 API 호출로 정확히 1년치를 가져온다.
+     * ────────────────────────────────────────────────────────────────────
+     *
+     * @param yearsOffset 0=최근 1년, 1=1~2년 전, 2=2~3년 전
+     */
+    public List<GithubContributedRepo> getContributedRepos(String token, int yearsOffset) {
+        log.info("Fetching contributed repos via GraphQL, yearsOffset={}", yearsOffset);
+
+        ZonedDateTime now = ZonedDateTime.now(ZoneOffset.UTC);
+        // yearsOffset=0 → [now-1년, now], yearsOffset=1 → [now-2년, now-1년], ...
+        ZonedDateTime to   = now.minusYears(yearsOffset);
+        ZonedDateTime from = now.minusYears(yearsOffset + 1);
+
+        return fetchContributionsInRange(token, from, to);
+    }
+
+    /**
+     * contributionsCollection을 1년 이하 구간으로 호출한다.
+     * GitHub API 제약상 from~to는 반드시 1년 이내여야 한다.
+     */
+    private List<GithubContributedRepo> fetchContributionsInRange(
+            String token, ZonedDateTime from, ZonedDateTime to) {
+
+        String fromStr = from.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        String toStr   = to.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+
+        String query = """
+                query($from: DateTime!, $to: DateTime!) {
+                  viewer {
+                    contributionsCollection(from: $from, to: $to) {
+                      commitContributionsByRepository {
+                        repository {
+                          nameWithOwner
+                          url
+                          isPrivate
+                          databaseId
+                          diskUsage
+                          primaryLanguage { name }
+                        }
+                        contributions { totalCount }
+                      }
+                    }
+                  }
+                }
+                """;
+
+        try {
+            GraphQLResponse response = restClient.post()
+                    .uri("/graphql")
+                    .header("Authorization", "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("query", query, "variables", Map.of("from", fromStr, "to", toStr)))
+                    .retrieve()
+                    .onStatus(status -> status.value() == 401,
+                            (req, res) -> { throw new ServiceException(
+                                    ErrorCode.GITHUB_SCOPE_INSUFFICIENT, HttpStatus.FORBIDDEN,
+                                    "기여 repo 탐색은 GitHub OAuth 연동이 필요합니다."); })
+                    .onStatus(status -> status.value() == 403 || status.value() == 429,
+                            (req, res) -> { throw new ServiceException(
+                                    ErrorCode.GITHUB_RATE_LIMIT_EXCEEDED, HttpStatus.TOO_MANY_REQUESTS,
+                                    "GitHub API 요청 한도를 초과했습니다."); })
+                    .body(GraphQLResponse.class);
+
+            if (response == null || response.data() == null
+                    || response.data().viewer() == null
+                    || response.data().viewer().contributionsCollection() == null) {
+                return List.of();
+            }
+
+            List<GraphQLRepoContribution> contributions =
+                    response.data().viewer().contributionsCollection().commitContributionsByRepository();
+            if (contributions == null) return List.of();
+
+            return contributions.stream()
+                    .filter(c -> c.repository() != null && !c.repository().isPrivate())
+                    .map(c -> new GithubContributedRepo(
+                            c.repository().databaseId(),
+                            c.repository().nameWithOwner(),
+                            c.repository().url(),
+                            c.repository().primaryLanguage() != null
+                                    ? c.repository().primaryLanguage().name() : null,
+                            c.repository().diskUsage(),
+                            c.contributions() != null ? c.contributions().totalCount() : 0
+                    ))
+                    .toList();
+
+        } catch (ServiceException e) {
+            throw e;
+        } catch (RestClientException e) {
+            log.warn("GitHub GraphQL call failed (from={}, to={}): {}", fromStr, toStr, e.getMessage());
+            throw new ServiceException(ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                    HttpStatus.SERVICE_UNAVAILABLE, "GitHub API 호출에 실패했습니다.");
+        }
+    }
+
+    /**
+     * 특정 public repo의 상세 정보를 조회한다.
+     * URL 기반 기여 추가 시 ownerLogin, defaultBranch를 가져오는 데 사용한다.
+     * private repo이거나 존재하지 않으면 GITHUB_REPOSITORY_FORBIDDEN을 던진다.
+     */
+    public GithubRepoDetail getRepoDetail(String owner, String repo, String token) {
+        log.info("Fetching repo detail: {}/{}", owner, repo);
+        try {
+            var builder = restClient.get().uri("/repos/{owner}/{repo}", owner, repo);
+            var reqSpec = (token != null)
+                    ? builder.header("Authorization", "Bearer " + token)
+                    : builder;
+
+            GitHubRepoDetailResponse response = reqSpec
+                    .retrieve()
+                    .onStatus(status -> status.value() == 404,
+                            (req, res) -> { throw new ServiceException(
+                                    ErrorCode.GITHUB_REPOSITORY_FORBIDDEN, HttpStatus.FORBIDDEN,
+                                    "비공개 repo이거나 존재하지 않는 repo입니다."); })
+                    .onStatus(status -> status.value() == 403 || status.value() == 429,
+                            (req, res) -> { throw new ServiceException(
+                                    ErrorCode.GITHUB_RATE_LIMIT_EXCEEDED, HttpStatus.TOO_MANY_REQUESTS,
+                                    "GitHub API 요청 한도를 초과했습니다."); })
+                    .body(GitHubRepoDetailResponse.class);
+
+            if (response == null || response.privateRepo()) {
+                throw new ServiceException(ErrorCode.GITHUB_REPOSITORY_FORBIDDEN,
+                        HttpStatus.FORBIDDEN, "비공개 repo이거나 존재하지 않는 repo입니다.");
+            }
+
+            String ownerLogin = response.owner() != null ? response.owner().login() : owner;
+            String repoName   = response.fullName() != null
+                    ? response.fullName().contains("/")
+                        ? response.fullName().substring(response.fullName().indexOf('/') + 1)
+                        : response.fullName()
+                    : repo;
+
+            return new GithubRepoDetail(
+                    response.id(),
+                    response.fullName(),
+                    ownerLogin,
+                    repoName,
+                    response.htmlUrl(),
+                    response.defaultBranch(),
+                    response.sizeKb()
+            );
+        } catch (ServiceException e) {
+            throw e;
+        } catch (RestClientException e) {
+            log.warn("GitHub API call failed: GET /repos/{}/{}, reason: {}", owner, repo, e.getMessage());
+            throw new ServiceException(ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                    HttpStatus.SERVICE_UNAVAILABLE, "GitHub API 호출에 실패했습니다.");
+        }
+    }
+
+    /**
+     * 특정 repo에서 authorLogin의 커밋이 1개 이상 있는지 확인한다.
+     * per_page=1로 최소 요청만 보내고, 배열이 비어 있으면 0을 반환한다.
+     */
+    public int countUserCommits(String owner, String repo, String authorLogin, String token) {
+        log.info("Checking user commits: {}/{}, author: {}", owner, repo, authorLogin);
+        try {
+            var builder = restClient.get()
+                    .uri("/repos/{owner}/{repo}/commits?author={author}&per_page=1",
+                            owner, repo, authorLogin);
+            var reqSpec = (token != null)
+                    ? builder.header("Authorization", "Bearer " + token)
+                    : builder;
+
+            GitHubCommitShaResponse[] response = reqSpec
+                    .retrieve()
+                    .onStatus(status -> status.value() == 404,
+                            (req, res) -> { throw new ServiceException(
+                                    ErrorCode.GITHUB_REPOSITORY_FORBIDDEN, HttpStatus.FORBIDDEN,
+                                    "비공개 repo이거나 존재하지 않는 repo입니다."); })
+                    .onStatus(status -> status.value() == 403 || status.value() == 429,
+                            (req, res) -> { throw new ServiceException(
+                                    ErrorCode.GITHUB_RATE_LIMIT_EXCEEDED, HttpStatus.TOO_MANY_REQUESTS,
+                                    "GitHub API 요청 한도를 초과했습니다."); })
+                    .body(GitHubCommitShaResponse[].class);
+
+            return (response != null) ? response.length : 0;
+        } catch (ServiceException e) {
+            throw e;
+        } catch (RestClientException e) {
+            log.warn("GitHub commit check failed: {}/{}, author: {}, reason: {}",
+                    owner, repo, authorLogin, e.getMessage());
+            throw new ServiceException(ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                    HttpStatus.SERVICE_UNAVAILABLE, "GitHub API 호출에 실패했습니다.");
+        }
     }
 
     // ─────────────────────────────────────────────────
