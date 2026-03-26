@@ -11,6 +11,7 @@ import {
   getContributions,
   saveContribution,
   addContributionByUrl,
+  refreshGithubConnection,
 } from '@/api/github';
 import type { GithubRepository, RepoSyncStatus, ContributedRepo } from '@/types/github';
 import type { Pagination } from '@/types/common';
@@ -111,6 +112,8 @@ function OwnedTab() {
   const [analyzeErrors, setAnalyzeErrors] = useState<Record<number, string>>({});
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   function applyStatusesFromRepos(data: GithubRepository[]) {
     const statuses: Record<number, RepoSyncStatus> = {};
@@ -245,6 +248,19 @@ function OwnedTab() {
     }
   }
 
+  async function handleRefresh() {
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      await refreshGithubConnection();
+      await init();
+    } catch (err) {
+      setRefreshError(err instanceof Error ? err.message : 'repository 목록을 가져오지 못했습니다.');
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   if (loading) return <p className="text-sm text-zinc-400">repository 목록을 불러오는 중...</p>;
 
   if (loadError) return (
@@ -257,7 +273,19 @@ function OwnedTab() {
   if (repos.length === 0 && currentPage === 1) return (
     <div>
       <p className="mb-4 text-sm text-zinc-500">연결된 GitHub 계정이 없거나 repository가 없습니다.</p>
-      <Link href="/portfolio/github" className="text-sm underline text-zinc-700">GitHub 연결하기 →</Link>
+      {refreshError && (
+        <p className="mb-3 text-sm text-red-600">{refreshError}</p>
+      )}
+      <div className="flex gap-3">
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+        >
+          {refreshing ? '가져오는 중...' : 'GitHub에서 다시 가져오기'}
+        </button>
+        <Link href="/portfolio/github" className="text-sm underline text-zinc-500 self-center">GitHub 연결 변경</Link>
+      </div>
     </div>
   );
 
@@ -270,10 +298,22 @@ function OwnedTab() {
             <span className="ml-1 font-medium text-zinc-800">{selectedIds.size}개 선택됨</span>
           )}
         </p>
-        {pagination && pagination.totalElements > 0 && (
-          <p className="text-xs text-zinc-400">전체 {pagination.totalElements}개</p>
-        )}
+        <div className="flex items-center gap-3">
+          {pagination && pagination.totalElements > 0 && (
+            <p className="text-xs text-zinc-400">전체 {pagination.totalElements}개</p>
+          )}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="text-xs text-zinc-400 underline hover:text-zinc-600 disabled:opacity-50"
+          >
+            {refreshing ? '가져오는 중...' : 'GitHub 동기화'}
+          </button>
+        </div>
       </div>
+      {refreshError && (
+        <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{refreshError}</div>
+      )}
 
       {toggleError && (
         <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{toggleError}</div>
