@@ -569,6 +569,7 @@ applies_to: error-classification-and-response
 | 세션이 시작된 질문 세트를 수정하려고 함 | 409 | INTERVIEW_QUESTION_SET_NOT_EDITABLE | 이미 면접이 시작된 질문 세트는 수정할 수 없습니다. | false |
 | 세션 시작 질문 수가 범위를 벗어남 | 400 | REQUEST_VALIDATION_FAILED | 면접 세션은 3개 이상 20개 이하 질문으로만 시작할 수 있습니다. | false |
 | 활성 세션이 이미 존재함 | 409 | INTERVIEW_SESSION_ALREADY_ACTIVE | 이미 활성 면접 세션이 있습니다. | false |
+| 세션 상세 조회 대상이 없거나 내 소유가 아님 | 404 | RESOURCE_NOT_FOUND | 세션을 찾을 수 없습니다. | false |
 | 현재 상태에서 pause/resume 요청이 허용되지 않음 | 409 | INTERVIEW_SESSION_STATUS_CONFLICT | 현재 상태에서는 세션 상태를 변경할 수 없습니다. | false |
 | 건너뛰기 아닌 답변이 비어 있음 | 400 | INTERVIEW_ANSWER_REQUIRED | 답변을 입력해주세요. | false |
 | 일시정지 등 진행 불가 상태에서 답변 제출 | 409 | INTERVIEW_SESSION_NOT_ACTIVE | 진행 가능한 면접 세션이 아닙니다. 재개 후 다시 시도해주세요. | false |

@@ -1,12 +1,15 @@
 package com.back.backend.domain.interview.service;
 
 import com.back.backend.domain.interview.dto.request.StartInterviewSessionRequest;
+import com.back.backend.domain.interview.dto.response.InterviewSessionDetailResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionTransitionResponse;
+import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
 import com.back.backend.domain.interview.entity.InterviewSession;
 import com.back.backend.domain.interview.entity.InterviewSessionStatus;
 import com.back.backend.domain.interview.mapper.InterviewResponseMapper;
+import com.back.backend.domain.interview.repository.InterviewAnswerRepository;
 import com.back.backend.domain.interview.repository.InterviewQuestionRepository;
 import com.back.backend.domain.interview.repository.InterviewQuestionSetRepository;
 import com.back.backend.domain.interview.repository.InterviewSessionRepository;
@@ -36,6 +39,7 @@ public class InterviewSessionService {
     );
 
     private final InterviewQuestionSetRepository interviewQuestionSetRepository;
+    private final InterviewAnswerRepository interviewAnswerRepository;
     private final InterviewQuestionRepository interviewQuestionRepository;
     private final InterviewSessionRepository interviewSessionRepository;
     private final InterviewResponseMapper interviewResponseMapper;
@@ -68,6 +72,28 @@ public class InterviewSessionService {
         );
 
         return interviewResponseMapper.toInterviewSessionResponse(session);
+    }
+
+    @Transactional
+    public InterviewSessionDetailResponse getSessionDetail(long userId, long sessionId) {
+        InterviewSession session = getOwnedSession(userId, sessionId);
+        normalizeAutoPauseIfExpired(session);
+
+        long totalQuestionCount = interviewQuestionRepository.countByQuestionSetId(session.getQuestionSet().getId());
+        long answeredQuestionCount = interviewAnswerRepository.countBySessionId(session.getId());
+        long remainingQuestionCount = Math.max(totalQuestionCount - answeredQuestionCount, 0);
+        // 복원 화면의 현재 질문은 "이미 저장된 답변 수 + 1" 순번으로 고정한다.
+        // 남은 질문이 없거나 종료 상태면 현재 질문을 노출하지 않는다.
+        InterviewQuestion currentQuestion = resolveCurrentQuestion(session, answeredQuestionCount, remainingQuestionCount);
+
+        return interviewResponseMapper.toInterviewSessionDetailResponse(
+                session,
+                currentQuestion,
+                totalQuestionCount,
+                answeredQuestionCount,
+                remainingQuestionCount,
+                session.getStatus() == InterviewSessionStatus.PAUSED
+        );
     }
 
     @Transactional
@@ -151,6 +177,22 @@ public class InterviewSessionService {
         return false;
     }
 
+    private InterviewQuestion resolveCurrentQuestion(
+            InterviewSession session,
+            long answeredQuestionCount,
+            long remainingQuestionCount
+    ) {
+        if (remainingQuestionCount <= 0 || isTerminalStatus(session.getStatus())) {
+            return null;
+        }
+
+        int currentQuestionOrder = Math.toIntExact(answeredQuestionCount + 1);
+        return interviewQuestionRepository.findByQuestionSetIdAndQuestionOrder(
+                session.getQuestionSet().getId(),
+                currentQuestionOrder
+        ).orElse(null);
+    }
+
     private long requireQuestionSetId(Long questionSetId) {
         if (questionSetId == null) {
             throw new ServiceException(
@@ -187,7 +229,7 @@ public class InterviewSessionService {
 
     private void validateNotCompleted(InterviewSession session) {
         InterviewSessionStatus status = session.getStatus();
-        if (status == InterviewSessionStatus.COMPLETED || status == InterviewSessionStatus.FEEDBACK_COMPLETED) {
+        if (isTerminalStatus(status)) {
             throw new ServiceException(
                     ErrorCode.INTERVIEW_SESSION_ALREADY_COMPLETED,
                     HttpStatus.CONFLICT,
@@ -204,6 +246,10 @@ public class InterviewSessionService {
                     "현재 상태에서는 세션 상태를 변경할 수 없습니다."
             );
         }
+    }
+
+    private boolean isTerminalStatus(InterviewSessionStatus status) {
+        return status == InterviewSessionStatus.COMPLETED || status == InterviewSessionStatus.FEEDBACK_COMPLETED;
     }
 
     private void validateQuestionCount(long questionSetId) {
