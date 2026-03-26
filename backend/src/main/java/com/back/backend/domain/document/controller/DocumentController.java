@@ -1,6 +1,7 @@
 package com.back.backend.domain.document.controller;
 
 import com.back.backend.domain.document.dto.DocumentResponse;
+import com.back.backend.domain.document.dto.UpdateExtractedTextRequest;
 import com.back.backend.domain.document.service.DocumentService;
 import com.back.backend.domain.document.entity.DocumentType;
 import com.back.backend.global.response.ApiResponse;
@@ -10,8 +11,10 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -34,7 +37,7 @@ public class DocumentController {
     /**
      * 포트폴리오 문서를 업로드한다.
      *
-     * <p>허용 파일 형식: PDF, DOCX, Markdown / 최대 크기: 10MB / 사용자당 최대 5개</p>
+     * <p>허용 파일 형식: PDF, DOCX, Markdown, Text / 최대 크기: 50MB / 사용자당 최대 5개</p>
      *
      * @param userId       Security Context에서 추출한 인증된 사용자 ID
      * @param file         업로드할 파일 (multipart)
@@ -71,5 +74,14 @@ public class DocumentController {
             @AuthenticationPrincipal Long userId,
             @PathVariable Long documentId) {
         documentService.deleteDocument(userId, documentId);
+    }
+
+    // 추출된 텍스트 업데이트 (200 OK / 404 Not Found)
+    @PatchMapping("/{documentId}/extracted-text")
+    public ApiResponse<DocumentResponse> updateExtractedText(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long documentId,
+            @RequestBody UpdateExtractedTextRequest request) {
+        return ApiResponse.success(documentService.updateExtractedText(userId, documentId, request.extractedText()));
     }
 }
