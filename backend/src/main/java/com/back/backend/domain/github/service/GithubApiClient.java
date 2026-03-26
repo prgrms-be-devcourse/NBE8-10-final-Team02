@@ -70,7 +70,8 @@ public class GithubApiClient {
             RepositoryVisibility visibility,
             String defaultBranch,
             String ownerLogin,
-            Instant pushedAt   // GitHub pushed_at. null 가능 (URL 모드 등)
+            Instant pushedAt,  // GitHub pushed_at. null 가능 (URL 모드 등)
+            String language    // primary language. null 가능
     ) {}
 
     public record GithubCommitInfo(
@@ -128,7 +129,8 @@ public class GithubApiClient {
             @JsonProperty("private") boolean privateRepo,
             @JsonProperty("default_branch") String defaultBranch,
             GitHubRepoOwner owner,
-            @JsonProperty("pushed_at") Instant pushedAt  // 마지막 push 시각
+            @JsonProperty("pushed_at") Instant pushedAt,  // 마지막 push 시각
+            String language   // primary language. null 가능
     ) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -310,7 +312,8 @@ public class GithubApiClient {
                         RepositoryVisibility.PUBLIC,
                         r.defaultBranch(),
                         r.owner() != null ? r.owner().login() : null,
-                        r.pushedAt()
+                        r.pushedAt(),
+                        r.language()
                 ))
                 .toList();
     }
@@ -326,10 +329,11 @@ public class GithubApiClient {
         return raw.stream()
                 .map(r -> new GithubRepoInfo(
                         r.id(), r.name(), r.fullName(), r.htmlUrl(),
-                        RepositoryVisibility.PUBLIC,  // url 모드는 항상 public
+                        RepositoryVisibility.PUBLIC,
                         r.defaultBranch(),
                         r.owner() != null ? r.owner().login() : null,
-                        r.pushedAt()
+                        r.pushedAt(),
+                        r.language()
                 ))
                 .toList();
     }

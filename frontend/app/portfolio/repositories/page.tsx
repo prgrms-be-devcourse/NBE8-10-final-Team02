@@ -314,13 +314,13 @@ function OwnedTab() {
                     {repo.ownerType === 'collaborator' && (
                       <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700">collaborator</span>
                     )}
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-2 text-xs text-zinc-400">
-                    {repo.defaultBranch && <span>브랜치: {repo.defaultBranch}</span>}
-                    {formatPushedAt(repo.pushedAt) && (
-                      <span>{formatPushedAt(repo.pushedAt)} 업데이트</span>
+                    {repo.language && (
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-500">{repo.language}</span>
                     )}
                   </div>
+                  {formatPushedAt(repo.pushedAt) && (
+                    <p className="mt-0.5 text-xs text-zinc-400">{formatPushedAt(repo.pushedAt)} 업데이트</p>
+                  )}
                   {syncErrors[repo.id] && <p className="mt-1 text-xs text-red-600">{syncErrors[repo.id]}</p>}
                   {repo.hasCommits && !isSyncing && (
                     <p className="mt-1 text-xs text-green-600">✓ 커밋 동기화됨</p>
