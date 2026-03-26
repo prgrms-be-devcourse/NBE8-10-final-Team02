@@ -672,6 +672,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 서버는 현재 사용자 세션만 반환하고, 활성 세션(`in_progress`, `paused`)이 있으면 응답 배열의 가장 앞에 둔다.
 - 활성 세션 다음의 과거 세션은 `startedAt` 최신순으로 노출한다.
 - SCR-15의 상태 필터와 화면 정렬은 별도 백엔드 query parameter가 잠기기 전까지 v1 목록 응답 범위 안에서 처리한다.
+- v1 목록 응답이 제공하는 세션 식별 정보는 `questionSetId` 기준이므로, 질문 세트 기준 구분/정렬은 해당 값 범위 안에서 처리한다.
 - `completed` 상태지만 결과가 아직 준비되지 않은 세션은 결과 재확인 흐름으로 연결한다.
 
 ---
@@ -692,9 +693,15 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 종합 점수 및 총평
 
 ### 상태
-- 조회 성공
-- 결과 없음
+- 결과 준비 완료
+- 결과 미준비
 - 조회 실패
+
+### 비고
+- `GET /interview/sessions/{sessionId}`는 세션 기본 정보, 진행 count, 상태 확인에 사용한다.
+- 질문/답변 기록, 질문별 피드백, 태그 목록, 종합 점수와 총평은 `GET /interview/sessions/{sessionId}/result` 성공 응답 기준으로 그린다.
+- `GET /interview/sessions/{sessionId}/result`가 `409 INTERVIEW_RESULT_INCOMPLETE`를 반환하면 v1에서는 결과 미준비 안내와 재확인 CTA만 제공한다.
+- v1에는 히스토리 전용 질문/답변 기록 API를 별도로 두지 않는다.
 
 ## 7. 화면 간 주요 전환 규칙
 
