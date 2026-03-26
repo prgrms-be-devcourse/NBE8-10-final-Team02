@@ -55,8 +55,8 @@ public class CodeIndexServiceImpl implements CodeIndexService {
                            Map<String, Double> pagerankMap) {
         log.info("Building code index: repoId={}, nodes={}", repo.getId(), nodes.size());
 
-        // 기존 인덱스 교체 (전체 재분석)
-        codeIndexRepository.deleteByGithubRepository(repo);
+        // 기존 인덱스 교체 (전체 재분석) — JPQL bulk delete로 즉시 실행 (flush 보장)
+        codeIndexRepository.deleteByGithubRepositoryId(repo.getId());
 
         List<CodeIndex> entries = new ArrayList<>();
 
