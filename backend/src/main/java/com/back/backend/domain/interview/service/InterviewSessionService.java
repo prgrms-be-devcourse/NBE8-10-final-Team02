@@ -18,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -38,6 +39,7 @@ public class InterviewSessionService {
     private final InterviewQuestionRepository interviewQuestionRepository;
     private final InterviewSessionRepository interviewSessionRepository;
     private final InterviewResponseMapper interviewResponseMapper;
+    private final Clock clock;
 
     @Transactional
     public InterviewSessionResponse startSession(long userId, StartInterviewSessionRequest request) {
@@ -53,7 +55,7 @@ public class InterviewSessionService {
 
         validateQuestionCount(questionSetId);
 
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         InterviewSession session = interviewSessionRepository.save(
                 InterviewSession.builder()
                         .user(questionSet.getUser())
@@ -74,7 +76,7 @@ public class InterviewSessionService {
         validateNotCompleted(session);
         validatePauseAvailable(session);
 
-        Instant updatedAt = Instant.now();
+        Instant updatedAt = clock.instant();
         session.changeStatus(InterviewSessionStatus.PAUSED);
         return interviewResponseMapper.toInterviewSessionTransitionResponse(session, updatedAt);
     }
@@ -95,7 +97,7 @@ public class InterviewSessionService {
             );
         }
 
-        Instant resumedAt = Instant.now();
+        Instant resumedAt = clock.instant();
         session.changeStatus(InterviewSessionStatus.IN_PROGRESS);
         session.changeLastActivityAt(resumedAt);
         return interviewResponseMapper.toInterviewSessionTransitionResponse(session, resumedAt);
@@ -141,7 +143,7 @@ public class InterviewSessionService {
             return false;
         }
 
-        if (lastActivityAt.isBefore(Instant.now().minus(AUTO_PAUSE_THRESHOLD))) {
+        if (lastActivityAt.isBefore(clock.instant().minus(AUTO_PAUSE_THRESHOLD))) {
             session.changeStatus(InterviewSessionStatus.PAUSED);
             return true;
         }
