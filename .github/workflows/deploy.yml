@@ -158,7 +158,6 @@ jobs:
             --network-alias backend \
             --memory="2g" \
             -v /data/repos:/data/repos \
-            -v /opt/analysis-scripts:/opt/analysis-scripts:ro \
             -v /app/uploads:/app/uploads \
             -e JAVA_TOOL_OPTIONS="-XX:InitialRAMPercentage=50.0 -XX:MaxRAMPercentage=50.0" \
             --env-file .env-prod \
