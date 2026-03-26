@@ -3301,6 +3301,54 @@ paths:
                       summaryFeedback: 기술 선택 근거는 좋았지만 문제 해결 과정의 수치 근거를 더 보강하면 좋습니다.
                       endedAt: '2026-03-17T10:40:00Z'
                     meta: *id001
+        '400':
+          description: 미답변 질문이 남아 있어 세션을 종료할 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                sessionCompleteIncompleteAnswers:
+                  value:
+                    success: false
+                    error:
+                      code: REQUEST_VALIDATION_FAILED
+                      message: 모든 질문에 답변한 뒤 세션을 종료해주세요.
+                      retryable: false
+                      fieldErrors:
+                      - field: remainingQuestionCount
+                        reason: incomplete
+                    meta: *id001
+        '404':
+          description: 세션을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                sessionCompleteNotFound:
+                  value:
+                    success: false
+                    error:
+                      code: RESOURCE_NOT_FOUND
+                      message: 세션을 찾을 수 없습니다.
+                      retryable: false
+                    meta: *id001
+        '409':
+          description: 이미 종료된 세션에 다시 종료 요청함
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                sessionCompleteAlreadyCompleted:
+                  value:
+                    success: false
+                    error:
+                      code: INTERVIEW_SESSION_ALREADY_COMPLETED
+                      message: 이미 종료된 면접 세션입니다.
+                      retryable: false
+                    meta: *id001
         '502':
           description: 면접 결과 생성 실패
           content:
@@ -3324,9 +3372,15 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
                 aiTimeoutError:
-                  value: *id007
+                  value:
+                    success: false
+                    error:
+                      code: EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE
+                      message: 외부 서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.
+                      retryable: true
+                    meta: *id001
       description: 세션을 종료하고 피드백 결과 생성을 시작한다. 피드백이 즉시 생성되면 feedback_completed 상태로 응답할
-        수 있다.
+        수 있다. `complete`는 `in_progress`, `paused` 상태에서만 허용하며, 미답변 질문이 남아 있으면 400을 반환한다.
   /interview/sessions/{sessionId}/result:
     get:
       tags:

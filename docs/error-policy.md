@@ -310,6 +310,9 @@ applies_to: error-classification-and-response
 - 건너뛰기 아닌 일반 답변이 비어 있으면 `INTERVIEW_ANSWER_REQUIRED`로 거절한다.
 - `paused` 상태 세션의 답변 제출은 `INTERVIEW_SESSION_NOT_ACTIVE`로 거절한다.
 - `completed`, `feedback_completed` 상태 세션의 추가 답변 저장은 `INTERVIEW_SESSION_ALREADY_COMPLETED`로 거절한다.
+- 명시적 `complete`는 `in_progress`, `paused` 상태에서만 허용한다.
+- 미답변 질문이 남아 있는 세션 종료 요청은 `REQUEST_VALIDATION_FAILED`로 거절한다.
+- `completed`, `feedback_completed` 상태 세션의 종료 재요청은 `INTERVIEW_SESSION_ALREADY_COMPLETED`로 거절한다.
 - 종료되지 않은 세션을 결과 확정 상태로 저장하면 안 된다.
 
 ### 10.3 document / repository
@@ -575,7 +578,10 @@ applies_to: error-classification-and-response
 | 일시정지 등 진행 불가 상태에서 답변 제출 | 409 | INTERVIEW_SESSION_NOT_ACTIVE | 진행 가능한 면접 세션이 아닙니다. 재개 후 다시 시도해주세요. | false |
 | 면접 답변이 50자 미만 | 400 | INTERVIEW_ANSWER_TOO_SHORT | 답변은 50자 이상 입력해주세요. | false |
 | 완료된 세션에 재답변 요청 | 409 | INTERVIEW_SESSION_ALREADY_COMPLETED | 이미 종료된 면접 세션입니다. | false |
+| 미답변 질문이 남아 있는 상태에서 세션 종료 요청 | 400 | REQUEST_VALIDATION_FAILED | 모든 질문에 답변한 뒤 세션을 종료해주세요. | false |
+| 완료된 세션에 종료 재요청 | 409 | INTERVIEW_SESSION_ALREADY_COMPLETED | 이미 종료된 면접 세션입니다. | false |
 | 면접 결과 생성 실패 | 502 | INTERVIEW_RESULT_GENERATION_FAILED | 면접 결과 생성 중 오류가 발생했습니다. | true |
+| 면접 결과 생성 중 외부 AI 서비스 일시 장애 | 503 | EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE | 외부 서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요. | true |
 | 예기치 못한 서버 오류 | 500 | INTERNAL_SERVER_ERROR | 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요. | true |
 
 ## 19. 프론트엔드 연동 가이드

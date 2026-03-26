@@ -2,6 +2,7 @@ package com.back.backend.domain.interview.mapper;
 
 import com.back.backend.domain.interview.dto.response.InterviewAnswerSubmitResponse;
 import com.back.backend.domain.interview.dto.response.InterviewQuestionResponse;
+import com.back.backend.domain.interview.dto.response.InterviewSessionCompletionResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionCurrentQuestionResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionDetailResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionResponse;
@@ -95,6 +96,16 @@ public class InterviewResponseMapper {
                 session.getId(),
                 session.getStatus().getValue(),
                 updatedAt
+        );
+    }
+
+    public InterviewSessionCompletionResponse toInterviewSessionCompletionResponse(InterviewSession session) {
+        return new InterviewSessionCompletionResponse(
+                session.getId(),
+                session.getStatus().getValue(),
+                session.getTotalScore(),
+                session.getSummaryFeedback(),
+                session.getEndedAt()
         );
     }
 }
