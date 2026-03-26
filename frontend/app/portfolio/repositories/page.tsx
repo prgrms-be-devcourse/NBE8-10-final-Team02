@@ -538,7 +538,9 @@ function ContributedTab() {
       </p>
 
       {contributions.length === 0 ? (
-        !loading && <p className="text-sm text-zinc-400 mb-4">이 기간에 기여한 repository가 없습니다.</p>
+        loading
+          ? <p className="text-sm text-zinc-400 mb-4">불러오는 중...</p>
+          : <p className="text-sm text-zinc-400 mb-4">이 기간에 기여한 repository가 없습니다.</p>
       ) : (
         <ul className="flex flex-col gap-2 mb-4">
           {contributions.map((repo) => {
