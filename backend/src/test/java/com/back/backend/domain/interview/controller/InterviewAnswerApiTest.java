@@ -38,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class InterviewAnswerApiTest extends ApiTestBase {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final Instant NOW = Instant.parse("2026-03-25T09:00:00Z");
+    private static final Instant NOW = Instant.now();
     private static final String VALID_ANSWER = "서비스 장애 원인을 추적할 때 로그와 메트릭을 함께 비교하며 원인 후보를 단계적으로 줄였습니다.";
 
     @Autowired
