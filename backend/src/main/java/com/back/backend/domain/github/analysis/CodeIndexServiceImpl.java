@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -55,12 +56,25 @@ public class CodeIndexServiceImpl implements CodeIndexService {
                            Map<String, Double> pagerankMap) {
         log.info("Building code index: repoId={}, nodes={}", repo.getId(), nodes.size());
 
-        // 기존 인덱스 교체 (전체 재분석)
-        codeIndexRepository.deleteByGithubRepository(repo);
+        // 기존 인덱스 교체 (전체 재분석) — JPQL bulk delete로 즉시 실행 (flush 보장)
+        codeIndexRepository.deleteByGithubRepositoryId(repo.getId());
+
+        // FQN 중복 제거: 패키지 없는 코딩테스트 레포 등에서 동일 클래스명이 여러 파일에 존재할 수 있음
+        // pagerank 높은 쪽을 우선하고, 같으면 먼저 나온 쪽 유지 (LinkedHashMap으로 삽입 순서 보존)
+        Map<String, AnalysisNode> deduped = new LinkedHashMap<>();
+        for (AnalysisNode node : nodes) {
+            deduped.merge(node.fqn(), node, (existing, incoming) ->
+                    pagerankMap.getOrDefault(incoming.fqn(), 0.0) > pagerankMap.getOrDefault(existing.fqn(), 0.0)
+                            ? incoming : existing);
+        }
+
+        if (deduped.size() < nodes.size()) {
+            log.warn("Duplicate FQNs removed: repoId={}, original={}, deduped={}",
+                    repo.getId(), nodes.size(), deduped.size());
+        }
 
         List<CodeIndex> entries = new ArrayList<>();
-
-        for (AnalysisNode node : nodes) {
+        for (AnalysisNode node : deduped.values()) {
             String methodsJson = serializeMethods(node.methods());
             double pagerank = pagerankMap.getOrDefault(node.fqn(), 0.0);
             boolean authoredByMe = authoredFiles.contains(node.filePath());

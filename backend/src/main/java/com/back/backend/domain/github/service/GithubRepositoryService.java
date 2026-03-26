@@ -26,9 +26,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.HashSet;
 import java.util.List;
@@ -55,6 +57,7 @@ public class GithubRepositoryService {
     private final SyncStatusService syncStatusService;
     private final CodeIndexRepository codeIndexRepository;
     private final RepoSummaryRepository repoSummaryRepository;
+    private final TransactionTemplate txTemplate;
 
     public GithubRepositoryService(
             GithubConnectionRepository connectionRepository,
@@ -65,7 +68,8 @@ public class GithubRepositoryService {
             @Lazy AnalysisPipelineService analysisPipelineService,
             SyncStatusService syncStatusService,
             CodeIndexRepository codeIndexRepository,
-            RepoSummaryRepository repoSummaryRepository
+            RepoSummaryRepository repoSummaryRepository,
+            PlatformTransactionManager transactionManager
     ) {
         this.connectionRepository = connectionRepository;
         this.repositoryRepository = repositoryRepository;
@@ -76,6 +80,7 @@ public class GithubRepositoryService {
         this.syncStatusService = syncStatusService;
         this.codeIndexRepository = codeIndexRepository;
         this.repoSummaryRepository = repoSummaryRepository;
+        this.txTemplate = new TransactionTemplate(transactionManager);
     }
 
     /**
@@ -164,10 +169,11 @@ public class GithubRepositoryService {
                             log.warn("Failed to cancel analysis for repoId={}: {}", repoId, e.getMessage());
                         }
                         try {
-                            // 관련 데이터 삭제 (각각 새 트랜잭션으로 실행됨)
-                            repoSummaryRepository.deleteByGithubRepositoryId(repoId);
-                            codeIndexRepository.deleteByGithubRepositoryId(repoId);
-                            commitRepository.deleteByRepositoryId(repoId);
+                            txTemplate.executeWithoutResult(status -> {
+                                repoSummaryRepository.deleteByGithubRepositoryId(repoId);
+                                codeIndexRepository.deleteByGithubRepositoryId(repoId);
+                                commitRepository.deleteByRepositoryId(repoId);
+                            });
                             log.info("Deleted data for deselected repoId={}", repoId);
                         } catch (Exception e) {
                             log.warn("Failed to delete data for repoId={}: {}", repoId, e.getMessage());
@@ -214,9 +220,11 @@ public class GithubRepositoryService {
                 try { analysisPipelineService.cancel(userId, repositoryId); }
                 catch (Exception e) { log.warn("Failed to cancel analysis for repoId={}: {}", repositoryId, e.getMessage()); }
                 try {
-                    repoSummaryRepository.deleteByGithubRepositoryId(repositoryId);
-                    codeIndexRepository.deleteByGithubRepositoryId(repositoryId);
-                    commitRepository.deleteByRepositoryId(repositoryId);
+                    txTemplate.executeWithoutResult(status -> {
+                        repoSummaryRepository.deleteByGithubRepositoryId(repositoryId);
+                        codeIndexRepository.deleteByGithubRepositoryId(repositoryId);
+                        commitRepository.deleteByRepositoryId(repositoryId);
+                    });
                 } catch (Exception e) {
                     log.warn("Failed to delete data for repoId={}: {}", repositoryId, e.getMessage());
                 }
