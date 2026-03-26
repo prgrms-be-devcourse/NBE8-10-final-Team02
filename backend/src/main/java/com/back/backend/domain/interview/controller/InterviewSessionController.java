@@ -3,6 +3,9 @@ package com.back.backend.domain.interview.controller;
 import com.back.backend.domain.interview.dto.request.StartInterviewSessionRequest;
 import com.back.backend.domain.interview.dto.request.SubmitInterviewAnswerRequest;
 import com.back.backend.domain.interview.dto.response.InterviewAnswerSubmitResponse;
+import com.back.backend.domain.interview.dto.response.InterviewResultResponse;
+import com.back.backend.domain.interview.dto.response.InterviewSessionCompletionResponse;
+import com.back.backend.domain.interview.dto.response.InterviewSessionDetailResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionTransitionResponse;
 import com.back.backend.domain.interview.service.InterviewAnswerService;
@@ -12,12 +15,15 @@ import com.back.backend.global.security.auth.CurrentUserResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/interview/sessions")
@@ -38,6 +44,52 @@ public class InterviewSessionController {
                 interviewSessionService.startSession(
                         currentUserResolver.resolveUserId(authentication),
                         request
+                )
+        );
+    }
+
+    @GetMapping
+    public ApiResponse<List<InterviewSessionResponse>> getSessions(Authentication authentication) {
+        return ApiResponse.success(
+                interviewSessionService.getSessions(currentUserResolver.resolveUserId(authentication))
+        );
+    }
+
+    @GetMapping("/{sessionId}")
+    public ApiResponse<InterviewSessionDetailResponse> getSessionDetail(
+            Authentication authentication,
+            @PathVariable long sessionId
+    ) {
+        return ApiResponse.success(
+                interviewSessionService.getSessionDetail(
+                        currentUserResolver.resolveUserId(authentication),
+                        sessionId
+                )
+        );
+    }
+
+    @GetMapping("/{sessionId}/result")
+    public ApiResponse<InterviewResultResponse> getSessionResult(
+            Authentication authentication,
+            @PathVariable long sessionId
+    ) {
+        return ApiResponse.success(
+                interviewSessionService.getSessionResult(
+                        currentUserResolver.resolveUserId(authentication),
+                        sessionId
+                )
+        );
+    }
+
+    @PostMapping("/{sessionId}/complete")
+    public ApiResponse<InterviewSessionCompletionResponse> completeSession(
+            Authentication authentication,
+            @PathVariable long sessionId
+    ) {
+        return ApiResponse.success(
+                interviewSessionService.completeSession(
+                        currentUserResolver.resolveUserId(authentication),
+                        sessionId
                 )
         );
     }

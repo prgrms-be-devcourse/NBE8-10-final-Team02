@@ -44,12 +44,21 @@ applies_to: interview-domain
 - `pause/resume`은 상태 필드 일반 수정이 아니라 명시적 액션 API로 처리한다.
 - 현재 상태에서 허용되지 않는 `pause/resume` 요청은 `INTERVIEW_SESSION_STATUS_CONFLICT`로 거절한다.
 - `completed`, `feedback_completed` 세션에는 추가 답변을 허용하지 않는다.
+- 명시적 `complete`는 `in_progress`, `paused` 상태에서만 허용한다.
+- 미답변 질문이 남아 있으면 `REQUEST_VALIDATION_FAILED`로 세션 종료를 거절한다.
+- `completed`, `feedback_completed` 세션의 종료 재요청은 `INTERVIEW_SESSION_ALREADY_COMPLETED`로 거절한다.
+- 결과 상세 조회는 `feedback_completed` 상태에서만 성공한다.
+- 결과 상세 조회 대상이 없거나 현재 사용자 소유가 아니면 `RESOURCE_NOT_FOUND`를 반환한다.
+- 결과 상세 조회 시 세션이 `completed` 상태면 `INTERVIEW_RESULT_INCOMPLETE`를 반환한다.
 - 세션 상세 조회는 복원 화면 기준으로 `currentQuestion`, 진행률 계산용 count, `resumeAvailable`, `lastActivityAt`를 함께 반환한다.
 - 건너뛰기 아닌 일반 답변이 비어 있으면 `INTERVIEW_ANSWER_REQUIRED`로 거절한다.
 - 일반 답변은 50자 이상 1000자 이하로 검증하고, 건너뛰기는 예외로 처리한다.
 - 사용자 1명당 동시에 진행 가능한 활성 세션은 1개다.
 - 활성 세션은 `in_progress + paused`로 본다.
 - 활성 세션이 있으면 새 세션 시작보다 기존 세션 복귀 또는 재개를 우선한다.
+- 세션 목록 조회는 현재 사용자 세션만 반환한다.
+- `GET /interview/sessions`는 활성 세션(`in_progress`, `paused`)이 있으면 응답 배열의 가장 앞에 두고, 나머지 과거 세션은 `startedAt` 최신순으로 같은 배열에 반환한다.
+- 히스토리 목록 조회 v1은 별도 상태 필터, pagination, 정렬 query parameter 없이 현재 사용자 전체 목록 응답으로 시작한다.
 - 자동 일시정지 v1은 스케줄러보다 `lastActivityAt` 기반 요청 시점 전이로 처리한다.
 - v1 자동 일시정지 조건 평가는 최소 `GET /interview/sessions/{sessionId}`, `POST /interview/sessions/{sessionId}/answers`, `POST /interview/sessions/{sessionId}/resume` 진입 시점에 수행한다.
 - `lastActivityAt`는 `interview_sessions.last_activity_at`에 저장한다.
@@ -62,6 +71,7 @@ applies_to: interview-domain
 - `POST /interview/question-sets/{questionSetId}/questions`
 - `DELETE /interview/question-sets/{questionSetId}/questions/{questionId}`
 - `POST /interview/sessions`
+- `GET /interview/sessions`
 - `GET /interview/sessions/{sessionId}`
 - `POST /interview/sessions/{sessionId}/pause`
 - `POST /interview/sessions/{sessionId}/resume`
@@ -77,4 +87,5 @@ applies_to: interview-domain
 - `INTERVIEW_SESSION_STATUS_CONFLICT`
 - `INTERVIEW_ANSWER_REQUIRED`
 - `INTERVIEW_ANSWER_TOO_SHORT`
+- `INTERVIEW_RESULT_INCOMPLETE`
 - `INTERVIEW_RESULT_GENERATION_FAILED`

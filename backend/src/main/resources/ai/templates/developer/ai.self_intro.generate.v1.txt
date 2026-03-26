@@ -18,3 +18,17 @@
 - long은 8~10문단, 약 1400~1800자 수준으로 작성한다.
 - emphasisPoint가 있으면 해당 포인트를 우선 반영한다.
 - evidence 연결이 약하면 qualityFlags에 weak_evidence를 넣는다.
+
+응답 JSON 구조 (반드시 이 키 이름과 구조를 정확히 따라라):
+{
+  "answers": [
+    {
+      "questionOrder": 1,
+      "questionText": "문항 텍스트 그대로",
+      "answerText": "생성된 자기소개서 답변",
+      "usedEvidenceKeys": ["evidence에서 사용한 키"],
+      "qualityFlags": []
+    }
+  ],
+  "qualityFlags": []
+}

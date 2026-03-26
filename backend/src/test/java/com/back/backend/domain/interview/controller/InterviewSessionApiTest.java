@@ -18,15 +18,20 @@ import com.back.backend.support.ApiTestBase;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -36,13 +41,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class InterviewSessionApiTest extends ApiTestBase {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final Instant NOW = Instant.now();
+    private static final Instant FIXED_NOW = Instant.parse("2026-03-25T09:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
 
     @Autowired
     private EntityManager entityManager;
 
     @Autowired
     private InterviewSessionRepository interviewSessionRepository;
+
+    @MockitoBean
+    private Clock clock;
+
+    @BeforeEach
+    void setUpClock() {
+        given(clock.instant()).willReturn(FIXED_CLOCK.instant());
+    }
 
     @Test
     void startSession_returns201AndCreatesInProgressSession() throws Exception {
@@ -64,7 +78,7 @@ class InterviewSessionApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.status").value("in_progress"))
                 .andExpect(jsonPath("$.data.totalScore").value(nullValue()))
                 .andExpect(jsonPath("$.data.summaryFeedback").value(nullValue()))
-                .andExpect(jsonPath("$.data.startedAt").isNotEmpty())
+                .andExpect(jsonPath("$.data.startedAt").value(FIXED_NOW.toString()))
                 .andExpect(jsonPath("$.data.endedAt").value(nullValue()));
 
         entityManager.flush();
@@ -75,7 +89,7 @@ class InterviewSessionApiTest extends ApiTestBase {
                 .satisfies(session -> {
                     assertThat(session.getQuestionSet().getId()).isEqualTo(questionSet.getId());
                     assertThat(session.getStatus()).isEqualTo(InterviewSessionStatus.IN_PROGRESS);
-                    assertThat(session.getStartedAt()).isNotNull();
+                    assertThat(session.getStartedAt()).isEqualTo(FIXED_NOW);
                     assertThat(session.getLastActivityAt()).isEqualTo(session.getStartedAt());
                     assertThat(session.getEndedAt()).isNull();
                 });
@@ -228,8 +242,8 @@ class InterviewSessionApiTest extends ApiTestBase {
                 .user(user)
                 .questionSet(questionSet)
                 .status(status)
-                .startedAt(NOW)
-                .lastActivityAt(NOW)
+                .startedAt(FIXED_NOW)
+                .lastActivityAt(FIXED_NOW)
                 .endedAt(null)
                 .build();
         entityManager.persist(session);

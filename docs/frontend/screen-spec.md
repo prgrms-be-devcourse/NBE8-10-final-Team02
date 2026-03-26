@@ -2,7 +2,7 @@
 owner: 면접 세션/서비스 흐름 + 대시보드/히스토리
 reviewer: 프론트 협업자
 status: reviewed
-last_updated: 2026-03-24
+last_updated: 2026-03-25
 linked_issue_or_pr: docs-sync-screen-wbs-v6
 applies_to: screen-state-route
 ---
@@ -666,6 +666,10 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 
 ### 비고
 - 활성 세션이 있으면 가장 위에 고정해서 보여주고 재개 버튼을 제공한다.
+- 목록 데이터는 `GET /interview/sessions` 하나로 조회한다.
+- 서버는 현재 사용자 세션만 반환하고, 활성 세션(`in_progress`, `paused`)이 있으면 응답 배열의 가장 앞에 둔다.
+- 활성 세션 다음의 과거 세션은 `startedAt` 최신순으로 노출한다.
+- SCR-15의 상태 필터와 화면 정렬은 별도 백엔드 query parameter가 잠기기 전까지 v1 목록 응답 범위 안에서 처리한다.
 
 ---
 

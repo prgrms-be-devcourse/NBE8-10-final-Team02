@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class InterviewQuestionSetApiTest extends ApiTestBase {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final Instant NOW = Instant.now();
+    private static final Instant FIXED_NOW = Instant.parse("2026-03-24T09:00:00Z");
 
     @Autowired
     private EntityManager entityManager;
@@ -274,7 +274,7 @@ class InterviewQuestionSetApiTest extends ApiTestBase {
                 .user(user)
                 .questionSet(questionSet)
                 .status(InterviewSessionStatus.IN_PROGRESS)
-                .startedAt(NOW)
+                .startedAt(FIXED_NOW)
                 .endedAt(null)
                 .build();
         entityManager.persist(session);

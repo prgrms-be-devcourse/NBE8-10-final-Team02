@@ -51,4 +51,9 @@ public class InterviewAnswer extends CreatedAtEntity {
 
     @Column(name = "evaluation_rationale", columnDefinition = "text")
     private String evaluationRationale;
+
+    public void applyEvaluation(int score, String evaluationRationale) {
+        this.score = score;
+        this.evaluationRationale = evaluationRationale;
+    }
 }
