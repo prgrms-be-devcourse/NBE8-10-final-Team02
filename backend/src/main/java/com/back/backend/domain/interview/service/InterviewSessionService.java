@@ -29,6 +29,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -58,6 +59,7 @@ public class InterviewSessionService {
     private final InterviewSessionRepository interviewSessionRepository;
     private final InterviewResultGenerationService interviewResultGenerationService;
     private final InterviewResponseMapper interviewResponseMapper;
+    private final Clock clock;
     private final PlatformTransactionManager transactionManager;
 
     @Transactional
@@ -74,7 +76,7 @@ public class InterviewSessionService {
 
         validateQuestionCount(questionSetId);
 
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         InterviewSession session = interviewSessionRepository.save(
                 InterviewSession.builder()
                         .user(questionSet.getUser())
@@ -133,7 +135,7 @@ public class InterviewSessionService {
         validateNotCompleted(session);
         validatePauseAvailable(session);
 
-        Instant updatedAt = Instant.now();
+        Instant updatedAt = clock.instant();
         session.changeStatus(InterviewSessionStatus.PAUSED);
         return interviewResponseMapper.toInterviewSessionTransitionResponse(session, updatedAt);
     }
@@ -154,7 +156,7 @@ public class InterviewSessionService {
             );
         }
 
-        Instant resumedAt = Instant.now();
+        Instant resumedAt = clock.instant();
         session.changeStatus(InterviewSessionStatus.IN_PROGRESS);
         session.changeLastActivityAt(resumedAt);
         return interviewResponseMapper.toInterviewSessionTransitionResponse(session, resumedAt);
@@ -200,7 +202,7 @@ public class InterviewSessionService {
             return false;
         }
 
-        if (lastActivityAt.isBefore(Instant.now().minus(AUTO_PAUSE_THRESHOLD))) {
+        if (lastActivityAt.isBefore(clock.instant().minus(AUTO_PAUSE_THRESHOLD))) {
             session.changeStatus(InterviewSessionStatus.PAUSED);
             return true;
         }
@@ -213,7 +215,7 @@ public class InterviewSessionService {
         validateCompleteAvailable(session);
         validateAllQuestionsAnswered(session);
 
-        Instant endedAt = Instant.now();
+        Instant endedAt = clock.instant();
         session.changeStatus(InterviewSessionStatus.COMPLETED);
         session.changeEndedAt(endedAt);
 
