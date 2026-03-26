@@ -38,6 +38,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -184,7 +185,8 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
                         .with(authenticated(fixture.user().getId())))
                 .andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.error.code").value(ErrorCode.INTERVIEW_RESULT_INCOMPLETE.name()));
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.INTERVIEW_RESULT_INCOMPLETE.name()))
+                .andExpect(jsonPath("$.error.retryable").value(true));
 
         entityManager.flush();
         entityManager.clear();
@@ -212,7 +214,8 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
                         .with(authenticated(fixture.user().getId())))
                 .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.error.code").value(ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE.name()));
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE.name()))
+                .andExpect(jsonPath("$.error.retryable").value(true));
 
         entityManager.flush();
         entityManager.clear();
@@ -222,6 +225,38 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         assertThat(refreshedSession.getEndedAt()).isEqualTo(FIXED_NOW);
         assertThat(refreshedSession.getTotalScore()).isNull();
         assertThat(refreshedSession.getSummaryFeedback()).isNull();
+    }
+
+    @Test
+    void completeSession_blocksPostRetryAndKeepsResultRecheckPathWhenGenerationFails() throws Exception {
+        UserFixture fixture = persistAnsweredSession("complete-recheck-flow");
+        InterviewSession session = fixture.session();
+
+        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList()))
+                .willThrow(new ServiceException(
+                        ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "외부 서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.",
+                        true
+                ));
+
+        mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE.name()))
+                .andExpect(jsonPath("$.error.retryable").value(true));
+
+        mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.INTERVIEW_SESSION_ALREADY_COMPLETED.name()))
+                .andExpect(jsonPath("$.error.retryable").value(false));
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}/result", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.INTERVIEW_RESULT_INCOMPLETE.name()))
+                .andExpect(jsonPath("$.error.retryable").value(true));
     }
 
     private RequestPostProcessor authenticated(long userId) {
