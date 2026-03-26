@@ -3398,7 +3398,10 @@ paths:
                       retryable: true
                     meta: *id001
       description: 세션을 종료하고 피드백 결과 생성을 시작한다. 피드백이 즉시 생성되면 feedback_completed 상태로 응답할
-        수 있다. `complete`는 `in_progress`, `paused` 상태에서만 허용하며, 미답변 질문이 남아 있으면 400을 반환한다.
+        수 있다. `complete`는 `in_progress`, `paused` 상태에서만 허용하며, 미답변 질문이 남아 있으면 400을 반환한다. 결과
+        생성이 불완전하거나 외부 AI가 일시 장애여도 세션 종료 기록은 `completed` 상태로 유지한다. v1에서 `retryable=true`는
+        `POST /interview/sessions/{sessionId}/complete` 재전송이 아니라 `GET /interview/sessions/{sessionId}/result`
+        재확인 흐름을 의미한다.
   /interview/sessions/{sessionId}/result:
     get:
       tags:
@@ -3485,4 +3488,5 @@ paths:
                       retryable: true
                     meta: *id001
       description: 세션 결과와 피드백 리포트를 조회한다. `feedback_completed` 상태에서만 성공 응답을 반환한다.
-        완료 직후 결과 생성이 아직 끝나지 않은 `completed` 상태에서는 `INTERVIEW_RESULT_INCOMPLETE`를 반환한다.
+        완료 직후 결과 생성이 아직 끝나지 않은 `completed` 상태에서는 `INTERVIEW_RESULT_INCOMPLETE`를 반환한다. v1의 결과
+        재시도는 같은 `GET /interview/sessions/{sessionId}/result` 재조회이며, 별도 재생성 endpoint는 정의하지 않는다.
