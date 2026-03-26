@@ -131,6 +131,20 @@ export async function startSession(questionSetId: number): Promise<InterviewSess
   return body.data as InterviewSession;
 }
 
+export async function getSessions(): Promise<InterviewSession[]> {
+  const res = await fetch(`${base()}/sessions`, {
+    credentials: 'include',
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+
+  const body = await res.json();
+  return body.data as InterviewSession[];
+}
+
 export async function getSessionDetail(sessionId: number): Promise<InterviewSessionDetail> {
   const res = await fetch(`${base()}/sessions/${sessionId}`, {
     credentials: 'include',
