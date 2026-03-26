@@ -45,6 +45,8 @@ const DIFFICULTY_LABEL: Record<string, string> = {
 
 const MIN_ANSWER_LENGTH = 50;
 const MAX_ANSWER_LENGTH = 1000;
+const AUTO_PAUSE_THRESHOLD_MINUTES = 30;
+const AUTO_PAUSE_THRESHOLD_MS = AUTO_PAUSE_THRESHOLD_MINUTES * 60 * 1000;
 
 function formatDateTime(value: string | null) {
   if (!value) {
@@ -55,6 +57,24 @@ function formatDateTime(value: string | null) {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(new Date(value));
+}
+
+function getElapsedSince(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const elapsed = Date.now() - new Date(value).getTime();
+  return Number.isFinite(elapsed) ? Math.max(elapsed, 0) : null;
+}
+
+function isAutoPauseLikely(session: InterviewSessionDetail) {
+  if (session.status !== 'paused') {
+    return false;
+  }
+
+  const elapsed = getElapsedSince(session.lastActivityAt);
+  return elapsed !== null && elapsed >= AUTO_PAUSE_THRESHOLD_MS;
 }
 
 export default function InterviewSessionPage() {
@@ -72,14 +92,21 @@ export default function InterviewSessionPage() {
   const [transitionSuccess, setTransitionSuccess] = useState<string | null>(null);
   const [transitionMode, setTransitionMode] = useState<'pause' | 'resume' | null>(null);
 
-  const loadSession = useCallback(async (options?: { resetAnswerText?: boolean }) => {
+  const loadSession = useCallback(async (options?: {
+    resetAnswerText?: boolean;
+    showPageLoading?: boolean;
+  }) => {
     if (!Number.isFinite(sessionId)) {
       setError('올바른 세션 경로가 아닙니다.');
       setLoading(false);
-      return;
+      return null;
     }
 
-    setLoading(true);
+    const showPageLoading = options?.showPageLoading ?? true;
+
+    if (showPageLoading) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -88,10 +115,14 @@ export default function InterviewSessionPage() {
       if (options?.resetAnswerText) {
         setAnswerText('');
       }
+      return data;
     } catch (err) {
       setError(err instanceof Error ? err.message : '세션 정보를 불러오지 못했습니다.');
+      return null;
     } finally {
-      setLoading(false);
+      if (showPageLoading) {
+        setLoading(false);
+      }
     }
   }, [sessionId]);
 
@@ -106,6 +137,22 @@ export default function InterviewSessionPage() {
     }
 
     return err instanceof Error ? err.message : fallbackMessage;
+  }
+
+  function buildAutoPauseNotice(nextSession: InterviewSessionDetail) {
+    if (isAutoPauseLikely(nextSession)) {
+      return `마지막 활동 후 ${AUTO_PAUSE_THRESHOLD_MINUTES}분 이상 지나 세션이 자동 일시정지된 것으로 보입니다. 재개 후 다시 이어서 진행해주세요.`;
+    }
+
+    if (nextSession.status === 'paused') {
+      return '세션이 현재 일시정지 상태입니다. 재개 후 다시 이어서 진행해주세요.';
+    }
+
+    if (nextSession.status === 'completed' || nextSession.status === 'feedback_completed') {
+      return '이미 종료된 면접 세션입니다.';
+    }
+
+    return null;
   }
 
   async function handleSubmitAnswer(isSkipped: boolean) {
@@ -149,9 +196,15 @@ export default function InterviewSessionPage() {
           ? `Q${result.answerOrder}를 건너뛰었습니다. 다음 질문을 불러옵니다.`
           : `Q${result.answerOrder} 답변을 저장했습니다. 다음 질문을 불러옵니다.`,
       );
-      await loadSession({ resetAnswerText: true });
+      await loadSession({ resetAnswerText: true, showPageLoading: false });
     } catch (err) {
-      setSubmitError(formatApiError(err, '답변을 저장하지 못했습니다.'));
+      if (err instanceof InterviewApiError && err.code === 'INTERVIEW_SESSION_STATUS_CONFLICT') {
+        const refreshed = await loadSession({ showPageLoading: false });
+        const autoPauseNotice = refreshed ? buildAutoPauseNotice(refreshed) : null;
+        setSubmitError(autoPauseNotice ?? formatApiError(err, '답변을 저장하지 못했습니다.'));
+      } else {
+        setSubmitError(formatApiError(err, '답변을 저장하지 못했습니다.'));
+      }
     } finally {
       setSubmittingMode(null);
     }
@@ -178,9 +231,15 @@ export default function InterviewSessionPage() {
           ? '세션을 일시정지했습니다. 같은 세션에서 다시 재개할 수 있습니다.'
           : '세션을 재개했습니다. 이어서 답변을 제출할 수 있습니다.',
       );
-      await loadSession();
+      await loadSession({ showPageLoading: false });
     } catch (err) {
-      setTransitionError(formatApiError(err, '세션 상태를 변경하지 못했습니다.'));
+      if (err instanceof InterviewApiError && err.code === 'INTERVIEW_SESSION_STATUS_CONFLICT') {
+        const refreshed = await loadSession({ showPageLoading: false });
+        const autoPauseNotice = refreshed ? buildAutoPauseNotice(refreshed) : null;
+        setTransitionError(autoPauseNotice ?? formatApiError(err, '세션 상태를 변경하지 못했습니다.'));
+      } else {
+        setTransitionError(formatApiError(err, '세션 상태를 변경하지 못했습니다.'));
+      }
     } finally {
       setTransitionMode(null);
     }
@@ -188,6 +247,7 @@ export default function InterviewSessionPage() {
 
   const answerLength = answerText.trim().length;
   const actionBusy = submittingMode !== null || transitionMode !== null;
+  const autoPauseLikely = session ? isAutoPauseLikely(session) : false;
   const canSubmitAnswer =
     session?.status === 'in_progress' &&
     !!session.currentQuestion &&
@@ -235,7 +295,7 @@ export default function InterviewSessionPage() {
         </Link>
         <h1 className="mt-2 text-2xl font-semibold text-zinc-900">모의 면접 세션</h1>
         <p className="mt-2 text-sm text-zinc-500">
-          답변 제출과 명시적 일시정지/재개를 현재 화면에서 처리합니다. 자동 일시정지 복원 UX와 결과 이동은 다음 단계에서 닫습니다.
+          답변 제출, 명시적 일시정지/재개, 자동 일시정지 복원 안내를 현재 화면에서 처리합니다. 결과 이동은 다음 단계에서 닫습니다.
         </p>
       </div>
 
@@ -250,6 +310,30 @@ export default function InterviewSessionPage() {
             진행 {session.answeredQuestionCount}/{session.totalQuestionCount}
           </span>
         </div>
+
+        {session.status === 'paused' && (
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+            <p className="text-sm font-semibold text-amber-900">
+              {autoPauseLikely ? '자동 일시정지된 것으로 보입니다.' : '현재 일시정지된 세션입니다.'}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-amber-800">
+              {autoPauseLikely
+                ? `마지막 활동 후 ${AUTO_PAUSE_THRESHOLD_MINUTES}분 이상 지나 현재 세션이 일시정지 상태로 보입니다. 재개 후 같은 질문부터 이어서 답변을 제출하세요.`
+                : '같은 세션에서 그대로 재개할 수 있습니다. 위의 `재개` 버튼으로 진행을 이어가세요.'}
+            </p>
+            <p className="mt-2 text-sm text-amber-800">
+              {session.resumeAvailable
+                ? `새로고침이나 브라우저 이탈 후에도 ${AUTO_PAUSE_THRESHOLD_MINUTES}분 이내에는 같은 세션으로 복원할 수 있습니다.`
+                : '현재는 복원 가능 여부를 다시 확인할 수 없습니다. 세션 상태를 새로 불러온 뒤 재개를 시도하세요.'}
+            </p>
+          </div>
+        )}
+
+        {session.status !== 'paused' && session.resumeAvailable && (
+          <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm text-blue-900">
+            새로고침이나 브라우저 이탈 후에도 {AUTO_PAUSE_THRESHOLD_MINUTES}분 이내에는 같은 세션으로 다시 돌아올 수 있습니다.
+          </div>
+        )}
 
         {session.currentQuestion ? (
           <div className="mt-5 rounded-2xl border border-zinc-200 px-4 py-4">
@@ -359,8 +443,10 @@ export default function InterviewSessionPage() {
             onChange={(event) => setAnswerText(event.target.value)}
             disabled={session.status !== 'in_progress' || !session.currentQuestion || actionBusy}
             placeholder={
-              session.status !== 'in_progress'
-                ? '현재 상태에서는 답변을 제출할 수 없습니다.'
+              session.status === 'paused'
+                ? '일시정지된 세션은 재개 후 답변을 제출할 수 있습니다.'
+                : session.status !== 'in_progress'
+                  ? '현재 상태에서는 답변을 제출할 수 없습니다.'
                 : '면접 답변을 입력하세요'
             }
             className="mt-4 w-full rounded-2xl border border-zinc-300 px-4 py-3 text-sm leading-6 text-zinc-900 focus:border-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
@@ -368,7 +454,9 @@ export default function InterviewSessionPage() {
 
           {session.status === 'paused' && (
             <p className="mt-3 text-sm text-amber-700">
-              이 세션은 현재 일시정지 상태입니다. 위의 `재개` 버튼으로 다시 진행할 수 있습니다.
+              {autoPauseLikely
+                ? `마지막 활동 시각 기준으로 자동 일시정지된 것으로 보입니다. 재개 후 답변을 다시 제출해주세요.`
+                : '이 세션은 현재 일시정지 상태입니다. 위의 `재개` 버튼으로 다시 진행할 수 있습니다.'}
             </p>
           )}
 
