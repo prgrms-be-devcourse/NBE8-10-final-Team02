@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -198,6 +199,15 @@ public class AnalysisPipelineService {
         // 실행 중인 스레드 등록 (cancel() 호출 시 interrupt를 보낼 수 있도록)
         activeThreads.put(threadKey(userId, repositoryId), Thread.currentThread());
 
+        // PENDING → 큐 대기 중 cancel()이 먼저 호출된 경우 (Redis가 이미 FAILED) 즉시 중단
+        SyncStatusService.SyncStatusData currentStatus =
+                syncStatusService.getStatus(userId, repositoryId).orElse(null);
+        if (currentStatus == null || currentStatus.status() == SyncStatus.FAILED) {
+            log.info("Pipeline skipped (cancelled before start): userId={}, repoId={}", userId, repositoryId);
+            activeThreads.remove(threadKey(userId, repositoryId));
+            return;
+        }
+
         // 트랜잭션 외부에서 엔티티를 다시 로드 (영속성 컨텍스트 분리)
         User user = userRepository.findById(userId).orElse(null);
         // findByIdWithConnection: githubConnection + user JOIN FETCH → 트랜잭션 없는 비동기 컨텍스트에서
@@ -239,10 +249,12 @@ public class AnalysisPipelineService {
         }
 
         // ② Clone / Fetch
+        checkCancelled(userId, repositoryId); // significance_check 완료 후 취소 여부 확인
         syncStatusService.setInProgress(userId, repositoryId, "clone");
         Path repoPath = repoCloneService.cloneOrFetch(repo.getHtmlUrl(), userId, repositoryId);
 
         // ③ 정적 분석 + PageRank + Code Index 저장
+        checkCancelled(userId, repositoryId); // clone 완료 후 취소 여부 확인
         syncStatusService.setInProgress(userId, repositoryId, "analysis");
 
         String authorEmail = resolveAuthorEmail(repo, user);
@@ -268,6 +280,7 @@ public class AnalysisPipelineService {
         codeIndexService.buildIndex(repo, userId, nodes, authoredFiles, pagerankMap);
 
         // ④ RepoSummary AI 생성 + MergedSummary 재집계
+        checkCancelled(userId, repositoryId); // analysis 완료 후 취소 여부 확인
         syncStatusService.setInProgress(userId, repositoryId, "summary");
         try {
             repoSummaryGeneratorService.generate(user, repo, authorEmail, triggerReason);
@@ -343,6 +356,29 @@ public class AnalysisPipelineService {
         } catch (IOException e) {
             log.warn("Failed to count source files in repo: {}, defaulting to small repo", repoPath);
             return false;
+        }
+    }
+
+    /**
+     * 스레드 interrupt 또는 Redis FAILED 상태이면 CancellationException을 던진다.
+     * 각 파이프라인 단계 사이에 호출하여 취소를 즉시 감지한다.
+     *
+     * interrupt 체크: cancel()이 t.interrupt()를 호출했을 때 감지
+     * Redis 체크: interrupt 신호가 블로킹 구간에서 소비된 경우에도 취소를 감지
+     */
+    private void checkCancelled(Long userId, Long repositoryId) {
+        boolean interrupted = Thread.currentThread().isInterrupted();
+        if (!interrupted) {
+            // Redis 상태로 2차 확인 (interrupt 신호가 이미 소비된 경우 대비)
+            SyncStatusService.SyncStatusData status =
+                    syncStatusService.getStatus(userId, repositoryId).orElse(null);
+            if (status != null && status.status() == SyncStatus.FAILED) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt(); // interrupt 플래그 복원
+            throw new CancellationException("분석이 취소되었습니다.");
         }
     }
 
