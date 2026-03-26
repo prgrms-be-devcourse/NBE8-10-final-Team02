@@ -2,17 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { connectGithub, refreshGithubConnection, getGithubConnection } from '@/api/github';
+import { refreshGithubConnection, getGithubConnection } from '@/api/github';
 import { getMe, getGithubLinkUrl } from '@/api/auth';
 import type { GithubConnection } from '@/types/github';
 import type { Provider } from '@/types/auth';
-
-// GitHub login 형식 검증 (백엔드와 동일한 규칙으로 프론트에서 선검증)
-function isValidGithubLogin(login: string): boolean {
-  return /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/.test(login);
-}
-
-type Mode = 'url' | 'oauth';
 
 export default function GithubConnectPage() {
   const router = useRouter();
@@ -21,10 +14,6 @@ export default function GithubConnectPage() {
   const [loading, setLoading] = useState(true);
   const [existingConnection, setExistingConnection] = useState<GithubConnection | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
-
-  const [mode, setMode] = useState<Mode>('url');
-  const [login, setLogin] = useState('');
-  const [loginError, setLoginError] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -43,37 +32,6 @@ export default function GithubConnectPage() {
       })
       .finally(() => setLoading(false));
   }, []);
-
-  // ── URL 모드 제출 ────────────────────────────────────────
-  async function handleUrlSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoginError(null);
-    setApiError(null);
-
-    if (!login.trim()) {
-      setLoginError('GitHub 사용자 이름을 입력해주세요.');
-      return;
-    }
-    if (!isValidGithubLogin(login.trim())) {
-      setLoginError('올바르지 않은 GitHub 사용자 이름 형식입니다. 영문자, 숫자, 하이픈만 사용할 수 있습니다.');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const result = await connectGithub({ mode: 'url', githubLogin: login.trim() });
-      setConnected(result);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : '연결 중 오류가 발생했습니다.';
-      if (msg.includes('요청 한도')) {
-        setApiError(msg + '\n\nGitHub OAuth로 연동하면 시간당 5,000회로 한도가 늘어납니다.');
-      } else {
-        setApiError(msg);
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   // ── GitHub OAuth 연동 (Google/Kakao 사용자) ──────────────────
   async function handleGithubOAuthLink() {
@@ -187,6 +145,9 @@ export default function GithubConnectPage() {
           <p className="text-xs text-blue-700">
             GitHub OAuth 토큰이 저장되어 있습니다. 아래 버튼을 눌러 repository 목록을 가져오세요.
           </p>
+          <p className="mt-2 text-xs text-blue-600">
+            OAuth 연동을 통해 본인 소유 계정임이 확인되었으며, 시간당 5,000회의 빠른 API 요청이 지원됩니다.
+          </p>
         </div>
 
         {apiError && (
@@ -204,111 +165,57 @@ export default function GithubConnectPage() {
           {submitting ? 'repository 가져오는 중...' : 'repository 목록 가져오기'}
         </button>
         <p className="mt-3 text-xs text-zinc-400">
-          • private repository를 포함한 모든 repository가 조회됩니다.
+          • public repository만 조회됩니다. private repository는 수집하지 않습니다.
         </p>
       </main>
     );
   }
 
   // ── Google / Kakao 로그인 사용자 (연결 없음) ──────────────
+  // GitHub 기능은 선택 사항이나, 사용하려면 OAuth 연동이 필수임을 고지한다.
   return (
     <main className="mx-auto max-w-lg px-4 py-12">
       <h1 className="mb-2 text-2xl font-semibold">GitHub 연결</h1>
-      <p className="mb-8 text-sm text-zinc-500">
-        GitHub 활동 내역을 바탕으로 자소서 생성과 면접 준비에 활용합니다.
+      <p className="mb-6 text-sm text-zinc-500">
+        GitHub repository를 연결하면 커밋 이력을 바탕으로 자소서 생성과 면접 준비에 활용할 수 있습니다.
+        GitHub 연결은 선택 사항이며, 연결하지 않아도 다른 기능은 정상 이용 가능합니다.
       </p>
 
-      {/* 모드 탭 */}
-      <div className="mb-6 flex rounded border border-zinc-200">
-        <button
-          onClick={() => { setMode('url'); setApiError(null); }}
-          className={`flex-1 py-2 text-sm font-medium ${
-            mode === 'url' ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 hover:bg-zinc-50'
-          }`}
-        >
-          URL 입력
-        </button>
-        <button
-          onClick={() => { setMode('oauth'); setApiError(null); }}
-          className={`flex-1 py-2 text-sm font-medium ${
-            mode === 'oauth' ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 hover:bg-zinc-50'
-          }`}
-        >
-          GitHub OAuth 연동
-        </button>
+      <div className="rounded border border-amber-200 bg-amber-50 px-4 py-4 mb-6">
+        <p className="text-sm font-semibold text-amber-800 mb-2">GitHub 기능 이용 시 OAuth 연동이 필수입니다</p>
+        <ul className="text-xs text-amber-700 space-y-1.5 list-disc list-inside">
+          <li>
+            <span className="font-medium">본인 확인</span> — OAuth 연동을 통해 실제 본인 소유의 계정임을 검증합니다.
+            타인의 GitHub ID를 입력하는 방식은 지원하지 않습니다.
+          </li>
+          <li>
+            <span className="font-medium">속도 및 안정성</span> — 비인증 요청은 시간당 60회로 제한됩니다.
+            OAuth 연동 시 5,000회로 늘어나 빠르고 안정적으로 이용할 수 있습니다.
+          </li>
+          <li>
+            <span className="font-medium">public repository만 수집</span> — private repository는 수집하지 않습니다.
+            본인 소유의 public repository 커밋 이력만 포트폴리오에 활용됩니다.
+          </li>
+        </ul>
       </div>
 
-      {/* URL 모드 */}
-      {mode === 'url' && (
-        <form onSubmit={handleUrlSubmit} className="flex flex-col gap-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-zinc-700">
-              GitHub 사용자 이름
-            </label>
-            <input
-              type="text"
-              value={login}
-              onChange={(e) => { setLogin(e.target.value); setLoginError(null); }}
-              placeholder="예: octocat"
-              disabled={submitting}
-              className="w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none disabled:bg-zinc-50"
-            />
-            {loginError && <p className="mt-1 text-xs text-red-600">{loginError}</p>}
-          </div>
-
-          <p className="text-xs text-zinc-400">
-            • public repository만 조회됩니다.
-            <br />
-            • private repository가 필요하면 GitHub OAuth 연동 탭을 이용하세요.
-          </p>
-
-          {apiError && (
-            <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 whitespace-pre-line">
-              {apiError}
-              <button type="button" onClick={() => setApiError(null)} className="ml-2 underline text-red-500">닫기</button>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded bg-zinc-900 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {submitting ? '연결 중...' : 'public repository 조회'}
-          </button>
-        </form>
-      )}
-
-      {/* OAuth 모드 */}
-      {mode === 'oauth' && (
-        <div className="flex flex-col gap-4">
-          <div className="rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-            <p className="font-medium mb-1">private repository 접근 포함</p>
-            <p className="text-xs text-blue-700">
-              GitHub OAuth로 연동하면 private repository도 조회할 수 있고,
-              API 요청 한도도 시간당 5,000회로 늘어납니다.
-            </p>
-          </div>
-
-          {apiError && (
-            <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 whitespace-pre-line">
-              {apiError}
-              <button type="button" onClick={() => setApiError(null)} className="ml-2 underline text-red-500">닫기</button>
-            </div>
-          )}
-
-          <button
-            onClick={handleGithubOAuthLink}
-            disabled={submitting}
-            className="rounded bg-zinc-900 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {submitting ? 'GitHub로 이동 중...' : 'GitHub OAuth 연동하기'}
-          </button>
-          <p className="text-xs text-zinc-400">
-            • GitHub 로그인 페이지로 이동합니다. 완료 후 이 페이지로 돌아옵니다.
-          </p>
+      {apiError && (
+        <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 whitespace-pre-line">
+          {apiError}
+          <button type="button" onClick={() => setApiError(null)} className="ml-2 underline text-red-500">닫기</button>
         </div>
       )}
+
+      <button
+        onClick={handleGithubOAuthLink}
+        disabled={submitting}
+        className="w-full rounded bg-zinc-900 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+      >
+        {submitting ? 'GitHub로 이동 중...' : 'GitHub OAuth 연동하기'}
+      </button>
+      <p className="mt-3 text-xs text-zinc-400">
+        • GitHub 로그인 페이지로 이동합니다. 완료 후 이 페이지로 돌아옵니다.
+      </p>
     </main>
   );
 }
