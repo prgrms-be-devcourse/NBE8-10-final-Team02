@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 
@@ -27,6 +28,7 @@ public class InterviewAnswerService {
     private final InterviewQuestionRepository interviewQuestionRepository;
     private final InterviewAnswerRepository interviewAnswerRepository;
     private final InterviewResponseMapper interviewResponseMapper;
+    private final Clock clock;
 
     // auto-pause 대상 세션은 충돌 오류를 반환하더라도 paused 상태 보정은 남겨야 한다.
     // 그래서 ServiceException이 나와도 세션 상태 변경까지는 롤백하지 않는다.
@@ -81,7 +83,7 @@ public class InterviewAnswerService {
         }
 
         String normalizedAnswerText = normalizeAnswerText(request.answerText(), request.isSkipped());
-        Instant submittedAt = Instant.now();
+        Instant submittedAt = clock.instant();
         session.changeLastActivityAt(submittedAt);
 
         InterviewAnswer savedAnswer = interviewAnswerRepository.save(
