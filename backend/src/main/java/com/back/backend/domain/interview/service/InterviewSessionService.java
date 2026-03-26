@@ -34,6 +34,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -91,6 +92,16 @@ public class InterviewSessionService {
         );
 
         return interviewResponseMapper.toInterviewSessionResponse(session);
+    }
+
+    @Transactional(readOnly = true)
+    public List<InterviewSessionResponse> getSessions(long userId) {
+        return interviewSessionRepository.findAllByUserIdOrderByStartedAtDesc(userId).stream()
+                .sorted(Comparator
+                        .comparing((InterviewSession session) -> isActiveStatus(session.getStatus()) ? 0 : 1)
+                        .thenComparing(InterviewSession::getStartedAt, Comparator.reverseOrder()))
+                .map(interviewResponseMapper::toInterviewSessionResponse)
+                .toList();
     }
 
     @Transactional
@@ -421,6 +432,10 @@ public class InterviewSessionService {
 
     private boolean isTerminalStatus(InterviewSessionStatus status) {
         return status == InterviewSessionStatus.COMPLETED || status == InterviewSessionStatus.FEEDBACK_COMPLETED;
+    }
+
+    private boolean isActiveStatus(InterviewSessionStatus status) {
+        return ACTIVE_STATUSES.contains(status);
     }
 
     private ServiceException incompleteResult() {

@@ -56,6 +56,9 @@ applies_to: interview-domain
 - 사용자 1명당 동시에 진행 가능한 활성 세션은 1개다.
 - 활성 세션은 `in_progress + paused`로 본다.
 - 활성 세션이 있으면 새 세션 시작보다 기존 세션 복귀 또는 재개를 우선한다.
+- 세션 목록 조회는 현재 사용자 세션만 반환한다.
+- `GET /interview/sessions`는 활성 세션(`in_progress`, `paused`)이 있으면 응답 배열의 가장 앞에 두고, 나머지 과거 세션은 `startedAt` 최신순으로 같은 배열에 반환한다.
+- 히스토리 목록 조회 v1은 별도 상태 필터, pagination, 정렬 query parameter 없이 현재 사용자 전체 목록 응답으로 시작한다.
 - 자동 일시정지 v1은 스케줄러보다 `lastActivityAt` 기반 요청 시점 전이로 처리한다.
 - v1 자동 일시정지 조건 평가는 최소 `GET /interview/sessions/{sessionId}`, `POST /interview/sessions/{sessionId}/answers`, `POST /interview/sessions/{sessionId}/resume` 진입 시점에 수행한다.
 - `lastActivityAt`는 `interview_sessions.last_activity_at`에 저장한다.
@@ -68,6 +71,7 @@ applies_to: interview-domain
 - `POST /interview/question-sets/{questionSetId}/questions`
 - `DELETE /interview/question-sets/{questionSetId}/questions/{questionId}`
 - `POST /interview/sessions`
+- `GET /interview/sessions`
 - `GET /interview/sessions/{sessionId}`
 - `POST /interview/sessions/{sessionId}/pause`
 - `POST /interview/sessions/{sessionId}/resume`

@@ -2858,6 +2858,9 @@ paths:
       tags:
       - Interview
       summary: 면접 세션 목록 조회
+      description: 현재 사용자 세션 목록을 조회한다. 활성 세션은 `in_progress`, `paused`를 포함하며, 존재하면 응답 배열의 가장 앞에
+        둔다. 나머지 완료 또는 결과 완료 세션은 `startedAt` 최신순으로 같은 배열에서 함께 반환한다. v1은 별도 상태 필터,
+        pagination, 정렬 query parameter 없이 동작한다.
       responses:
         '200':
           description: 세션 목록
@@ -2891,6 +2894,13 @@ paths:
                       summaryFeedback: null
                       startedAt: '2026-03-17T10:35:00Z'
                       endedAt: null
+                    - id: 844
+                      questionSetId: 655
+                      status: feedback_completed
+                      totalScore: 84
+                      summaryFeedback: 핵심 경험 설명은 좋았지만 답변 구조를 더 선명하게 다듬을 필요가 있습니다.
+                      startedAt: '2026-03-14T09:10:00Z'
+                      endedAt: '2026-03-14T09:42:00Z'
                     meta: *id002
   /interview/sessions/{sessionId}:
     get:
