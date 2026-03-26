@@ -1,12 +1,14 @@
 import type {
   ApiFieldError,
   InterviewAnswerSubmitRequest,
+  InterviewResult,
   InterviewManualQuestionCreateRequest,
   InterviewQuestion,
   InterviewQuestionSetDetail,
   InterviewQuestionSetCreateRequest,
   InterviewQuestionSetSummary,
   InterviewSession,
+  SessionCompletionData,
   InterviewSessionDetail,
   InterviewSessionTransitionData,
   SessionAnswerSubmitData,
@@ -185,4 +187,32 @@ export function pauseSession(sessionId: number): Promise<InterviewSessionTransit
 
 export function resumeSession(sessionId: number): Promise<InterviewSessionTransitionData> {
   return transitionSession(sessionId, 'resume');
+}
+
+export async function completeSession(sessionId: number): Promise<SessionCompletionData> {
+  const res = await fetch(`${base()}/sessions/${sessionId}/complete`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+
+  const body = await res.json();
+  return body.data as SessionCompletionData;
+}
+
+export async function getSessionResult(sessionId: number): Promise<InterviewResult> {
+  const res = await fetch(`${base()}/sessions/${sessionId}/result`, {
+    credentials: 'include',
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+
+  const body = await res.json();
+  return body.data as InterviewResult;
 }
