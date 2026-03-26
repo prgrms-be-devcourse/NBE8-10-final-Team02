@@ -49,6 +49,10 @@ management:
     tags:
       application: spring-app # Prometheus 설정의 job_name과 맞춰주는 것이 좋습니다.
 
+app:
+  storage:
+    upload-dir: ${APP_STORAGE_UPLOAD_DIR:uploads}
+
 ai:
   provider: gemini
   gemini:
@@ -61,6 +65,12 @@ ai:
     retry:
       max-attempts: 1
 
+
+analysis:
+  # OCI 파일시스템의 repo clone 베이스 경로 (/data/repos/{userId}/{repoId}/)
+  repo-base-path: /data/repos
+  # 외부 언어 분석기 스크립트 디렉토리 경로 (배포 시 절대 경로로 지정)
+  scripts-base-path: /opt/analysis-scripts
 
 # JWT 보안 설정
 security:

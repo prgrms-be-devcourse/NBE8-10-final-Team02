@@ -2,7 +2,7 @@
 owner: 플랫폼/공통 기반 + 인프라/배포/관측성
 reviewer: 프론트 협업자
 status: reviewed
-last_updated: 2026-03-18
+last_updated: 2026-03-25
 linked_issue_or_pr: docs-sync-requirements-v5
 applies_to: error-classification-and-response
 ---
@@ -298,9 +298,18 @@ applies_to: error-classification-and-response
 
 ### 10.2 interview session
 
+- 세션 시작은 현재 사용자 소유 질문 세트에 대해서만 허용한다.
+- 세션 시작 전 질문 세트는 3개 이상 20개 이하 질문을 가져야 한다.
+- 질문 수가 3개 미만이거나 20개를 초과하면 `REQUEST_VALIDATION_FAILED`로 거절한다.
 - `ready` 상태는 시작 전 상태이며 답변 제출을 허용하지 않는다.
+- 답변 제출은 현재 사용자 소유 세션과 해당 세션에서 진행 중인 질문에 대해서만 허용한다.
+- 답변 제출 요청의 `questionId`, `answerOrder`가 현재 순번과 다르면 `REQUEST_VALIDATION_FAILED`로 거절한다.
 - `in_progress` 상태의 세션만 일반 답변 제출을 허용한다.
-- `paused`, `completed`, `feedback_completed` 상태 세션에는 추가 답변 저장을 허용하지 않는다.
+- 명시적 `pause`는 `in_progress` 상태에서만 허용하고, 명시적 `resume`은 `paused` 상태에서만 허용한다.
+- 현재 상태에서 허용되지 않는 `pause/resume` 요청은 `INTERVIEW_SESSION_STATUS_CONFLICT`로 거절한다.
+- 건너뛰기 아닌 일반 답변이 비어 있으면 `INTERVIEW_ANSWER_REQUIRED`로 거절한다.
+- `paused` 상태 세션의 답변 제출은 `INTERVIEW_SESSION_NOT_ACTIVE`로 거절한다.
+- `completed`, `feedback_completed` 상태 세션의 추가 답변 저장은 `INTERVIEW_SESSION_ALREADY_COMPLETED`로 거절한다.
 - 종료되지 않은 세션을 결과 확정 상태로 저장하면 안 된다.
 
 ### 10.3 document / repository
@@ -484,6 +493,7 @@ applies_to: error-classification-and-response
 - `AUTH_UNSUPPORTED_PROVIDER`
 - `AUTH_OAUTH_CANCELLED`
 - `AUTH_PROVIDER_RESPONSE_INVALID`
+- `USER_NOT_FOUND`
 - `USER_WITHDRAWN`
 
 ### 17.2 GitHub 연동
@@ -523,9 +533,11 @@ applies_to: error-classification-and-response
 
 - `INTERVIEW_QUESTION_GENERATION_FAILED`
 - `INTERVIEW_QUESTION_RESULT_INVALID`
+- `INTERVIEW_QUESTION_SET_NOT_EDITABLE`
 - `INTERVIEW_SESSION_NOT_FOUND`
 - `INTERVIEW_SESSION_ALREADY_ACTIVE`
 - `INTERVIEW_SESSION_ALREADY_COMPLETED`
+- `INTERVIEW_SESSION_STATUS_CONFLICT`
 - `INTERVIEW_SESSION_NOT_ACTIVE`
 - `INTERVIEW_ANSWER_REQUIRED`
 - `INTERVIEW_ANSWER_TOO_SHORT`
@@ -552,8 +564,14 @@ applies_to: error-classification-and-response
 | 파일 크기 초과 | 400 | DOCUMENT_FILE_TOO_LARGE | 파일 용량이 허용 범위를 초과했습니다. | false |
 | 문서 추출 실패 | 502 | DOCUMENT_EXTRACT_FAILED | 문서 내용 추출에 실패했습니다. | true |
 | 포트폴리오 데이터 없음 | 422 | APPLICATION_SOURCE_REQUIRED | 포트폴리오 데이터를 먼저 등록해주세요. | false |
+| 지원 단위를 ready로 변경할 수 없음 | 409 | APPLICATION_STATUS_CONFLICT | 지원 준비가 아직 완료되지 않았습니다. source, 문항, 답변을 확인해주세요. | false |
 | 자소서 생성 timeout | 503 | SELF_INTRO_GENERATION_TIMEOUT | 생성 시간이 길어지고 있습니다. 잠시 후 다시 시도해주세요. | true |
-| 활성 세션이 이미 존재함 | 409 | INTERVIEW_SESSION_ALREADY_ACTIVE | 이미 진행 중인 면접 세션이 있습니다. | false |
+| 세션이 시작된 질문 세트를 수정하려고 함 | 409 | INTERVIEW_QUESTION_SET_NOT_EDITABLE | 이미 면접이 시작된 질문 세트는 수정할 수 없습니다. | false |
+| 세션 시작 질문 수가 범위를 벗어남 | 400 | REQUEST_VALIDATION_FAILED | 면접 세션은 3개 이상 20개 이하 질문으로만 시작할 수 있습니다. | false |
+| 활성 세션이 이미 존재함 | 409 | INTERVIEW_SESSION_ALREADY_ACTIVE | 이미 활성 면접 세션이 있습니다. | false |
+| 현재 상태에서 pause/resume 요청이 허용되지 않음 | 409 | INTERVIEW_SESSION_STATUS_CONFLICT | 현재 상태에서는 세션 상태를 변경할 수 없습니다. | false |
+| 건너뛰기 아닌 답변이 비어 있음 | 400 | INTERVIEW_ANSWER_REQUIRED | 답변을 입력해주세요. | false |
+| 일시정지 등 진행 불가 상태에서 답변 제출 | 409 | INTERVIEW_SESSION_NOT_ACTIVE | 진행 가능한 면접 세션이 아닙니다. 재개 후 다시 시도해주세요. | false |
 | 면접 답변이 50자 미만 | 400 | INTERVIEW_ANSWER_TOO_SHORT | 답변은 50자 이상 입력해주세요. | false |
 | 완료된 세션에 재답변 요청 | 409 | INTERVIEW_SESSION_ALREADY_COMPLETED | 이미 종료된 면접 세션입니다. | false |
 | 면접 결과 생성 실패 | 502 | INTERVIEW_RESULT_GENERATION_FAILED | 면접 결과 생성 중 오류가 발생했습니다. | true |

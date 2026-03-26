@@ -42,4 +42,15 @@ public class Application extends BaseTimeEntity {
     @Convert(converter = ApplicationStatusConverter.class)
     @Column(name = "status", nullable = false, length = 20)
     private ApplicationStatus status;
+
+    public void updateBasics(String applicationTitle, String companyName, String applicationType, String jobRole) {
+        this.applicationTitle = applicationTitle;
+        this.companyName = companyName;
+        this.applicationType = applicationType;
+        this.jobRole = jobRole;
+    }
+
+    public void changeStatus(ApplicationStatus status) {
+        this.status = status;
+    }
 }

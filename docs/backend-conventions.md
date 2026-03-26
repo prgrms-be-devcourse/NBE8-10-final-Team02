@@ -2,7 +2,7 @@
 owner: 플랫폼/공통 기반 + 인프라/배포/관측성
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-03-23
 linked_issue_or_pr: docs-sync-requirements-v5
 applies_to: backend-implementation
 ---
@@ -66,31 +66,33 @@ applies_to: backend-implementation
 ### 4.1 도메인 우선 구조를 사용한다
 
 - 패키지는 기술 레이어 기준이 아니라 도메인 기준으로 나눈다.
-- 공통 관심사는 `common`으로 모으고, 기능 로직은 각 도메인 내부에 둔다.
+- business domain은 `com.back.backend.domain.{domain}` 아래에 둔다. 기본 권장안은 `com.back.backend.domain.application`, `com.back.backend.domain.document`처럼 배치한다.
+- `global`은 config, security filter, 공통 응답, 예외 처리, JPA base entity처럼 횡단 관심사만 둔다.
+- `application`은 기술 레이어 이름이 아니라 지원 준비 domain이며, `domain/github`, `domain/document`, `domain/interview`와 같은 레벨에 둔다.
+- 같은 도메인을 `domain/application/*`와 `application/*`처럼 둘로 나누지 않는다.
 - 새 기능을 추가할 때는 먼저 어느 도메인 책임인지 결정한 뒤 패키지를 만든다.
+- `domain` 루트는 business 영역의 공통 진입점으로 사용하고, 일부 도메인에만 선택적으로 붙이지 않는다.
 
 권장 예시
 
 ```text
-src/main/java/com/example/interviewplatform
-├─ common
+src/main/java/com/back/backend
+├─ global
 │  ├─ config
 │  ├─ response
 │  ├─ exception
 │  ├─ security
-│  ├─ logging
+│  ├─ request
+│  ├─ jpa
 │  └─ util
-├─ auth
-│  ├─ controller
-│  ├─ service
-│  ├─ dto
-│  └─ repository
-├─ user
-├─ github
-├─ document
-├─ application
-├─ interview
-└─ ai
+└─ domain
+   ├─ auth
+   ├─ user
+   ├─ github
+   ├─ document
+   ├─ application
+   ├─ interview
+   └─ ai
 ```
 
 ### 4.2 `application` 중심 흐름을 유지한다
@@ -120,12 +122,22 @@ src/main/java/com/example/interviewplatform
 
 ## 5. 패키지 및 클래스 구조 규칙
 
-### 5.1 도메인 내부 권장 구조
+### 5.1 루트 패키지 배치 기준
+
+- `global`에는 framework 설정과 횡단 기술 컴포넌트만 둔다.
+- `domain`은 business domain을 모으는 전용 루트 패키지로 둔다.
+- `auth`, `user`, `github`, `document`, `application`, `interview`, `ai`는 `domain` 바로 아래의 도메인 패키지로 둔다.
+- business 의미를 가진 `controller`, `service`, `dto`, `entity`, `repository`, `mapper`는 `domain.{domain}` 안에 둔다.
+- `AuthAccount`, `Application`, `Document`, `GithubRepository`처럼 canonical 문서와 API, DB에 직접 등장하는 개념은 `global`에 두지 않는다.
+- 전역 보안 설정과 인증 필터는 `global.security`에 둘 수 있지만, 로그인/계정 연결 비즈니스 로직은 `domain.auth`에 둔다.
+- 커스텀 조회 repository나 mapper도 예외 없이 해당 도메인 하위에 둔다.
+
+### 5.2 도메인 내부 권장 구조
 
 각 도메인은 아래 구조를 기본으로 한다.
 
 ```text
-github
+domain/application
 ├─ controller
 ├─ service
 ├─ dto
@@ -138,7 +150,11 @@ github
 └─ exception
 ```
 
-### 5.2 레이어별 책임
+- 필요한 하위 패키지만 만든다.
+- `module`, `shared`, `impl`처럼 한 번 더 감싸기만 하는 중간 패키지는 만들지 않는다.
+- 같은 도메인의 Entity, Repository, Service, Controller는 같은 루트 도메인 아래에서 함께 이동한다.
+
+### 5.3 레이어별 책임
 
 #### Controller
 - HTTP 요청/응답 처리만 담당한다.
@@ -207,7 +223,8 @@ github
 ### 6.4 패키지명
 - 소문자 단수/복수 혼용 대신 도메인 명칭을 일관되게 사용한다.
 - `github`, `document`, `application`, `interview`처럼 명확한 도메인명을 사용한다.
-- `service.impl`, `common.utils`, `misc` 같은 모호한 패키지 생성을 금지한다.
+- `service.impl`, `shared`, `misc` 같은 모호하거나 중복 래퍼 성격의 패키지 생성을 금지한다.
+- `com.back.backend.application`, `com.back.backend.github`처럼 `domain` 루트를 건너뛴 business 패키지와 `com.back.backend.domain.*`를 혼용하지 않는다.
 
 ### 6.5 DB 명명
 - 테이블명과 컬럼명은 snake_case를 사용한다.

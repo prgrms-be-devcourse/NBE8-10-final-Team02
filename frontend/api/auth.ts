@@ -47,6 +47,23 @@ export async function getMe(): Promise<User | null> {
 }
 
 /**
+ * 이미 로그인된 사용자가 GitHub 계정을 추가 연동하기 위한 OAuth2 인증 URL 조회.
+ * GET /api/v1/auth/oauth2/github/link-url
+ * 반환된 authorizationUrl로 브라우저를 이동시키면 GitHub OAuth 흐름이 시작된다.
+ */
+export async function getGithubLinkUrl(redirectUrl?: string): Promise<string> {
+  const params = new URLSearchParams();
+  if (redirectUrl) params.set('redirectUrl', redirectUrl);
+  const res = await fetch(`${apiBase()}/api/v1/auth/oauth2/github/link-url?${params}`, {
+    credentials: 'include',
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new Error(`github link url fetch failed: ${res.status}`);
+  const body = await res.json();
+  return body.data.authorizationUrl as string;
+}
+
+/**
  * 로그아웃.
  * POST /api/v1/auth/logout
  */

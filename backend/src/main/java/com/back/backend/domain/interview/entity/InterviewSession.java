@@ -46,6 +46,17 @@ public class InterviewSession extends BaseEntity {
     @Column(name = "started_at")
     private Instant startedAt;
 
+    @Column(name = "last_activity_at")
+    private Instant lastActivityAt;
+
     @Column(name = "ended_at")
     private Instant endedAt;
+
+    public void changeStatus(InterviewSessionStatus status) {
+        this.status = status;
+    }
+
+    public void changeLastActivityAt(Instant lastActivityAt) {
+        this.lastActivityAt = lastActivityAt;
+    }
 }
