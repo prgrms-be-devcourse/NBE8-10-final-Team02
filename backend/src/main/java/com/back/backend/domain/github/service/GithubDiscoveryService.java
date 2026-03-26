@@ -124,6 +124,8 @@ public class GithubDiscoveryService {
                         .visibility(RepositoryVisibility.PUBLIC)
                         .defaultBranch(null)   // 커밋 동기화 시점에 갱신
                         .selected(false)
+                        .pushedAt(null)            // contributionsCollection에는 pushed_at 없음
+                        .ownerType("collaborator") // 기여 탭에서 추가한 repo는 항상 collaborator
                         .syncedAt(Instant.now())
                         .repoSizeKb(request.repoSizeKb())
                         .build()
@@ -213,6 +215,8 @@ public class GithubDiscoveryService {
                         .visibility(RepositoryVisibility.PUBLIC)
                         .defaultBranch(detail.defaultBranch())
                         .selected(false)
+                        .pushedAt(null)            // URL 추가 경로에는 pushed_at 없음
+                        .ownerType("collaborator") // URL로 추가한 repo도 항상 collaborator
                         .syncedAt(Instant.now())
                         .repoSizeKb(detail.sizeKb())
                         .build()

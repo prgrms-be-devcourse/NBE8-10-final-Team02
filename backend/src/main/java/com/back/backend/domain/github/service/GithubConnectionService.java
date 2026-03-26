@@ -242,13 +242,17 @@ public class GithubConnectionService {
 
         // repo 목록 upsert
         // 중복 저장 방지: unique 제약(connection + github_repo_id) 기반으로 검사 후 저장
+        String githubLogin = connection.getGithubLogin();
         for (GithubApiClient.GithubRepoInfo repoInfo : repos) {
+            // ownerLogin == 사용자 githubLogin → "owner", 그 외(org, 협업 repo) → "collaborator"
+            String ownerType = githubLogin.equalsIgnoreCase(repoInfo.ownerLogin()) ? "owner" : "collaborator";
+
             Optional<GithubRepository> existing =
                     repositoryRepository.findByGithubConnectionAndGithubRepoId(connection, repoInfo.id());
 
             if (existing.isPresent()) {
-                // 이미 저장된 repo면 최신 값으로 갱신 (visibility, branch, url 변경 가능)
-                existing.get().sync(repoInfo.visibility(), repoInfo.defaultBranch(), repoInfo.htmlUrl(), now);
+                existing.get().sync(repoInfo.visibility(), repoInfo.defaultBranch(), repoInfo.htmlUrl(),
+                        repoInfo.pushedAt(), ownerType, now);
             } else {
                 repositoryRepository.save(GithubRepository.builder()
                         .githubConnection(connection)
@@ -259,7 +263,9 @@ public class GithubConnectionService {
                         .htmlUrl(repoInfo.htmlUrl())
                         .visibility(repoInfo.visibility())
                         .defaultBranch(repoInfo.defaultBranch())
-                        .selected(false)  // 초기값: 미선택
+                        .selected(false)
+                        .pushedAt(repoInfo.pushedAt())
+                        .ownerType(ownerType)
                         .syncedAt(now)
                         .build());
             }

@@ -15,6 +15,23 @@ import {
 import type { GithubRepository, RepoSyncStatus, ContributedRepo } from '@/types/github';
 import type { Pagination } from '@/types/common';
 
+// 상대 시간 포맷 (가까우면 "N분 전", 멀면 "2022. 3. 15" 형식)
+function formatPushedAt(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const diff = Date.now() - new Date(iso).getTime();
+  const min  = Math.floor(diff / 60_000);
+  const hr   = Math.floor(diff / 3_600_000);
+  const day  = Math.floor(diff / 86_400_000);
+  const mon  = Math.floor(day / 30);
+  const yr   = Math.floor(day / 365);
+  if (min < 60)  return `${min}분 전`;
+  if (hr  < 24)  return `${hr}시간 전`;
+  if (day < 30)  return `${day}일 전`;
+  if (mon < 12)  return `${mon}개월 전`;
+  // 1년 이상: 날짜 그대로 표시
+  return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' });
+}
+
 // visibility 배지 색상
 const VISIBILITY_STYLE: Record<string, string> = {
   public: 'bg-green-100 text-green-700',
@@ -291,10 +308,19 @@ function OwnedTab() {
                     <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${VISIBILITY_STYLE[repo.visibility] ?? 'bg-zinc-100 text-zinc-600'}`}>
                       {repo.visibility}
                     </span>
+                    {repo.ownerType === 'owner' && (
+                      <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs font-medium text-white">owner</span>
+                    )}
+                    {repo.ownerType === 'collaborator' && (
+                      <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700">collaborator</span>
+                    )}
                   </div>
-                  {repo.defaultBranch && (
-                    <p className="mt-0.5 text-xs text-zinc-400">기본 브랜치: {repo.defaultBranch}</p>
-                  )}
+                  <div className="mt-0.5 flex items-center gap-2 text-xs text-zinc-400">
+                    {repo.defaultBranch && <span>브랜치: {repo.defaultBranch}</span>}
+                    {formatPushedAt(repo.pushedAt) && (
+                      <span>{formatPushedAt(repo.pushedAt)} 업데이트</span>
+                    )}
+                  </div>
                   {syncErrors[repo.id] && <p className="mt-1 text-xs text-red-600">{syncErrors[repo.id]}</p>}
                   {repo.hasCommits && !isSyncing && (
                     <p className="mt-1 text-xs text-green-600">✓ 커밋 동기화됨</p>
