@@ -3,8 +3,8 @@
 import { useState, useCallback, type DragEvent, type ChangeEvent } from 'react';
 import type { DocumentType } from '@/types/document';
 
-const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.md'];
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.md', '.txt'];
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_FILE_COUNT = 5;
 
 interface DocumentUploadZoneProps {
@@ -35,12 +35,12 @@ export default function DocumentUploadZone({
 
       const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
       if (!ALLOWED_EXTENSIONS.includes(ext)) {
-        setError('허용되지 않는 파일 형식입니다. PDF, DOCX, MD만 가능합니다.');
+        setError('허용되지 않는 파일 형식입니다. PDF, DOCX, MD, TXT만 가능합니다.');
         return;
       }
 
       if (file.size > MAX_FILE_SIZE) {
-        setError('파일 크기는 10MB를 초과할 수 없습니다.');
+        setError('파일 크기는 50MB를 초과할 수 없습니다.');
         return;
       }
 
@@ -99,11 +99,11 @@ export default function DocumentUploadZone({
             : '파일을 드래그하거나 클릭하여 선택하세요'}
         </span>
         <span className="text-xs text-zinc-400">
-          PDF, DOCX, MD / 파일당 최대 10MB / 최대 5개
+          PDF, DOCX, MD, TXT / 파일당 최대 50MB / 최대 5개
         </span>
         <input
           type="file"
-          accept=".pdf,.docx,.md"
+          accept=".pdf,.docx,.md,.txt"
           className="hidden"
           disabled={atLimit || disabled}
           onChange={handleFileChange}
