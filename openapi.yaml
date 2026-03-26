@@ -2970,9 +2970,9 @@ paths:
                       message: 세션을 찾을 수 없습니다.
                       retryable: false
                     meta: *id001
-      description: 세션 복원 화면이 한 번의 조회로 그려질 수 있도록 현재 질문, 진행률, 남은 질문 수, resume 가능 여부, 마지막 활동 시각을 함께 반환한다.
-        v1 자동 일시정지는 이 조회 요청 진입 시점에도 `lastActivityAt` 기준으로 평가하며, 30분 초과 상태의 `in_progress`
-        세션은 `paused`로 정규화한다.
+      description: 세션 복원 화면과 히스토리 상세의 기본 정보 영역이 한 번의 조회로 그려질 수 있도록 현재 질문, 진행률, 남은 질문 수,
+        resume 가능 여부, 마지막 활동 시각을 함께 반환한다. v1 자동 일시정지는 이 조회 요청 진입 시점에도 `lastActivityAt`
+        기준으로 평가하며, 30분 초과 상태의 `in_progress` 세션은 `paused`로 정규화한다.
   /interview/sessions/{sessionId}/pause:
     post:
       tags:
@@ -3487,6 +3487,7 @@ paths:
                       message: 면접 결과가 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.
                       retryable: true
                     meta: *id001
-      description: 세션 결과와 피드백 리포트를 조회한다. `feedback_completed` 상태에서만 성공 응답을 반환한다.
-        완료 직후 결과 생성이 아직 끝나지 않은 `completed` 상태에서는 `INTERVIEW_RESULT_INCOMPLETE`를 반환한다. v1의 결과
-        재시도는 같은 `GET /interview/sessions/{sessionId}/result` 재조회이며, 별도 재생성 endpoint는 정의하지 않는다.
+      description: 세션 결과와 피드백 리포트를 조회한다. `feedback_completed` 상태에서만 성공 응답을 반환하며, 히스토리 상세의
+        질문/답변/피드백 전체 기록도 이 응답을 기준으로 그린다. 완료 직후 결과 생성이 아직 끝나지 않은 `completed` 상태에서는
+        `INTERVIEW_RESULT_INCOMPLETE`를 반환한다. v1의 결과 재시도는 같은 `GET /interview/sessions/{sessionId}/result`
+        재조회이며, 별도 재생성 endpoint는 정의하지 않는다.
