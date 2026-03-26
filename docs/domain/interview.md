@@ -44,6 +44,9 @@ applies_to: interview-domain
 - `pause/resume`은 상태 필드 일반 수정이 아니라 명시적 액션 API로 처리한다.
 - 현재 상태에서 허용되지 않는 `pause/resume` 요청은 `INTERVIEW_SESSION_STATUS_CONFLICT`로 거절한다.
 - `completed`, `feedback_completed` 세션에는 추가 답변을 허용하지 않는다.
+- 명시적 `complete`는 `in_progress`, `paused` 상태에서만 허용한다.
+- 미답변 질문이 남아 있으면 `REQUEST_VALIDATION_FAILED`로 세션 종료를 거절한다.
+- `completed`, `feedback_completed` 세션의 종료 재요청은 `INTERVIEW_SESSION_ALREADY_COMPLETED`로 거절한다.
 - 세션 상세 조회는 복원 화면 기준으로 `currentQuestion`, 진행률 계산용 count, `resumeAvailable`, `lastActivityAt`를 함께 반환한다.
 - 건너뛰기 아닌 일반 답변이 비어 있으면 `INTERVIEW_ANSWER_REQUIRED`로 거절한다.
 - 일반 답변은 50자 이상 1000자 이하로 검증하고, 건너뛰기는 예외로 처리한다.
@@ -77,4 +80,5 @@ applies_to: interview-domain
 - `INTERVIEW_SESSION_STATUS_CONFLICT`
 - `INTERVIEW_ANSWER_REQUIRED`
 - `INTERVIEW_ANSWER_TOO_SHORT`
+- `INTERVIEW_RESULT_INCOMPLETE`
 - `INTERVIEW_RESULT_GENERATION_FAILED`

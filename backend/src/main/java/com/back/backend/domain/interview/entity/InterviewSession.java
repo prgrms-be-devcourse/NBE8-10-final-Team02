@@ -59,4 +59,13 @@ public class InterviewSession extends BaseEntity {
     public void changeLastActivityAt(Instant lastActivityAt) {
         this.lastActivityAt = lastActivityAt;
     }
+
+    public void changeEndedAt(Instant endedAt) {
+        this.endedAt = endedAt;
+    }
+
+    public void applyResult(int totalScore, String summaryFeedback) {
+        this.totalScore = totalScore;
+        this.summaryFeedback = summaryFeedback;
+    }
 }
