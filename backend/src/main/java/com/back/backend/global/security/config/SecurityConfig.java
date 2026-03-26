@@ -117,7 +117,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         // 운영/개발 환경에 따라 허용 도메인을 다르게 가져가도록 설정
         configuration.setAllowedOrigins(List.of("https://www.blog.jsh505.site", "http://localhost:3000"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
