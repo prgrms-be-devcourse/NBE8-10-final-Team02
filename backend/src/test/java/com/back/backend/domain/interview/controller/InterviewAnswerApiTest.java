@@ -19,15 +19,20 @@ import com.back.backend.support.ApiTestBase;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -38,7 +43,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class InterviewAnswerApiTest extends ApiTestBase {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final Instant NOW = Instant.parse("2026-03-25T09:00:00Z");
+    private static final Instant FIXED_NOW = Instant.parse("2026-03-25T09:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
     private static final String VALID_ANSWER = "서비스 장애 원인을 추적할 때 로그와 메트릭을 함께 비교하며 원인 후보를 단계적으로 줄였습니다.";
 
     @Autowired
@@ -47,10 +53,18 @@ class InterviewAnswerApiTest extends ApiTestBase {
     @Autowired
     private InterviewAnswerRepository interviewAnswerRepository;
 
+    @MockitoBean
+    private Clock clock;
+
+    @BeforeEach
+    void setUpClock() {
+        given(clock.instant()).willReturn(FIXED_CLOCK.instant());
+    }
+
     @Test
     void submitAnswer_returns201AndSavesTrimmedAnswer() throws Exception {
         User user = persistUser("answer-submit@example.com", "answer-submit");
-        Instant previousActivityAt = Instant.now().minus(Duration.ofMinutes(5));
+        Instant previousActivityAt = FIXED_NOW.minus(Duration.ofMinutes(5));
         InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, previousActivityAt);
         InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
         persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
@@ -227,7 +241,7 @@ class InterviewAnswerApiTest extends ApiTestBase {
     @Test
     void submitAnswer_returns409WhenSessionIsPaused() throws Exception {
         User user = persistUser("answer-paused@example.com", "answer-paused");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.PAUSED, NOW);
+        InterviewSession session = persistSession(user, InterviewSessionStatus.PAUSED, FIXED_NOW);
         InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
         persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
         persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
@@ -248,7 +262,7 @@ class InterviewAnswerApiTest extends ApiTestBase {
     @Test
     void submitAnswer_returns409WhenSessionAlreadyCompleted() throws Exception {
         User user = persistUser("answer-completed@example.com", "answer-completed");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.COMPLETED, NOW);
+        InterviewSession session = persistSession(user, InterviewSessionStatus.COMPLETED, FIXED_NOW);
         InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
         persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
         persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
@@ -271,7 +285,11 @@ class InterviewAnswerApiTest extends ApiTestBase {
         User user = persistUser("answer-autopause@example.com", "answer-autopause");
         // 31분 전 활동 시각으로 auto-pause 경계를 넘긴 세션을 만든다.
         // 답변 제출 시 충돌 오류를 내면서도 paused 상태 보정은 저장되는지 본다.
-        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, Instant.now().minus(Duration.ofMinutes(31)));
+        InterviewSession session = persistSession(
+                user,
+                InterviewSessionStatus.IN_PROGRESS,
+                FIXED_NOW.minus(Duration.ofMinutes(31))
+        );
         InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
         persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
         persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
@@ -357,7 +375,7 @@ class InterviewAnswerApiTest extends ApiTestBase {
     }
 
     private InterviewSession persistInProgressSession(User user) {
-        return persistSession(user, InterviewSessionStatus.IN_PROGRESS, NOW);
+        return persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
     }
 
     private InterviewSession persistSession(User user, InterviewSessionStatus status, Instant startedAt) {
