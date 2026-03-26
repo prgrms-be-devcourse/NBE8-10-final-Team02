@@ -16,16 +16,21 @@ import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -34,15 +39,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class InterviewSessionDetailApiTest extends ApiTestBase {
 
-    private static final Instant NOW = Instant.now().minus(Duration.ofMinutes(5));
+    private static final Instant FIXED_NOW = Instant.parse("2026-03-25T09:00:00Z");
+    private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
 
     @Autowired
     private EntityManager entityManager;
 
+    @MockitoBean
+    private Clock clock;
+
+    @BeforeEach
+    void setUpClock() {
+        given(clock.instant()).willReturn(FIXED_CLOCK.instant());
+    }
+
     @Test
     void getSessionDetail_returns200ForPausedSession() throws Exception {
         User user = persistUser("detail-paused@example.com", "detail-paused");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.PAUSED, NOW);
+        InterviewSession session = persistSession(user, InterviewSessionStatus.PAUSED, FIXED_NOW);
         InterviewQuestion firstQuestion = findQuestion(session, 1);
         InterviewQuestion secondQuestion = findQuestion(session, 2);
         persistAnswer(session, firstQuestion, 1, false, "첫 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.");
@@ -60,15 +74,15 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.answeredQuestionCount").value(1))
                 .andExpect(jsonPath("$.data.remainingQuestionCount").value(2))
                 .andExpect(jsonPath("$.data.resumeAvailable").value(true))
-                .andExpect(jsonPath("$.data.lastActivityAt").value(NOW.toString()))
-                .andExpect(jsonPath("$.data.startedAt").value(NOW.toString()))
+                .andExpect(jsonPath("$.data.lastActivityAt").value(FIXED_NOW.toString()))
+                .andExpect(jsonPath("$.data.startedAt").value(FIXED_NOW.toString()))
                 .andExpect(jsonPath("$.data.endedAt").value(nullValue()));
     }
 
     @Test
     void getSessionDetail_returns200ForInProgressSession() throws Exception {
         User user = persistUser("detail-in-progress@example.com", "detail-in-progress");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, NOW);
+        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
         InterviewQuestion firstQuestion = findQuestion(session, 1);
 
         mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
@@ -86,7 +100,7 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
     void getSessionDetail_returns404WhenSessionIsNotOwned() throws Exception {
         User owner = persistUser("detail-owner@example.com", "detail-owner");
         User otherUser = persistUser("detail-other@example.com", "detail-other");
-        InterviewSession session = persistSession(owner, InterviewSessionStatus.PAUSED, NOW);
+        InterviewSession session = persistSession(owner, InterviewSessionStatus.PAUSED, FIXED_NOW);
 
         mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
                         .with(authenticated(otherUser.getId())))
@@ -98,7 +112,7 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
     void getSessionDetail_normalizesExpiredInProgressSessionToPaused() throws Exception {
         User user = persistUser("detail-expired@example.com", "detail-expired");
         // 30분 초과 무응답 조건을 확실히 넘겨 자동 일시정지 정규화가 발동하도록 잡는다.
-        Instant expiredActivityAt = Instant.now().minus(Duration.ofMinutes(31));
+        Instant expiredActivityAt = FIXED_NOW.minus(Duration.ofMinutes(31));
         InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, expiredActivityAt);
 
         mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
@@ -113,13 +127,13 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
         InterviewSession refreshedSession = entityManager.find(InterviewSession.class, session.getId());
         assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.PAUSED);
         assertThat(refreshedSession.getLastActivityAt()).isEqualTo(refreshedSession.getStartedAt());
-        assertThat(refreshedSession.getLastActivityAt()).isBefore(Instant.now().minus(Duration.ofMinutes(30)));
+        assertThat(refreshedSession.getLastActivityAt()).isBefore(FIXED_NOW.minus(Duration.ofMinutes(30)));
     }
 
     @Test
     void getSessionDetail_returnsNullCurrentQuestionWhenAllQuestionsAnswered() throws Exception {
         User user = persistUser("detail-complete@example.com", "detail-complete");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, NOW);
+        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
         InterviewQuestion firstQuestion = findQuestion(session, 1);
         InterviewQuestion secondQuestion = findQuestion(session, 2);
         InterviewQuestion thirdQuestion = findQuestion(session, 3);
