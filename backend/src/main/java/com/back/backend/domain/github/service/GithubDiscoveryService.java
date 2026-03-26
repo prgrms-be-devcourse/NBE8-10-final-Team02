@@ -21,8 +21,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -79,11 +82,11 @@ public class GithubDiscoveryService {
 
         if (contributed.isEmpty()) return List.of();
 
-        // 3. 이미 저장된 repo 확인 (readOnly 트랜잭션)
-        Set<Long> savedRepoIds = findSavedRepoIds(connection, contributed);
+        // 3. 이미 저장된 repo 확인 (readOnly 트랜잭션) — githubRepoId → GithubRepository 맵
+        Map<Long, GithubRepository> savedByGithubRepoId = findSavedRepos(connection, contributed);
 
         return contributed.stream()
-                .map(repo -> ContributedRepoResponse.from(repo, savedRepoIds.contains(repo.githubRepoId())))
+                .map(repo -> ContributedRepoResponse.from(repo, savedByGithubRepoId.get(repo.githubRepoId())))
                 .toList();
     }
 
@@ -186,12 +189,14 @@ public class GithubDiscoveryService {
     }
 
     @Transactional(readOnly = true)
-    protected Set<Long> findSavedRepoIds(GithubConnection connection,
-                                         List<GithubApiClient.GithubContributedRepo> contributed) {
+    protected Map<Long, GithubRepository> findSavedRepos(GithubConnection connection,
+                                                          List<GithubApiClient.GithubContributedRepo> contributed) {
         List<Long> ids = contributed.stream()
                 .map(GithubApiClient.GithubContributedRepo::githubRepoId)
                 .toList();
-        return repositoryRepository.findGithubRepoIdsByGithubConnectionAndGithubRepoIdIn(connection, ids);
+        return repositoryRepository.findByGithubConnectionAndGithubRepoIdIn(connection, ids)
+                .stream()
+                .collect(Collectors.toMap(GithubRepository::getGithubRepoId, Function.identity()));
     }
 
     @Transactional

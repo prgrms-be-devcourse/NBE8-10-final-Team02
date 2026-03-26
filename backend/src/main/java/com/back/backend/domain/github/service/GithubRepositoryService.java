@@ -189,6 +189,46 @@ public class GithubRepositoryService {
         return RepositorySelectionResponse.of(selectedIds);
     }
 
+    /**
+     * 기여 repo를 github_repositories에서 완전히 삭제한다.
+     * 소유권 검사: 해당 repo가 현재 사용자의 connection에 속하는지 확인.
+     * 진행 중인 분석이 있으면 취소하고, 관련 데이터(커밋, 코드 인덱스, repo 요약)도 삭제한다.
+     */
+    @Transactional
+    public void deleteRepository(Long userId, Long repositoryId) {
+        GithubConnection connection = findConnectionOrThrow(userId);
+
+        GithubRepository repo = repositoryRepository.findById(repositoryId)
+                .orElseThrow(() -> new ServiceException(
+                        ErrorCode.RESOURCE_NOT_FOUND, HttpStatus.NOT_FOUND, "repository를 찾을 수 없습니다."));
+
+        if (!repo.getGithubConnection().getId().equals(connection.getId())) {
+            throw new ServiceException(ErrorCode.GITHUB_REPOSITORY_FORBIDDEN, HttpStatus.FORBIDDEN,
+                    "접근 권한이 없는 repository입니다.");
+        }
+
+        User user = userRepository.findById(userId).orElseThrow();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try { analysisPipelineService.cancel(userId, repositoryId); }
+                catch (Exception e) { log.warn("Failed to cancel analysis for repoId={}: {}", repositoryId, e.getMessage()); }
+                try {
+                    repoSummaryRepository.deleteByGithubRepositoryId(repositoryId);
+                    codeIndexRepository.deleteByGithubRepositoryId(repositoryId);
+                    commitRepository.deleteByRepositoryId(repositoryId);
+                } catch (Exception e) {
+                    log.warn("Failed to delete data for repoId={}: {}", repositoryId, e.getMessage());
+                }
+                try { mergedSummaryService.rebuild(user); }
+                catch (Exception e) { log.warn("Failed to rebuild merged summary: userId={}", userId); }
+            }
+        });
+
+        repositoryRepository.delete(repo);
+        log.info("Deleted repository id={} for userId={}", repositoryId, userId);
+    }
+
     // ─────────────────────────────────────────────────
     // Private helper
     // ─────────────────────────────────────────────────

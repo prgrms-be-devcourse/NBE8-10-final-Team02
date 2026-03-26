@@ -249,6 +249,21 @@ export async function saveContribution(request: SaveContributionRequest): Promis
 }
 
 /**
+ * DELETE /github/repositories/{id}
+ * 기여 repo를 github_repositories에서 완전히 삭제한다.
+ */
+export async function removeRepository(repositoryId: number): Promise<void> {
+  const res = await fetch(`${base()}/repositories/${repositoryId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseError(res));
+  }
+}
+
+/**
  * POST /github/contributions/add-by-url
  * 사용자가 직접 입력한 GitHub URL로 기여 repo를 추가한다.
  * 본인 커밋이 없으면 422 에러를 반환한다.

@@ -55,6 +55,7 @@ export interface ContributedRepo {
   repoSizeKb: number | null;
   contributionCount: number;
   alreadySaved: boolean;
+  repositoryId: number | null;  // github_repositories.id (저장된 경우에만 non-null)
 }
 
 // POST /github/contributions/save 요청 바디

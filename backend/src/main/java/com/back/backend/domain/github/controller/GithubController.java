@@ -269,6 +269,20 @@ public class GithubController {
     }
 
     /**
+     * 기여 repo를 github_repositories에서 완전히 삭제한다.
+     * 진행 중인 분석 취소 + 관련 데이터(커밋, 코드 인덱스, 요약) 삭제 후 MergedSummary 재집계.
+     */
+    @DeleteMapping("/repositories/{repositoryId}")
+    public ResponseEntity<ApiResponse<Void>> deleteRepository(
+            Authentication authentication,
+            @PathVariable Long repositoryId
+    ) {
+        Long userId = extractUserId(authentication);
+        repositoryService.deleteRepository(userId, repositoryId);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /**
      * 진행 중인 분석 파이프라인을 취소한다.
      *
      * PENDING/IN_PROGRESS 상태의 분석을 중단하고 상태를 FAILED로 변경한다.

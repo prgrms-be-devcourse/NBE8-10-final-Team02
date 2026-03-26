@@ -11,6 +11,7 @@ import {
   getContributions,
   saveContribution,
   addContributionByUrl,
+  removeRepository,
   refreshGithubConnection,
 } from '@/api/github';
 import type { GithubRepository, RepoSyncStatus, ContributedRepo } from '@/types/github';
@@ -471,25 +472,41 @@ function ContributedTab() {
     }
   }
 
-  async function handleSave(repo: ContributedRepo) {
-    if (repo.alreadySaved || savingId !== null) return;
-    setSavingId(repo.githubRepoId);
+  async function handleCardClick(repo: ContributedRepo) {
+    if (savingId !== null) return;
     setSaveErrors((prev) => { const n = { ...prev }; delete n[repo.githubRepoId]; return n; });
+    setSavingId(repo.githubRepoId);
+
     try {
-      await saveContribution({
-        githubRepoId: repo.githubRepoId,
-        nameWithOwner: repo.nameWithOwner,
-        url: repo.url,
-        language: repo.language,
-        repoSizeKb: repo.repoSizeKb,
-      });
-      setContributions((prev) =>
-        prev.map((r) => r.githubRepoId === repo.githubRepoId ? { ...r, alreadySaved: true } : r)
-      );
+      if (!repo.alreadySaved) {
+        const saved = await saveContribution({
+          githubRepoId: repo.githubRepoId,
+          nameWithOwner: repo.nameWithOwner,
+          url: repo.url,
+          language: repo.language,
+          repoSizeKb: repo.repoSizeKb,
+        });
+        setContributions((prev) =>
+          prev.map((r) =>
+            r.githubRepoId === repo.githubRepoId
+              ? { ...r, alreadySaved: true, repositoryId: saved.id }
+              : r
+          )
+        );
+      } else if (repo.repositoryId !== null) {
+        await removeRepository(repo.repositoryId);
+        setContributions((prev) =>
+          prev.map((r) =>
+            r.githubRepoId === repo.githubRepoId
+              ? { ...r, alreadySaved: false, repositoryId: null }
+              : r
+          )
+        );
+      }
     } catch (err) {
       setSaveErrors((prev) => ({
         ...prev,
-        [repo.githubRepoId]: err instanceof Error ? err.message : '추가 중 오류가 발생했습니다.',
+        [repo.githubRepoId]: err instanceof Error ? err.message : '처리 중 오류가 발생했습니다.',
       }));
     } finally {
       setSavingId(null);
@@ -534,7 +551,7 @@ function ContributedTab() {
     <div>
       <p className="mb-4 text-sm text-zinc-500">
         최근 {yearsOffset + 1}년간 커밋을 기여한 public repository 목록입니다.
-        클릭하면 포트폴리오에 추가됩니다.
+        클릭하면 포트폴리오에 추가됩니다. 추가된 repo를 다시 클릭하면 제거됩니다.
       </p>
 
       {contributions.length === 0 ? (
@@ -550,12 +567,10 @@ function ContributedTab() {
             return (
               <li
                 key={repo.githubRepoId}
-                onClick={() => handleSave(repo)}
+                onClick={() => handleCardClick(repo)}
                 className={`rounded border px-4 py-3 transition-opacity select-none ${
-                  repo.alreadySaved
-                    ? 'border-zinc-200 opacity-50 cursor-default pointer-events-none'
-                    : isSaving
-                    ? 'border-zinc-200 pointer-events-none'
+                  isSaving
+                    ? 'border-zinc-200 pointer-events-none opacity-50'
                     : 'border-zinc-200 cursor-pointer hover:bg-zinc-50'
                 }`}
               >
@@ -581,9 +596,13 @@ function ContributedTab() {
                   </div>
 
                   <span className={`shrink-0 text-xs font-medium ${
-                    repo.alreadySaved ? 'text-zinc-400' : isSaving ? 'text-zinc-400' : 'text-indigo-600'
+                    isSaving ? 'text-zinc-400'
+                    : repo.alreadySaved ? 'text-green-600'
+                    : 'text-indigo-600'
                   }`}>
-                    {isSaving ? '추가 중...' : repo.alreadySaved ? '추가됨' : '+ 추가'}
+                    {isSaving ? '처리 중...'
+                      : repo.alreadySaved ? '추가됨'
+                      : '+ 추가'}
                   </span>
                 </div>
               </li>
