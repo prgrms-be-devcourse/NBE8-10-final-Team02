@@ -146,10 +146,15 @@ function OwnedTab() {
     try {
       const status = await analyzeRepository(repoId);
       if (status) setAnalysisStatuses((prev) => ({ ...prev, [repoId]: status }));
-      // hasActiveAnalysis가 true가 되므로 useEffect가 폴링을 자동으로 시작함
+      // API 응답 후 analysisStatuses가 PENDING/IN_PROGRESS를 가지므로 analyzingIds 제거
+      // hasActiveAnalysis는 analysisStatuses 기준으로 폴링을 계속 유지함
+      setAnalyzingIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });
     } catch (err) {
       // 409: 이미 진행 중인 분석 → 폴링이 상태를 가져올 것이므로 에러 무시
-      if (err instanceof Error && err.message.includes('409')) return;
+      if (err instanceof Error && err.message.includes('409')) {
+        setAnalyzingIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });
+        return;
+      }
       const msg = err instanceof Error ? err.message : '분석 시작 중 오류가 발생했습니다.';
       setAnalyzeErrors((prev) => ({ ...prev, [repoId]: msg }));
       setAnalyzingIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });

@@ -151,8 +151,11 @@ public class RepoCloneService {
 
         } catch (ServiceException e) {
             throw e;
-        } catch (IOException | InterruptedException e) {
+        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            throw new ServiceException(ErrorCode.INTERNAL_SERVER_ERROR, HttpStatus.INTERNAL_SERVER_ERROR,
+                    "git 명령이 취소되었습니다: " + command.get(1));
+        } catch (IOException e) {
             throw new ServiceException(ErrorCode.INTERNAL_SERVER_ERROR, HttpStatus.INTERNAL_SERVER_ERROR,
                     "git 명령 실행 중 오류: " + e.getMessage());
         }
