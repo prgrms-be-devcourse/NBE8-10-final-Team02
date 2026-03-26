@@ -99,6 +99,12 @@ export interface SessionAnswerSubmitData {
   submittedAt: string;
 }
 
+export interface InterviewSessionTransitionData {
+  sessionId: number;
+  status: Extract<InterviewSessionStatus, 'in_progress' | 'paused'>;
+  updatedAt: string;
+}
+
 export interface ApiFieldError {
   field: string;
   reason: string;
