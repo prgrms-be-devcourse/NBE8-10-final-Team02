@@ -240,7 +240,7 @@ export default function NewQuestionSetPage() {
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="질문 세트 제목"
-            className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm focus:border-zinc-500 focus:outline-none"
+            className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none"
           />
           <p className="mt-1.5 text-xs text-zinc-400">
             비워두면 현재 지원 준비 정보를 기준으로 제목을 저장합니다.
@@ -255,7 +255,7 @@ export default function NewQuestionSetPage() {
             max={20}
             value={questionCount}
             onChange={(event) => setQuestionCount(event.target.value)}
-            className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm focus:border-zinc-500 focus:outline-none"
+            className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none"
           />
           <p className="mt-1.5 text-xs text-zinc-400">한 번에 최대 20개까지 생성할 수 있습니다.</p>
         </div>
