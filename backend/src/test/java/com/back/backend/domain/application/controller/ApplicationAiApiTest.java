@@ -3,29 +3,21 @@ package com.back.backend.domain.application.controller;
 import com.back.backend.domain.ai.pipeline.AiPipeline;
 import com.back.backend.domain.application.entity.Application;
 import com.back.backend.domain.application.entity.ApplicationLengthOption;
-import com.back.backend.domain.application.entity.ApplicationQuestion;
-import com.back.backend.domain.application.entity.ApplicationSourceDocument;
 import com.back.backend.domain.application.entity.ApplicationStatus;
 import com.back.backend.domain.application.entity.ApplicationToneOption;
 import com.back.backend.domain.application.dto.request.GenerateAnswersRequest;
-import com.back.backend.domain.document.entity.Document;
-import com.back.backend.domain.document.entity.DocumentExtractStatus;
-import com.back.backend.domain.document.entity.DocumentType;
 import com.back.backend.domain.user.entity.User;
-import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
+import com.back.backend.support.TestFixtures;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
-
-import java.time.Instant;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -38,23 +30,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class ApplicationAiApiTest extends ApiTestBase {
 
-    private static final Instant NOW = Instant.parse("2026-03-25T09:00:00Z");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String TEMPLATE_ID = "ai.self_intro.generate.v1";
 
     @Autowired
-    private EntityManager entityManager;
+    private TestFixtures fixtures;
 
     @MockitoBean
     private AiPipeline aiPipeline;
 
     @Test
     void generateAnswers_returns200WithGeneratedAnswers() throws Exception {
-        User user = persistUser("ai@example.com", "ai-tester");
-        Application application = persistApplication(user, "카카오 백엔드", ApplicationStatus.DRAFT);
-        persistQuestion(application, 1, "지원 동기를 작성해주세요", null,
+        User user = fixtures.createUser("ai@example.com", "ai-tester");
+        Application application = fixtures.createApplication(user, "카카오 백엔드", ApplicationStatus.DRAFT);
+        fixtures.createApplicationQuestion(application, 1, "지원 동기를 작성해주세요", null,
             ApplicationToneOption.FORMAL, ApplicationLengthOption.MEDIUM, "프로젝트 경험");
-        persistDocument(user, application, "이력서 내용입니다.");
+        fixtures.bindDocumentToApplication(application, fixtures.createResumeDocument(user, "이력서 내용입니다."));
 
         given(aiPipeline.execute(eq(TEMPLATE_ID), anyString()))
             .willReturn(OBJECT_MAPPER.readTree("""
@@ -86,10 +77,10 @@ class ApplicationAiApiTest extends ApiTestBase {
 
     @Test
     void generateAnswers_skipsAlreadyAnsweredWhenRegenerateFalse() throws Exception {
-        User user = persistUser("skip@example.com", "skip-tester");
-        Application application = persistApplication(user, "네이버 백엔드", ApplicationStatus.DRAFT);
-        persistQuestion(application, 1, "지원 동기", "기존 답변", null, null, null);
-        persistQuestion(application, 2, "프로젝트 경험", null, null, null, null);
+        User user = fixtures.createUser("skip@example.com", "skip-tester");
+        Application application = fixtures.createApplication(user, "네이버 백엔드", ApplicationStatus.DRAFT);
+        fixtures.createApplicationQuestion(application, 1, "지원 동기", "기존 답변", null, null, null);
+        fixtures.createApplicationQuestion(application, 2, "프로젝트 경험", null, null, null, null);
 
         given(aiPipeline.execute(eq(TEMPLATE_ID), anyString()))
             .willReturn(OBJECT_MAPPER.readTree("""
@@ -125,9 +116,9 @@ class ApplicationAiApiTest extends ApiTestBase {
 
     @Test
     void generateAnswers_returns404WhenApplicationNotOwned() throws Exception {
-        User owner = persistUser("owner@example.com", "owner");
-        User other = persistUser("other@example.com", "other");
-        Application application = persistApplication(owner, "남의 지원서", ApplicationStatus.DRAFT);
+        User owner = fixtures.createUser("owner@example.com", "owner");
+        User other = fixtures.createUser("other@example.com", "other");
+        Application application = fixtures.createApplication(owner, "남의 지원서", ApplicationStatus.DRAFT);
 
         mockMvc.perform(post("/api/v1/applications/{applicationId}/questions/generate-answers",
                 application.getId())
@@ -141,8 +132,8 @@ class ApplicationAiApiTest extends ApiTestBase {
 
     @Test
     void generateAnswers_returns422WhenNoQuestions() throws Exception {
-        User user = persistUser("empty@example.com", "empty-tester");
-        Application application = persistApplication(user, "문항 없는 지원서", ApplicationStatus.DRAFT);
+        User user = fixtures.createUser("empty@example.com", "empty-tester");
+        Application application = fixtures.createApplication(user, "문항 없는 지원서", ApplicationStatus.DRAFT);
 
         mockMvc.perform(post("/api/v1/applications/{applicationId}/questions/generate-answers",
                 application.getId())
@@ -154,77 +145,10 @@ class ApplicationAiApiTest extends ApiTestBase {
             .andExpect(jsonPath("$.error.code").value(ErrorCode.APPLICATION_QUESTION_REQUIRED.name()));
     }
 
-    // --- 헬퍼 ---
-
     private RequestPostProcessor authenticated(long userId) {
         return authentication(new JwtAuthenticationToken(
             userId,
             AuthorityUtils.createAuthorityList("ROLE_USER")
         ));
-    }
-
-    private User persistUser(String email, String displayName) {
-        User user = User.builder()
-            .email(email)
-            .displayName(displayName)
-            .profileImageUrl("https://example.com/profile.png")
-            .status(UserStatus.ACTIVE)
-            .build();
-        entityManager.persist(user);
-        entityManager.flush();
-        return user;
-    }
-
-    private Application persistApplication(User user, String title, ApplicationStatus status) {
-        Application application = Application.builder()
-            .user(user)
-            .applicationTitle(title)
-            .companyName(title + "-company")
-            .applicationType("신입")
-            .jobRole("Backend Engineer")
-            .status(status)
-            .build();
-        entityManager.persist(application);
-        entityManager.flush();
-        return application;
-    }
-
-    private void persistQuestion(Application application, int order, String text,
-                                 String generatedAnswer, ApplicationToneOption tone,
-                                 ApplicationLengthOption length, String emphasisPoint) {
-        ApplicationQuestion question = ApplicationQuestion.builder()
-            .application(application)
-            .questionOrder(order)
-            .questionText(text)
-            .generatedAnswer(generatedAnswer)
-            .toneOption(tone)
-            .lengthOption(length)
-            .emphasisPoint(emphasisPoint)
-            .build();
-        entityManager.persist(question);
-        entityManager.flush();
-    }
-
-    private void persistDocument(User user, Application application, String extractedText) {
-        Document document = Document.builder()
-            .user(user)
-            .documentType(DocumentType.RESUME)
-            .originalFileName("resume.pdf")
-            .storagePath("/documents/resume.pdf")
-            .mimeType("application/pdf")
-            .fileSizeBytes(1024L)
-            .extractStatus(DocumentExtractStatus.SUCCESS)
-            .extractedText(extractedText)
-            .uploadedAt(NOW)
-            .extractedAt(NOW)
-            .build();
-        entityManager.persist(document);
-
-        ApplicationSourceDocument binding = ApplicationSourceDocument.builder()
-            .application(application)
-            .document(document)
-            .build();
-        entityManager.persist(binding);
-        entityManager.flush();
     }
 }

@@ -1,20 +1,15 @@
 package com.back.backend.domain.interview.controller;
 
 import com.back.backend.domain.application.entity.Application;
-import com.back.backend.domain.application.entity.ApplicationStatus;
 import com.back.backend.domain.interview.dto.request.StartInterviewSessionRequest;
-import com.back.backend.domain.interview.entity.DifficultyLevel;
-import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
-import com.back.backend.domain.interview.entity.InterviewQuestionType;
-import com.back.backend.domain.interview.entity.InterviewSession;
 import com.back.backend.domain.interview.entity.InterviewSessionStatus;
 import com.back.backend.domain.interview.repository.InterviewSessionRepository;
 import com.back.backend.domain.user.entity.User;
-import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
+import com.back.backend.support.TestFixtures;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
@@ -48,6 +43,9 @@ class InterviewSessionApiTest extends ApiTestBase {
     private EntityManager entityManager;
 
     @Autowired
+    private TestFixtures fixtures;
+
+    @Autowired
     private InterviewSessionRepository interviewSessionRepository;
 
     @MockitoBean
@@ -60,13 +58,12 @@ class InterviewSessionApiTest extends ApiTestBase {
 
     @Test
     void startSession_returns201AndCreatesInProgressSession() throws Exception {
-        User user = persistUser("session-start@example.com", "session-start");
-        Application application = persistApplication(user, "application-title");
-        InterviewQuestionSet questionSet = persistQuestionSet(user, application, 3);
-        // 세션 시작은 3개 이상 20개 이하 질문만 허용되므로 하한을 맞춘 최소 성공 셋업이다.
-        persistQuestion(questionSet, 1, "첫 번째 질문");
-        persistQuestion(questionSet, 2, "두 번째 질문");
-        persistQuestion(questionSet, 3, "세 번째 질문");
+        User user = fixtures.createUser("session-start@example.com", "session-start");
+        Application application = fixtures.createApplication(user, "application-title");
+        InterviewQuestionSet questionSet = fixtures.createQuestionSet(user, application, 3);
+        fixtures.createInterviewQuestion(questionSet, 1, "첫 번째 질문");
+        fixtures.createInterviewQuestion(questionSet, 2, "두 번째 질문");
+        fixtures.createInterviewQuestion(questionSet, 3, "세 번째 질문");
 
         mockMvc.perform(post("/api/v1/interview/sessions")
                         .with(authenticated(user.getId()))
@@ -97,13 +94,13 @@ class InterviewSessionApiTest extends ApiTestBase {
 
     @Test
     void startSession_returns404WhenQuestionSetIsNotOwned() throws Exception {
-        User owner = persistUser("session-owner@example.com", "session-owner");
-        User otherUser = persistUser("session-other@example.com", "session-other");
-        Application application = persistApplication(owner, "application-title");
-        InterviewQuestionSet questionSet = persistQuestionSet(owner, application, 3);
-        persistQuestion(questionSet, 1, "첫 번째 질문");
-        persistQuestion(questionSet, 2, "두 번째 질문");
-        persistQuestion(questionSet, 3, "세 번째 질문");
+        User owner = fixtures.createUser("session-owner@example.com", "session-owner");
+        User otherUser = fixtures.createUser("session-other@example.com", "session-other");
+        Application application = fixtures.createApplication(owner, "application-title");
+        InterviewQuestionSet questionSet = fixtures.createQuestionSet(owner, application, 3);
+        fixtures.createInterviewQuestion(questionSet, 1, "첫 번째 질문");
+        fixtures.createInterviewQuestion(questionSet, 2, "두 번째 질문");
+        fixtures.createInterviewQuestion(questionSet, 3, "세 번째 질문");
 
         mockMvc.perform(post("/api/v1/interview/sessions")
                         .with(authenticated(otherUser.getId()))
@@ -115,18 +112,18 @@ class InterviewSessionApiTest extends ApiTestBase {
 
     @Test
     void startSession_returns409WhenInProgressSessionAlreadyExists() throws Exception {
-        User user = persistUser("session-active@example.com", "session-active");
-        Application application = persistApplication(user, "application-title");
-        InterviewQuestionSet existingSet = persistQuestionSet(user, application, 3);
-        persistQuestion(existingSet, 1, "첫 번째 질문");
-        persistQuestion(existingSet, 2, "두 번째 질문");
-        persistQuestion(existingSet, 3, "세 번째 질문");
-        persistSession(user, existingSet, InterviewSessionStatus.IN_PROGRESS);
+        User user = fixtures.createUser("session-active@example.com", "session-active");
+        Application application = fixtures.createApplication(user, "application-title");
+        InterviewQuestionSet existingSet = fixtures.createQuestionSet(user, application, 3);
+        fixtures.createInterviewQuestion(existingSet, 1, "첫 번째 질문");
+        fixtures.createInterviewQuestion(existingSet, 2, "두 번째 질문");
+        fixtures.createInterviewQuestion(existingSet, 3, "세 번째 질문");
+        fixtures.createInterviewSession(user, existingSet, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
 
-        InterviewQuestionSet newSet = persistQuestionSet(user, application, 3);
-        persistQuestion(newSet, 1, "새 질문 1");
-        persistQuestion(newSet, 2, "새 질문 2");
-        persistQuestion(newSet, 3, "새 질문 3");
+        InterviewQuestionSet newSet = fixtures.createQuestionSet(user, application, 3);
+        fixtures.createInterviewQuestion(newSet, 1, "새 질문 1");
+        fixtures.createInterviewQuestion(newSet, 2, "새 질문 2");
+        fixtures.createInterviewQuestion(newSet, 3, "새 질문 3");
 
         mockMvc.perform(post("/api/v1/interview/sessions")
                         .with(authenticated(user.getId()))
@@ -138,18 +135,18 @@ class InterviewSessionApiTest extends ApiTestBase {
 
     @Test
     void startSession_returns409WhenPausedSessionAlreadyExists() throws Exception {
-        User user = persistUser("session-paused@example.com", "session-paused");
-        Application application = persistApplication(user, "application-title");
-        InterviewQuestionSet existingSet = persistQuestionSet(user, application, 3);
-        persistQuestion(existingSet, 1, "첫 번째 질문");
-        persistQuestion(existingSet, 2, "두 번째 질문");
-        persistQuestion(existingSet, 3, "세 번째 질문");
-        persistSession(user, existingSet, InterviewSessionStatus.PAUSED);
+        User user = fixtures.createUser("session-paused@example.com", "session-paused");
+        Application application = fixtures.createApplication(user, "application-title");
+        InterviewQuestionSet existingSet = fixtures.createQuestionSet(user, application, 3);
+        fixtures.createInterviewQuestion(existingSet, 1, "첫 번째 질문");
+        fixtures.createInterviewQuestion(existingSet, 2, "두 번째 질문");
+        fixtures.createInterviewQuestion(existingSet, 3, "세 번째 질문");
+        fixtures.createInterviewSession(user, existingSet, InterviewSessionStatus.PAUSED, FIXED_NOW);
 
-        InterviewQuestionSet newSet = persistQuestionSet(user, application, 3);
-        persistQuestion(newSet, 1, "새 질문 1");
-        persistQuestion(newSet, 2, "새 질문 2");
-        persistQuestion(newSet, 3, "새 질문 3");
+        InterviewQuestionSet newSet = fixtures.createQuestionSet(user, application, 3);
+        fixtures.createInterviewQuestion(newSet, 1, "새 질문 1");
+        fixtures.createInterviewQuestion(newSet, 2, "새 질문 2");
+        fixtures.createInterviewQuestion(newSet, 3, "새 질문 3");
 
         mockMvc.perform(post("/api/v1/interview/sessions")
                         .with(authenticated(user.getId()))
@@ -161,12 +158,11 @@ class InterviewSessionApiTest extends ApiTestBase {
 
     @Test
     void startSession_returns400WhenQuestionCountIsOutOfRange() throws Exception {
-        User user = persistUser("session-question-count@example.com", "session-question-count");
-        Application application = persistApplication(user, "application-title");
-        // lower bound 검증을 직접 건드리기 위해 질문 2개짜리 세트를 만든다.
-        InterviewQuestionSet questionSet = persistQuestionSet(user, application, 2);
-        persistQuestion(questionSet, 1, "첫 번째 질문");
-        persistQuestion(questionSet, 2, "두 번째 질문");
+        User user = fixtures.createUser("session-question-count@example.com", "session-question-count");
+        Application application = fixtures.createApplication(user, "application-title");
+        InterviewQuestionSet questionSet = fixtures.createQuestionSet(user, application, 2);
+        fixtures.createInterviewQuestion(questionSet, 1, "첫 번째 질문");
+        fixtures.createInterviewQuestion(questionSet, 2, "두 번째 질문");
 
         mockMvc.perform(post("/api/v1/interview/sessions")
                         .with(authenticated(user.getId()))
@@ -182,71 +178,5 @@ class InterviewSessionApiTest extends ApiTestBase {
                 userId,
                 AuthorityUtils.createAuthorityList("ROLE_USER")
         ));
-    }
-
-    private User persistUser(String email, String displayName) {
-        User user = User.builder()
-                .email(email)
-                .displayName(displayName)
-                .profileImageUrl("https://example.com/profile.png")
-                .status(UserStatus.ACTIVE)
-                .build();
-        entityManager.persist(user);
-        entityManager.flush();
-        return user;
-    }
-
-    private Application persistApplication(User user, String title) {
-        Application application = Application.builder()
-                .user(user)
-                .applicationTitle(title)
-                .companyName(title + "-company")
-                .applicationType("신입")
-                .jobRole("Backend Engineer")
-                .status(ApplicationStatus.READY)
-                .build();
-        entityManager.persist(application);
-        entityManager.flush();
-        return application;
-    }
-
-    private InterviewQuestionSet persistQuestionSet(User user, Application application, int questionCount) {
-        InterviewQuestionSet questionSet = InterviewQuestionSet.builder()
-                .user(user)
-                .application(application)
-                .title("질문 세트")
-                .questionCount(questionCount)
-                .difficultyLevel(DifficultyLevel.MEDIUM)
-                .questionTypes(new String[]{"behavioral"})
-                .build();
-        entityManager.persist(questionSet);
-        entityManager.flush();
-        return questionSet;
-    }
-
-    private InterviewQuestion persistQuestion(InterviewQuestionSet questionSet, int order, String questionText) {
-        InterviewQuestion question = InterviewQuestion.builder()
-                .questionSet(questionSet)
-                .questionOrder(order)
-                .questionType(InterviewQuestionType.PROJECT)
-                .difficultyLevel(DifficultyLevel.MEDIUM)
-                .questionText(questionText)
-                .build();
-        entityManager.persist(question);
-        entityManager.flush();
-        return question;
-    }
-
-    private void persistSession(User user, InterviewQuestionSet questionSet, InterviewSessionStatus status) {
-        InterviewSession session = InterviewSession.builder()
-                .user(user)
-                .questionSet(questionSet)
-                .status(status)
-                .startedAt(FIXED_NOW)
-                .lastActivityAt(FIXED_NOW)
-                .endedAt(null)
-                .build();
-        entityManager.persist(session);
-        entityManager.flush();
     }
 }
