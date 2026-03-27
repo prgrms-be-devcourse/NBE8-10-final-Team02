@@ -142,6 +142,7 @@ class GithubApiTest extends ApiTestBase {
 
         mockMvc.perform(get("/api/v1/github/repositories")
                         .with(authenticated(user.getId())))
+                .andDo(print())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").isArray())
@@ -159,6 +160,7 @@ class GithubApiTest extends ApiTestBase {
         mockMvc.perform(get("/api/v1/github/repositories")
                         .param("selected", "true")
                         .with(authenticated(user.getId())))
+                .andDo(print())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].repoName").value("selected-repo"));
