@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.stream.StreamSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -64,6 +65,17 @@ class InterviewQuestionsPayloadBuilderTest {
             ))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("documentTexts");
+        }
+
+        @Test
+        @DisplayName("difficultyLevel이 null이면 NullPointerException을 던진다")
+        void null_difficultyLevel() {
+            assertThatThrownBy(() -> builder.build(
+                JOB_ROLE, COMPANY_NAME, List.of(), List.of(),
+                QUESTION_COUNT, null, QUESTION_TYPES
+            ))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("difficultyLevel");
         }
 
         @Test
@@ -127,11 +139,10 @@ class InterviewQuestionsPayloadBuilderTest {
         void question_types_serialized() throws Exception {
             JsonNode types = objectMapper.readTree(buildDefault()).get("questionTypes");
 
-            assertThat(types.isArray()).isTrue();
-            assertThat(types.size()).isEqualTo(3);
-            assertThat(types.get(0).asText()).isEqualTo("technical_cs");
-            assertThat(types.get(1).asText()).isEqualTo("project");
-            assertThat(types.get(2).asText()).isEqualTo("behavioral");
+            List<String> actual = StreamSupport.stream(types.spliterator(), false)
+                .map(JsonNode::asText)
+                .toList();
+            assertThat(actual).containsExactly("technical_cs", "project", "behavioral");
         }
 
         @Test
