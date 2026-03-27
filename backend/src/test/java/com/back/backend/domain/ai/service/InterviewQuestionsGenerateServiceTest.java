@@ -20,6 +20,7 @@ import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -253,7 +254,13 @@ class InterviewQuestionsGenerateServiceTest {
                 USER_ID, APPLICATION_ID, null, 1, DIFFICULTY_LEVEL, QUESTION_TYPES
             );
 
-            verify(aiPipeline).execute(eq(TEMPLATE_ID), anyString());
+            ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+            verify(aiPipeline).execute(eq(TEMPLATE_ID), payloadCaptor.capture());
+
+            JsonNode payload = objectMapper.readTree(payloadCaptor.getValue());
+            JsonNode selfIntroQnA = payload.get("selfIntroQnA");
+            assertThat(selfIntroQnA).hasSize(1);
+            assertThat(selfIntroQnA.get(0).get("questionText").asText()).isEqualTo("지원 동기");
         }
     }
 
@@ -290,7 +297,13 @@ class InterviewQuestionsGenerateServiceTest {
                 USER_ID, APPLICATION_ID, null, 1, DIFFICULTY_LEVEL, QUESTION_TYPES
             );
 
-            verify(aiPipeline).execute(eq(TEMPLATE_ID), anyString());
+            ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+            verify(aiPipeline).execute(eq(TEMPLATE_ID), payloadCaptor.capture());
+
+            JsonNode payload = objectMapper.readTree(payloadCaptor.getValue());
+            JsonNode evidence = payload.get("portfolioEvidence");
+            assertThat(evidence).hasSize(1);
+            assertThat(evidence.get(0).get("summary").asText()).isEqualTo("추출된 텍스트");
         }
     }
 
