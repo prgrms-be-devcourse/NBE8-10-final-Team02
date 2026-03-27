@@ -12,8 +12,8 @@ import com.back.backend.domain.document.entity.Document;
 import com.back.backend.domain.document.entity.DocumentExtractStatus;
 import com.back.backend.domain.interview.entity.DifficultyLevel;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
-import com.back.backend.domain.interview.entity.InterviewQuestionSet;
 import com.back.backend.domain.interview.entity.InterviewQuestionType;
+import com.back.backend.domain.interview.dto.response.QuestionSetSummaryResponse;
 import com.back.backend.domain.interview.repository.InterviewQuestionRepository;
 import com.back.backend.domain.interview.repository.InterviewQuestionSetRepository;
 import com.back.backend.domain.user.entity.User;
@@ -164,14 +164,14 @@ class InterviewQuestionsGenerateServiceTest {
                 }
                 """);
 
-            InterviewQuestionSet result = service.generate(
+            QuestionSetSummaryResponse result = service.generate(
                 USER_ID, APPLICATION_ID, "면접 질문 세트", QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES
             );
 
             assertThat(result).isNotNull();
-            assertThat(result.getTitle()).isEqualTo("면접 질문 세트");
-            assertThat(result.getDifficultyLevel()).isEqualTo(DifficultyLevel.MEDIUM);
-            assertThat(result.getQuestionCount()).isEqualTo(3);
+            assertThat(result.title()).isEqualTo("면접 질문 세트");
+            assertThat(result.difficultyLevel()).isEqualTo("medium");
+            assertThat(result.questionCount()).isEqualTo(3);
 
             @SuppressWarnings("unchecked")
             ArgumentCaptor<List<InterviewQuestion>> captor = ArgumentCaptor.forClass(List.class);
@@ -214,11 +214,11 @@ class InterviewQuestionsGenerateServiceTest {
                 }
                 """);
 
-            InterviewQuestionSet result = service.generate(
+            QuestionSetSummaryResponse result = service.generate(
                 USER_ID, APPLICATION_ID, null, QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES
             );
 
-            assertThat(result.getQuestionCount()).isEqualTo(2);
+            assertThat(result.questionCount()).isEqualTo(2);
         }
     }
 

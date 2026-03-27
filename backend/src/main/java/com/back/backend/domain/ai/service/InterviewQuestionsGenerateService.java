@@ -15,6 +15,9 @@ import com.back.backend.domain.interview.entity.DifficultyLevel;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
 import com.back.backend.domain.interview.entity.InterviewQuestionType;
+import com.back.backend.domain.interview.dto.response.InterviewQuestionResponse;
+import com.back.backend.domain.interview.dto.response.QuestionSetDetailResponse;
+import com.back.backend.domain.interview.dto.response.QuestionSetSummaryResponse;
 import com.back.backend.domain.interview.repository.InterviewQuestionRepository;
 import com.back.backend.domain.interview.repository.InterviewQuestionSetRepository;
 import com.back.backend.domain.user.entity.User;
@@ -50,7 +53,7 @@ public class InterviewQuestionsGenerateService {
     private final AiPipeline aiPipeline;
 
     @Transactional
-    public InterviewQuestionSet generate(
+    public QuestionSetSummaryResponse generate(
         long userId,
         long applicationId,
         String title,
@@ -140,27 +143,39 @@ public class InterviewQuestionsGenerateService {
 
         questionSet.changeQuestionCount(questions.size());
 
-        return questionSet;
+        return toSummaryResponse(questionSet);
     }
 
     @Transactional(readOnly = true)
-    public List<InterviewQuestionSet> getQuestionSets(long userId) {
-        return questionSetRepository.findAllByUserId(userId);
+    public List<QuestionSetSummaryResponse> getQuestionSets(long userId) {
+        return questionSetRepository.findAllByUserId(userId).stream()
+            .map(this::toSummaryResponse)
+            .toList();
     }
 
     @Transactional(readOnly = true)
-    public InterviewQuestionSet getQuestionSet(long userId, long questionSetId) {
-        return questionSetRepository.findByIdAndUserId(questionSetId, userId)
+    public QuestionSetDetailResponse getQuestionSet(long userId, long questionSetId) {
+        InterviewQuestionSet questionSet = questionSetRepository.findByIdAndUserId(questionSetId, userId)
             .orElseThrow(() -> new ServiceException(
                 ErrorCode.INTERVIEW_QUESTION_SET_NOT_FOUND,
                 HttpStatus.NOT_FOUND,
                 "질문 세트를 찾을 수 없습니다."
             ));
-    }
 
-    @Transactional(readOnly = true)
-    public List<InterviewQuestion> getQuestions(long questionSetId) {
-        return questionRepository.findAllByQuestionSetIdOrderByQuestionOrderAsc(questionSetId);
+        List<InterviewQuestionResponse> questions = questionRepository
+            .findAllByQuestionSetIdOrderByQuestionOrderAsc(questionSetId).stream()
+            .map(this::toQuestionResponse)
+            .toList();
+
+        return new QuestionSetDetailResponse(
+            questionSet.getId(),
+            questionSet.getApplication().getId(),
+            questionSet.getTitle(),
+            questionSet.getQuestionCount(),
+            questionSet.getDifficultyLevel().getValue(),
+            questionSet.getCreatedAt(),
+            questions
+        );
     }
 
     private InterviewQuestionType parseQuestionType(String value) {
@@ -179,5 +194,29 @@ public class InterviewQuestionsGenerateService {
             .orElseThrow(() -> new IllegalArgumentException(
                 "Unknown difficultyLevel: " + value
             ));
+    }
+
+    private QuestionSetSummaryResponse toSummaryResponse(InterviewQuestionSet questionSet) {
+        return new QuestionSetSummaryResponse(
+            questionSet.getId(),
+            questionSet.getApplication().getId(),
+            questionSet.getTitle(),
+            questionSet.getQuestionCount(),
+            questionSet.getDifficultyLevel().getValue(),
+            questionSet.getCreatedAt()
+        );
+    }
+
+    private InterviewQuestionResponse toQuestionResponse(InterviewQuestion question) {
+        return new InterviewQuestionResponse(
+            question.getId(),
+            question.getQuestionOrder(),
+            question.getQuestionType().getValue(),
+            question.getDifficultyLevel().getValue(),
+            question.getQuestionText(),
+            question.getParentQuestion() != null ? question.getParentQuestion().getId() : null,
+            question.getSourceApplicationQuestion() != null
+                ? question.getSourceApplicationQuestion().getId() : null
+        );
     }
 }
