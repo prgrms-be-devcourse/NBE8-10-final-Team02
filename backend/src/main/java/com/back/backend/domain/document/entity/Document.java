@@ -117,4 +117,14 @@ public class Document extends BaseEntity {
         this.extractedText = null;
         this.extractedAt = null;
     }
+
+    /**
+     * 추출된 텍스트를 수동으로 편집할 때 호출한다.
+     * 사용자가 UI에서 직접 수정한 내용을 저장한다.
+     *
+     * @param extractedText 사용자가 편집한 텍스트
+     */
+    public void setExtractedText(String extractedText) {
+        this.extractedText = extractedText;
+    }
 }
