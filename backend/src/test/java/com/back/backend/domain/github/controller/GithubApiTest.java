@@ -1,5 +1,6 @@
 package com.back.backend.domain.github.controller;
 
+import com.back.backend.domain.github.analysis.SyncStatusService;
 import com.back.backend.domain.github.dto.request.GithubConnectRequest;
 import com.back.backend.domain.github.dto.request.RepositorySelectionRequest;
 import com.back.backend.domain.github.entity.GithubConnection;
@@ -11,18 +12,24 @@ import com.back.backend.support.ApiTestBase;
 import com.back.backend.support.TestFixtures;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.util.List;
+import java.util.Map;
 
 import com.github.tomakehurst.wiremock.client.WireMock;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -38,6 +45,19 @@ class GithubApiTest extends ApiTestBase {
 
     @Autowired
     private TestFixtures fixtures;
+
+    // Redis 의존성을 격리한다. GithubApiTest는 Redis 상태가 아닌 HTTP 계층을 검증하는 테스트이며,
+    // SyncStatusService는 GithubRepositoryService 내부에서만 쓰인다.
+    // 실제 Redis 연결 없이도 getRepositories 응답이 올바른지 검증할 수 있어야 한다.
+    @MockitoBean
+    private SyncStatusService syncStatusService;
+
+    @BeforeEach
+    void stubSyncStatus() {
+        // getStatusBulk은 Redis에서 분석 상태를 읽는다. HTTP 계층 검증이 목적인 이 테스트에서는
+        // 항상 "분석 상태 없음"(빈 Map)을 반환하도록 고정해 Redis 의존성을 완전히 제거한다.
+        given(syncStatusService.getStatusBulk(anyLong(), any())).willReturn(Map.of());
+    }
 
     // ─────────────────────────────────────────────────
     // GET /connections
