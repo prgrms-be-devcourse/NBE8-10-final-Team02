@@ -13,6 +13,7 @@ import com.back.backend.domain.interview.entity.DifficultyLevel;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
 import com.back.backend.domain.interview.entity.InterviewQuestionType;
+import com.back.backend.domain.interview.repository.InterviewQuestionRepository;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.global.exception.ErrorCode;
@@ -30,6 +31,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.time.Instant;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -48,6 +50,9 @@ class InterviewQuestionSetGenerateApiTest extends ApiTestBase {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private InterviewQuestionRepository interviewQuestionRepository;
 
     @MockitoBean
     private AiPipeline aiPipeline;
@@ -96,6 +101,23 @@ class InterviewQuestionSetGenerateApiTest extends ApiTestBase {
             .andExpect(jsonPath("$.data.questionCount").value(2))
             .andExpect(jsonPath("$.data.difficultyLevel").value("medium"))
             .andExpect(jsonPath("$.data.applicationId").value(application.getId()));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        List<InterviewQuestionSet> savedSets = entityManager
+            .createQuery("SELECT qs FROM InterviewQuestionSet qs WHERE qs.user.id = :userId", InterviewQuestionSet.class)
+            .setParameter("userId", user.getId())
+            .getResultList();
+        assertThat(savedSets).hasSize(1);
+
+        List<InterviewQuestion> savedQuestions = interviewQuestionRepository
+            .findAllByQuestionSetIdOrderByQuestionOrderAsc(savedSets.get(0).getId());
+        assertThat(savedQuestions).hasSize(2);
+        assertThat(savedQuestions.get(0).getQuestionType()).isEqualTo(InterviewQuestionType.TECHNICAL_CS);
+        assertThat(savedQuestions.get(0).getQuestionText()).isEqualTo("Spring의 DI 컨테이너가 Bean을 관리하는 방식을 설명해주세요.");
+        assertThat(savedQuestions.get(1).getQuestionType()).isEqualTo(InterviewQuestionType.PROJECT);
+        assertThat(savedQuestions.get(1).getDifficultyLevel()).isEqualTo(DifficultyLevel.HARD);
     }
 
     @Test
