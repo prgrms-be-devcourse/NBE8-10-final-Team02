@@ -1,0 +1,17 @@
+{
+  "id": 200001,
+  "name": "my-project",
+  "full_name": "github-user/my-project",
+  "html_url": "https://github.com/github-user/my-project",
+  "private": false,
+  "default_branch": "main",
+  "size": 512,
+  "language": {
+    "name": "Java"
+  },
+  "owner": {
+    "login": "github-user",
+    "id": 100001,
+    "type": "User"
+  }
+}

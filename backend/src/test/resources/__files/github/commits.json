@@ -1,0 +1,44 @@
+[
+  {
+    "sha": "abc1234567890abcdef1234567890abcdef123456",
+    "commit": {
+      "message": "feat: add user authentication",
+      "author": {
+        "name": "Test User",
+        "email": "test@test.com",
+        "date": "2026-03-01T10:00:00Z"
+      }
+    },
+    "author": {
+      "login": "github-user"
+    }
+  },
+  {
+    "sha": "def4567890abcdef1234567890abcdef12345678",
+    "commit": {
+      "message": "fix: resolve NPE in service layer",
+      "author": {
+        "name": "Test User",
+        "email": "test@test.com",
+        "date": "2026-02-20T14:30:00Z"
+      }
+    },
+    "author": {
+      "login": "github-user"
+    }
+  },
+  {
+    "sha": "ghi7890abcdef1234567890abcdef1234567890ab",
+    "commit": {
+      "message": "refactor: extract common utility methods",
+      "author": {
+        "name": "Test User",
+        "email": "test@test.com",
+        "date": "2026-02-10T09:00:00Z"
+      }
+    },
+    "author": {
+      "login": "github-user"
+    }
+  }
+]

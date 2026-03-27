@@ -122,5 +122,4 @@ public abstract class ApiTestBase {
         registry.add("github.api.base-url", wireMock::baseUrl);
         registry.add("ai.gemini.base-url", wireMock::baseUrl);
     }
-
 }

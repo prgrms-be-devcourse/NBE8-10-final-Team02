@@ -1,0 +1,18 @@
+[
+  {
+    "id": 300001,
+    "name": "open-source-lib",
+    "full_name": "other-user/open-source-lib",
+    "html_url": "https://github.com/other-user/open-source-lib",
+    "private": false,
+    "default_branch": "main",
+    "language": "Java",
+    "pushed_at": "2026-01-10T10:00:00Z",
+    "size": 1024,
+    "owner": {
+      "login": "other-user",
+      "id": 200001,
+      "type": "User"
+    }
+  }
+]
