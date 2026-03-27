@@ -14,3 +14,19 @@
 - 거의 같은 의미의 질문 중복
 - 직무와 무관한 뜬금없는 질문
 - enum에 없는 questionType, difficultyLevel 사용
+
+응답 JSON 구조 (반드시 이 키 이름과 구조를 정확히 따라라):
+{
+  "questions": [
+    {
+      "questionOrder": 1,
+      "questionType": "experience",
+      "difficultyLevel": "medium",
+      "questionText": "생성된 면접 질문",
+      "sourceApplicationQuestionOrder": null,
+      "parentQuestionOrder": null,
+      "usedEvidenceKeys": []
+    }
+  ],
+  "qualityFlags": []
+}
