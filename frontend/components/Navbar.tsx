@@ -1,16 +1,22 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getMe, logout } from '@/api/auth';
 import type { User } from '@/types/auth';
 
 export default function Navbar() {
+  const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     getMe().then(setUser);
   }, []);
+
+  if (pathname === '/' || pathname.startsWith('/login')) {
+    return null;
+  }
 
   async function handleLogout() {
     await logout();
