@@ -105,6 +105,49 @@ export interface InterviewSessionTransitionData {
   updatedAt: string;
 }
 
+export type FeedbackTagCategory =
+  | 'content'
+  | 'structure'
+  | 'evidence'
+  | 'communication'
+  | 'technical'
+  | 'other';
+
+export interface FeedbackTag {
+  tagId: number;
+  tagName: string;
+  tagCategory: FeedbackTagCategory;
+}
+
+export interface InterviewAnswerResult {
+  answerId: number;
+  questionId: number;
+  questionText: string;
+  answerText: string | null;
+  score: number;
+  evaluationRationale: string;
+  tags: FeedbackTag[];
+}
+
+export interface InterviewResult {
+  sessionId: number;
+  questionSetId: number;
+  status: Extract<InterviewSessionStatus, 'completed' | 'feedback_completed'>;
+  totalScore: number;
+  summaryFeedback: string;
+  answers: InterviewAnswerResult[];
+  startedAt: string | null;
+  endedAt: string | null;
+}
+
+export interface SessionCompletionData {
+  sessionId: number;
+  status: Extract<InterviewSessionStatus, 'completed' | 'feedback_completed'>;
+  totalScore: number;
+  summaryFeedback: string;
+  endedAt: string;
+}
+
 export interface ApiFieldError {
   field: string;
   reason: string;

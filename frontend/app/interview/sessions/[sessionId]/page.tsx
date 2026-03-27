@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import {
+  completeSession,
   getSessionDetail,
   InterviewApiError,
   pauseSession,
@@ -79,6 +80,7 @@ function isAutoPauseLikely(session: InterviewSessionDetail) {
 
 export default function InterviewSessionPage() {
   const params = useParams();
+  const router = useRouter();
   const sessionId = Number(params.sessionId);
 
   const [session, setSession] = useState<InterviewSessionDetail | null>(null);
@@ -91,6 +93,8 @@ export default function InterviewSessionPage() {
   const [transitionError, setTransitionError] = useState<string | null>(null);
   const [transitionSuccess, setTransitionSuccess] = useState<string | null>(null);
   const [transitionMode, setTransitionMode] = useState<'pause' | 'resume' | null>(null);
+  const [completeError, setCompleteError] = useState<string | null>(null);
+  const [completingSession, setCompletingSession] = useState(false);
 
   const loadSession = useCallback(async (options?: {
     resetAnswerText?: boolean;
@@ -182,6 +186,7 @@ export default function InterviewSessionPage() {
     setSubmitSuccess(null);
     setTransitionError(null);
     setTransitionSuccess(null);
+    setCompleteError(null);
 
     try {
       const result = await submitSessionAnswer(session.id, {
@@ -220,6 +225,7 @@ export default function InterviewSessionPage() {
     setTransitionSuccess(null);
     setSubmitError(null);
     setSubmitSuccess(null);
+    setCompleteError(null);
 
     try {
       const result = action === 'pause'
@@ -245,8 +251,42 @@ export default function InterviewSessionPage() {
     }
   }
 
+  async function handleCompleteSession() {
+    if (!session) {
+      return;
+    }
+
+    setCompletingSession(true);
+    setCompleteError(null);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+    setTransitionError(null);
+    setTransitionSuccess(null);
+
+    try {
+      await completeSession(session.id);
+      router.push(`/interview/sessions/${session.id}/result`);
+    } catch (err) {
+      if (
+        err instanceof InterviewApiError &&
+        (err.retryable || err.code === 'INTERVIEW_SESSION_ALREADY_COMPLETED')
+      ) {
+        router.push(`/interview/sessions/${session.id}/result`);
+        return;
+      }
+
+      if (err instanceof InterviewApiError && err.code === 'INTERVIEW_SESSION_STATUS_CONFLICT') {
+        await loadSession({ showPageLoading: false });
+      }
+
+      setCompleteError(formatApiError(err, '세션을 종료하지 못했습니다.'));
+    } finally {
+      setCompletingSession(false);
+    }
+  }
+
   const answerLength = answerText.trim().length;
-  const actionBusy = submittingMode !== null || transitionMode !== null;
+  const actionBusy = submittingMode !== null || transitionMode !== null || completingSession;
   const autoPauseLikely = session ? isAutoPauseLikely(session) : false;
   const canSubmitAnswer =
     session?.status === 'in_progress' &&
@@ -258,6 +298,11 @@ export default function InterviewSessionPage() {
     session?.status === 'in_progress' && !!session.currentQuestion && !actionBusy;
   const canPause = session?.status === 'in_progress' && !actionBusy;
   const canResume = session?.status === 'paused' && !actionBusy;
+  const canComplete =
+    !!session &&
+    session.remainingQuestionCount === 0 &&
+    (session.status === 'in_progress' || session.status === 'paused') &&
+    !actionBusy;
 
   if (loading) {
     return (
@@ -295,7 +340,7 @@ export default function InterviewSessionPage() {
         </Link>
         <h1 className="mt-2 text-2xl font-semibold text-zinc-900">모의 면접 세션</h1>
         <p className="mt-2 text-sm text-zinc-500">
-          답변 제출, 명시적 일시정지/재개, 자동 일시정지 복원 안내를 현재 화면에서 처리합니다. 결과 이동은 다음 단계에서 닫습니다.
+          답변 제출, 명시적 일시정지/재개, 자동 일시정지 복원 안내와 결과 이동을 현재 화면에서 처리합니다.
         </p>
       </div>
 
@@ -369,6 +414,62 @@ export default function InterviewSessionPage() {
               {formatDateTime(session.lastActivityAt)}
             </p>
           </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-zinc-200 px-4 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-zinc-500">세션 종료와 결과</p>
+              <p className="mt-1 text-sm text-zinc-600">
+                모든 질문에 답변한 뒤 세션을 종료하면 결과 리포트 화면으로 이동합니다.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {(session.status === 'completed' || session.status === 'feedback_completed') && (
+                <Link
+                  href={`/interview/sessions/${session.id}/result`}
+                  className="rounded-full border border-blue-300 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-800"
+                >
+                  결과 확인
+                </Link>
+              )}
+              {(session.status === 'in_progress' || session.status === 'paused') && (
+                <button
+                  type="button"
+                  onClick={() => void handleCompleteSession()}
+                  disabled={!canComplete}
+                  className="rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {completingSession ? '세션 종료 중...' : '세션 종료'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {session.remainingQuestionCount > 0 &&
+            (session.status === 'in_progress' || session.status === 'paused') && (
+              <p className="mt-3 text-sm text-amber-700">
+                남은 질문이 {session.remainingQuestionCount}개라서 아직 세션을 종료할 수 없습니다.
+              </p>
+            )}
+
+          {session.status === 'completed' && (
+            <p className="mt-3 text-sm text-zinc-600">
+              세션은 종료됐지만 결과가 아직 준비 중일 수 있습니다. 결과 화면에서 다시 확인할 수 있습니다.
+            </p>
+          )}
+
+          {session.status === 'feedback_completed' && (
+            <p className="mt-3 text-sm text-blue-700">
+              결과 리포트가 준비되었습니다. `결과 확인` 버튼으로 이동하세요.
+            </p>
+          )}
+
+          {completeError && (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {completeError}
+            </div>
+          )}
         </div>
 
         <div className="mt-5 rounded-2xl border border-zinc-200 px-4 py-4">
@@ -462,13 +563,13 @@ export default function InterviewSessionPage() {
 
           {session.status === 'completed' && (
             <p className="mt-3 text-sm text-zinc-600">
-              이 세션은 종료되었습니다. 결과 화면 연결은 다음 단계에서 이어집니다.
+              이 세션은 종료되었습니다. 위의 `결과 확인` 버튼에서 결과 리포트를 다시 확인할 수 있습니다.
             </p>
           )}
 
           {session.status === 'feedback_completed' && (
             <p className="mt-3 text-sm text-zinc-600">
-              피드백이 완료된 세션입니다. 추가 답변은 제출할 수 없습니다.
+              피드백이 완료된 세션입니다. 추가 답변은 제출할 수 없고 결과 리포트만 확인할 수 있습니다.
             </p>
           )}
 
