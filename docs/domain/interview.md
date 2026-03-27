@@ -2,7 +2,7 @@
 owner: 면접 세션/서비스 흐름 + 대시보드/히스토리
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-25
+last_updated: 2026-03-26
 linked_issue_or_pr: docs-sync-requirements-v5
 applies_to: interview-domain
 ---
@@ -47,9 +47,12 @@ applies_to: interview-domain
 - 명시적 `complete`는 `in_progress`, `paused` 상태에서만 허용한다.
 - 미답변 질문이 남아 있으면 `REQUEST_VALIDATION_FAILED`로 세션 종료를 거절한다.
 - `completed`, `feedback_completed` 세션의 종료 재요청은 `INTERVIEW_SESSION_ALREADY_COMPLETED`로 거절한다.
+- `complete`에서 `INTERVIEW_RESULT_INCOMPLETE`, `INTERVIEW_RESULT_GENERATION_FAILED`, `EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE`가 반환돼도 세션 종료 기록은 `completed` 상태로 유지한다.
 - 결과 상세 조회는 `feedback_completed` 상태에서만 성공한다.
 - 결과 상세 조회 대상이 없거나 현재 사용자 소유가 아니면 `RESOURCE_NOT_FOUND`를 반환한다.
 - 결과 상세 조회 시 세션이 `completed` 상태면 `INTERVIEW_RESULT_INCOMPLETE`를 반환한다.
+- v1의 결과 재시도는 `POST /interview/sessions/{sessionId}/complete` 재전송이 아니라 `GET /interview/sessions/{sessionId}/result` 재확인 흐름으로 처리한다.
+- 전용 결과 재생성 endpoint는 이 단계에서 열지 않고 별도 이슈로 분리한다.
 - 세션 상세 조회는 복원 화면 기준으로 `currentQuestion`, 진행률 계산용 count, `resumeAvailable`, `lastActivityAt`를 함께 반환한다.
 - 건너뛰기 아닌 일반 답변이 비어 있으면 `INTERVIEW_ANSWER_REQUIRED`로 거절한다.
 - 일반 답변은 50자 이상 1000자 이하로 검증하고, 건너뛰기는 예외로 처리한다.

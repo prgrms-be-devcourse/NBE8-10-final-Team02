@@ -2,7 +2,7 @@
 owner: 플랫폼/공통 기반 + 인프라/배포/관측성
 reviewer: 프론트 협업자
 status: reviewed
-last_updated: 2026-03-25
+last_updated: 2026-03-26
 linked_issue_or_pr: docs-sync-requirements-v5
 applies_to: error-classification-and-response
 ---
@@ -414,7 +414,8 @@ applies_to: error-classification-and-response
 
 ### 13.1 재시도 가능 여부 기준
 
-- 사용자가 같은 요청을 다시 보내도 안전한 경우에만 retryable=true를 설정한다.
+- 기본적으로 사용자가 같은 요청을 다시 보내도 안전한 경우에만 retryable=true를 설정한다.
+- 예외적으로 비동기 완료형 쓰기 API는 원 요청 재전송이 아니라 문서에 명시된 후속 조회 재확인이 안전할 때 retryable=true를 사용할 수 있다.
 - validation 오류와 도메인 규칙 위반은 기본적으로 재시도 가능 오류가 아니다.
 - 외부 연동 timeout, 일시 장애, rate limit은 재시도 가능 후보이다.
 
@@ -593,6 +594,8 @@ applies_to: error-classification-and-response
 - `error.message`는 기본 사용자 노출 메시지로 사용한다.
 - `fieldErrors`가 있으면 폼 필드 에러에 우선 매핑한다.
 - `retryable=true`인 경우에만 재시도 UI를 기본 제공한다.
+- 쓰기 API에서 `retryable=true`가 반환되면 프론트는 endpoint 문서에 정의된 다음 안전한 요청을 우선 사용한다.
+- 면접 결과 생성 실패 흐름 v1은 `POST /interview/sessions/{sessionId}/complete` 재전송이 아니라 `GET /interview/sessions/{sessionId}/result` 재확인으로 처리한다.
 - 같은 HTTP 상태라도 오류 코드가 다를 수 있으므로 상태코드만으로 분기하지 않는다.
 
 ## 20. 테스트 기준

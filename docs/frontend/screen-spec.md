@@ -2,7 +2,7 @@
 owner: 면접 세션/서비스 흐름 + 대시보드/히스토리
 reviewer: 프론트 협업자
 status: reviewed
-last_updated: 2026-03-25
+last_updated: 2026-03-26
 linked_issue_or_pr: docs-sync-screen-wbs-v6
 applies_to: screen-state-route
 ---
@@ -634,11 +634,13 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 ### 상태
 - 피드백 생성 중
 - 피드백 생성 완료
-- 피드백 생성 실패 후 재시도 가능
+- 피드백 생성 실패 또는 미준비 상태 재확인 가능
 
 ### 검증/예외
 - 피드백 생성 실패 시 세션 기록은 유지
-- 결과가 아직 준비되지 않았으면 대기 또는 재시도 안내
+- `POST /interview/sessions/{sessionId}/complete`에서 `502`, `503`이 반환돼도 세션 기록은 유지한다.
+- 결과가 아직 준비되지 않았으면 대기 또는 재확인 안내를 노출한다.
+- v1의 재시도 CTA는 `POST /interview/sessions/{sessionId}/complete` 재전송이 아니라 `GET /interview/sessions/{sessionId}/result` 재조회 또는 히스토리 재진입이다.
 
 ---
 
@@ -670,6 +672,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 서버는 현재 사용자 세션만 반환하고, 활성 세션(`in_progress`, `paused`)이 있으면 응답 배열의 가장 앞에 둔다.
 - 활성 세션 다음의 과거 세션은 `startedAt` 최신순으로 노출한다.
 - SCR-15의 상태 필터와 화면 정렬은 별도 백엔드 query parameter가 잠기기 전까지 v1 목록 응답 범위 안에서 처리한다.
+- `completed` 상태지만 결과가 아직 준비되지 않은 세션은 결과 재확인 흐름으로 연결한다.
 
 ---
 
