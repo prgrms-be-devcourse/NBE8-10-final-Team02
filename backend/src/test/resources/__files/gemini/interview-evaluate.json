@@ -1,0 +1,22 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\"score\":80,\"evaluationRationale\":\"핵심 내용은 잘 설명했으나 구체적인 수치 근거가 부족합니다. 경험을 더 구체적으로 서술하면 좋겠습니다.\",\"tags\":[\"근거 부족\"]}"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 600,
+    "candidatesTokenCount": 80,
+    "totalTokenCount": 680
+  },
+  "modelVersion": "gemini-2.5-flash"
+}
