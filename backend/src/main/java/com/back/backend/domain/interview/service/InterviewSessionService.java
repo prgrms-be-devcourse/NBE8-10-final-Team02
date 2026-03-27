@@ -126,8 +126,12 @@ public class InterviewSessionService {
         );
     }
 
-    @Transactional(readOnly = true)
     public InterviewResultResponse getSessionResult(long userId, long sessionId) {
+        retryPendingResultGenerationIfNeeded(userId, sessionId);
+        return executeReadOnlyInTransaction(() -> loadSessionResultResponse(userId, sessionId));
+    }
+
+    private InterviewResultResponse loadSessionResultResponse(long userId, long sessionId) {
         InterviewSession session = getOwnedSession(userId, sessionId);
         validateResultReadable(session);
 
@@ -268,9 +272,71 @@ public class InterviewSessionService {
             SessionCompletionPreparation preparation,
             InterviewResultGenerationService.GeneratedInterviewResult generatedResult
     ) {
-        InterviewSession session = getOwnedSession(userId, preparation.sessionId());
-        applyGeneratedResult(session, generatedResult, preparation.endedAt());
+        InterviewSession session = finalizeGeneratedResult(userId, preparation, generatedResult);
         return interviewResponseMapper.toInterviewSessionCompletionResponse(session);
+    }
+
+    private void retryPendingResultGenerationIfNeeded(long userId, long sessionId) {
+        SessionCompletionPreparation preparation = executeNullableInTransaction(
+                () -> preparePendingResultGeneration(userId, sessionId)
+        );
+        if (preparation == null) {
+            return;
+        }
+
+        try {
+            InterviewResultGenerationService.GeneratedInterviewResult generatedResult =
+                    interviewResultGenerationService.generate(
+                            preparation.sessionId(),
+                            preparation.questionSetId(),
+                            preparation.answers()
+                    );
+            executeInTransaction(() -> finalizeGeneratedResult(userId, preparation, generatedResult));
+        } catch (ServiceException exception) {
+            if (exception.isRetryable()) {
+                return;
+            }
+            throw exception;
+        }
+    }
+
+    private SessionCompletionPreparation preparePendingResultGeneration(long userId, long sessionId) {
+        InterviewSession session = getOwnedSession(userId, sessionId);
+        if (session.getStatus() != InterviewSessionStatus.COMPLETED) {
+            return null;
+        }
+
+        List<InterviewAnswer> answers = interviewAnswerRepository
+                .findAllWithQuestionBySessionIdOrderByAnswerOrderAsc(session.getId());
+        if (answers.isEmpty()) {
+            return null;
+        }
+
+        Instant endedAt = session.getEndedAt() == null ? clock.instant() : session.getEndedAt();
+        return new SessionCompletionPreparation(
+                session.getId(),
+                session.getQuestionSet().getId(),
+                endedAt,
+                answers
+        );
+    }
+
+    private InterviewSession finalizeGeneratedResult(
+            long userId,
+            SessionCompletionPreparation preparation,
+            InterviewResultGenerationService.GeneratedInterviewResult generatedResult
+    ) {
+        InterviewSession session = getOwnedSession(userId, preparation.sessionId());
+        if (session.getStatus() == InterviewSessionStatus.FEEDBACK_COMPLETED) {
+            return session;
+        }
+
+        if (session.getStatus() != InterviewSessionStatus.COMPLETED) {
+            return session;
+        }
+
+        applyGeneratedResult(session, generatedResult, preparation.endedAt());
+        return session;
     }
 
     private void applyGeneratedResult(
@@ -525,6 +591,17 @@ public class InterviewSessionService {
 
     private <T> T executeInTransaction(Supplier<T> action) {
         TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+        return Objects.requireNonNull(transactionTemplate.execute(status -> action.get()));
+    }
+
+    private <T> T executeNullableInTransaction(Supplier<T> action) {
+        TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+        return transactionTemplate.execute(status -> action.get());
+    }
+
+    private <T> T executeReadOnlyInTransaction(Supplier<T> action) {
+        TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+        transactionTemplate.setReadOnly(true);
         return Objects.requireNonNull(transactionTemplate.execute(status -> action.get()));
     }
 
