@@ -43,6 +43,7 @@ public class InterviewQuestionsPayloadBuilder {
         Objects.requireNonNull(jobRole, "jobRole must not be null");
         Objects.requireNonNull(selfIntroQnAs, "selfIntroQnAs must not be null");
         Objects.requireNonNull(documentTexts, "documentTexts must not be null");
+        Objects.requireNonNull(difficultyLevel, "difficultyLevel must not be null");
         Objects.requireNonNull(questionTypes, "questionTypes must not be null");
 
         ObjectNode root = objectMapper.createObjectNode();
