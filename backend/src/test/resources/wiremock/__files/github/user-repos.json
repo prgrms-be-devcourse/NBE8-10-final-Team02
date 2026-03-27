@@ -1,0 +1,34 @@
+[
+  {
+    "id": 200001,
+    "name": "my-project",
+    "full_name": "github-user/my-project",
+    "html_url": "https://github.com/github-user/my-project",
+    "private": false,
+    "default_branch": "main",
+    "language": "Java",
+    "pushed_at": "2026-03-01T12:00:00Z",
+    "size": 512,
+    "owner": {
+      "login": "github-user",
+      "id": 100001,
+      "type": "User"
+    }
+  },
+  {
+    "id": 200002,
+    "name": "side-project",
+    "full_name": "github-user/side-project",
+    "html_url": "https://github.com/github-user/side-project",
+    "private": false,
+    "default_branch": "main",
+    "language": "TypeScript",
+    "pushed_at": "2026-02-15T08:00:00Z",
+    "size": 256,
+    "owner": {
+      "login": "github-user",
+      "id": 100001,
+      "type": "User"
+    }
+  }
+]
