@@ -308,6 +308,67 @@ class InterviewQuestionsGenerateServiceTest {
     }
 
     @Nested
+    @DisplayName("AI 응답 파싱 실패")
+    class ResponseParsingFailure {
+
+        @Test
+        @DisplayName("알 수 없는 questionType이면 IllegalArgumentException을 던진다")
+        void unknown_question_type() throws Exception {
+            givenUserExists();
+            givenApplicationExists();
+            givenAppQuestions();
+            givenNoDocuments();
+            givenAiResponse("""
+                {
+                  "questions": [
+                    {
+                      "questionOrder": 1,
+                      "questionType": "unknown_type",
+                      "difficultyLevel": "medium",
+                      "questionText": "질문"
+                    }
+                  ],
+                  "qualityFlags": []
+                }
+                """);
+
+            assertThatThrownBy(() -> service.generate(
+                USER_ID, APPLICATION_ID, null, 1, DIFFICULTY_LEVEL, QUESTION_TYPES
+            ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown_type");
+        }
+
+        @Test
+        @DisplayName("알 수 없는 difficultyLevel이면 IllegalArgumentException을 던진다")
+        void unknown_difficulty_level() throws Exception {
+            givenUserExists();
+            givenApplicationExists();
+            givenAppQuestions();
+            givenNoDocuments();
+            givenAiResponse("""
+                {
+                  "questions": [
+                    {
+                      "questionOrder": 1,
+                      "questionType": "technical_cs",
+                      "difficultyLevel": "impossible",
+                      "questionText": "질문"
+                    }
+                  ],
+                  "qualityFlags": []
+                }
+                """);
+
+            assertThatThrownBy(() -> service.generate(
+                USER_ID, APPLICATION_ID, null, 1, DIFFICULTY_LEVEL, QUESTION_TYPES
+            ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("impossible");
+        }
+    }
+
+    @Nested
     @DisplayName("조회")
     class QueryMethods {
 
