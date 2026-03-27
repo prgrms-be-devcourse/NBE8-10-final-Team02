@@ -120,7 +120,7 @@ public abstract class ApiTestBase {
     // GitHub API와 AI API(Gemini) 호출을 가로채는 WireMock 서버.
     // static: 컨텍스트 로드 전에 포트가 확정되어 @DynamicPropertySource에서 사용 가능.
     @RegisterExtension
-    static WireMockExtension wireMock = WireMockExtension.newInstance()
+    protected static WireMockExtension wireMock = WireMockExtension.newInstance()
         .options(wireMockConfig().dynamicPort())
         .build();
 
