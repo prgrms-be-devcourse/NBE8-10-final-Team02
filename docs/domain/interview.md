@@ -53,7 +53,10 @@ applies_to: interview-domain
 - 결과 상세 조회 시 세션이 `completed` 상태면 `INTERVIEW_RESULT_INCOMPLETE`를 반환한다.
 - v1의 결과 재시도는 `POST /interview/sessions/{sessionId}/complete` 재전송이 아니라 `GET /interview/sessions/{sessionId}/result` 재확인 흐름으로 처리한다.
 - 전용 결과 재생성 endpoint는 이 단계에서 열지 않고 별도 이슈로 분리한다.
-- 세션 상세 조회는 복원 화면 기준으로 `currentQuestion`, 진행률 계산용 count, `resumeAvailable`, `lastActivityAt`를 함께 반환한다.
+- 세션 상세 조회는 복원 화면과 히스토리 상세의 기본 정보 영역 기준으로 `currentQuestion`, 진행률 계산용 count, `resumeAvailable`, `lastActivityAt`를 함께 반환한다.
+- 히스토리 상세 v1은 전용 backend endpoint를 추가하지 않고 `GET /interview/sessions/{sessionId}`와 `GET /interview/sessions/{sessionId}/result`를 함께 재사용한다.
+- 히스토리 상세의 질문/답변/피드백 전체 기록은 `result` 성공 응답이 있을 때만 그린다.
+- `completed` 상태로 남아 있는 세션은 히스토리에서도 결과 미준비 상태로 해석하고 `GET /interview/sessions/{sessionId}/result` 재확인 흐름으로 연결한다.
 - 건너뛰기 아닌 일반 답변이 비어 있으면 `INTERVIEW_ANSWER_REQUIRED`로 거절한다.
 - 일반 답변은 50자 이상 1000자 이하로 검증하고, 건너뛰기는 예외로 처리한다.
 - 사용자 1명당 동시에 진행 가능한 활성 세션은 1개다.
