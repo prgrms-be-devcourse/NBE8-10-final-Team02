@@ -174,7 +174,7 @@ export default function NewQuestionSetPage() {
           <p className="text-xs font-medium text-amber-700">면접 질문 생성 전 확인</p>
           <h1 className="mt-2 text-xl font-semibold text-zinc-900">아직 질문 세트를 만들 수 없습니다.</h1>
           <p className="mt-3 text-sm text-zinc-700">
-            현재 지원 준비 상태는 <span className="font-medium">작성 중</span>입니다. 자소서 답변이 모두 준비되면
+            현재 지원 준비 상태는 <span className="font-medium">작성 중</span>입니다. 자소서 답변과 연결 소스가 모두 준비되면
             질문 생성 화면을 사용할 수 있습니다.
           </p>
 
