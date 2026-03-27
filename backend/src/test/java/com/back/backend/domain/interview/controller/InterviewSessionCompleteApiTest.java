@@ -1,22 +1,21 @@
 package com.back.backend.domain.interview.controller;
 
 import com.back.backend.domain.application.entity.Application;
-import com.back.backend.domain.application.entity.ApplicationStatus;
-import com.back.backend.domain.interview.entity.DifficultyLevel;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
-import com.back.backend.domain.interview.entity.InterviewQuestionType;
 import com.back.backend.domain.interview.entity.InterviewSession;
 import com.back.backend.domain.interview.entity.InterviewSessionStatus;
 import com.back.backend.domain.interview.repository.InterviewAnswerRepository;
 import com.back.backend.domain.interview.repository.InterviewAnswerTagRepository;
 import com.back.backend.domain.interview.repository.InterviewSessionRepository;
 import com.back.backend.domain.interview.service.InterviewResultGenerationService;
+import com.back.backend.domain.user.entity.User;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
+import com.back.backend.support.TestFixtures;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,6 +53,9 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private TestFixtures fixtures;
 
     @Autowired
     private InterviewSessionRepository interviewSessionRepository;
@@ -327,130 +329,43 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
     }
 
     private UserFixture persistUserFixture(String prefix) {
-        com.back.backend.domain.user.entity.User user = com.back.backend.domain.user.entity.User.builder()
-                .email(prefix + "@example.com")
-                .displayName(prefix)
-                .profileImageUrl("https://example.com/profile.png")
-                .status(com.back.backend.domain.user.entity.UserStatus.ACTIVE)
-                .build();
-        entityManager.persist(user);
-        entityManager.flush();
+        User user = fixtures.createUser(prefix + "@example.com", prefix);
         return new UserFixture(user, null, null, List.of());
     }
 
     private UserFixture persistAnsweredSession(String prefix) {
-        com.back.backend.domain.user.entity.User user = persistUserFixture(prefix).user();
-        Application application = persistApplication(user, prefix + "-application");
-        InterviewQuestionSet questionSet = persistQuestionSet(user, application);
-        InterviewQuestion firstQuestion = persistQuestion(questionSet, 1, "첫 번째 질문");
-        InterviewQuestion secondQuestion = persistQuestion(questionSet, 2, "두 번째 질문");
-        InterviewQuestion thirdQuestion = persistQuestion(questionSet, 3, "세 번째 질문");
-        InterviewSession session = persistSession(user, questionSet, InterviewSessionStatus.IN_PROGRESS);
+        User user = fixtures.createUser(prefix + "@example.com", prefix);
+        Application application = fixtures.createApplication(user, prefix + "-application");
+        InterviewQuestionSet questionSet = fixtures.createQuestionSet(user, application, 3);
+        InterviewQuestion firstQuestion = fixtures.createInterviewQuestion(questionSet, 1, "첫 번째 질문");
+        InterviewQuestion secondQuestion = fixtures.createInterviewQuestion(questionSet, 2, "두 번째 질문");
+        InterviewQuestion thirdQuestion = fixtures.createInterviewQuestion(questionSet, 3, "세 번째 질문");
+        InterviewSession session = fixtures.createInterviewSession(user, questionSet, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
         List<InterviewAnswer> answers = List.of(
-                persistAnswer(session, firstQuestion, 1, VALID_ANSWER + " 첫 번째"),
-                persistAnswer(session, secondQuestion, 2, VALID_ANSWER + " 두 번째"),
-                persistAnswer(session, thirdQuestion, 3, VALID_ANSWER + " 세 번째")
+                fixtures.createInterviewAnswer(session, firstQuestion, 1, VALID_ANSWER + " 첫 번째"),
+                fixtures.createInterviewAnswer(session, secondQuestion, 2, VALID_ANSWER + " 두 번째"),
+                fixtures.createInterviewAnswer(session, thirdQuestion, 3, VALID_ANSWER + " 세 번째")
         );
         return new UserFixture(user, questionSet, session, answers);
     }
 
     private UserFixture persistPartiallyAnsweredSession(String prefix) {
-        com.back.backend.domain.user.entity.User user = persistUserFixture(prefix).user();
-        Application application = persistApplication(user, prefix + "-application");
-        InterviewQuestionSet questionSet = persistQuestionSet(user, application);
-        InterviewQuestion firstQuestion = persistQuestion(questionSet, 1, "첫 번째 질문");
-        InterviewQuestion secondQuestion = persistQuestion(questionSet, 2, "두 번째 질문");
-        persistQuestion(questionSet, 3, "세 번째 질문");
-        InterviewSession session = persistSession(user, questionSet, InterviewSessionStatus.IN_PROGRESS);
+        User user = fixtures.createUser(prefix + "@example.com", prefix);
+        Application application = fixtures.createApplication(user, prefix + "-application");
+        InterviewQuestionSet questionSet = fixtures.createQuestionSet(user, application, 3);
+        InterviewQuestion firstQuestion = fixtures.createInterviewQuestion(questionSet, 1, "첫 번째 질문");
+        InterviewQuestion secondQuestion = fixtures.createInterviewQuestion(questionSet, 2, "두 번째 질문");
+        fixtures.createInterviewQuestion(questionSet, 3, "세 번째 질문");
+        InterviewSession session = fixtures.createInterviewSession(user, questionSet, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
         List<InterviewAnswer> answers = List.of(
-                persistAnswer(session, firstQuestion, 1, VALID_ANSWER + " 첫 번째"),
-                persistAnswer(session, secondQuestion, 2, VALID_ANSWER + " 두 번째")
+                fixtures.createInterviewAnswer(session, firstQuestion, 1, VALID_ANSWER + " 첫 번째"),
+                fixtures.createInterviewAnswer(session, secondQuestion, 2, VALID_ANSWER + " 두 번째")
         );
         return new UserFixture(user, questionSet, session, answers);
     }
 
-    private Application persistApplication(com.back.backend.domain.user.entity.User user, String title) {
-        Application application = Application.builder()
-                .user(user)
-                .applicationTitle(title)
-                .companyName(title + "-company")
-                .applicationType("신입")
-                .jobRole("Backend Engineer")
-                .status(ApplicationStatus.READY)
-                .build();
-        entityManager.persist(application);
-        entityManager.flush();
-        return application;
-    }
-
-    private InterviewQuestionSet persistQuestionSet(
-            com.back.backend.domain.user.entity.User user,
-            Application application
-    ) {
-        InterviewQuestionSet questionSet = InterviewQuestionSet.builder()
-                .user(user)
-                .application(application)
-                .title("질문 세트")
-                .questionCount(3)
-                .difficultyLevel(DifficultyLevel.MEDIUM)
-                .questionTypes(new String[]{"behavioral"})
-                .build();
-        entityManager.persist(questionSet);
-        entityManager.flush();
-        return questionSet;
-    }
-
-    private InterviewQuestion persistQuestion(InterviewQuestionSet questionSet, int order, String questionText) {
-        InterviewQuestion question = InterviewQuestion.builder()
-                .questionSet(questionSet)
-                .questionOrder(order)
-                .questionType(InterviewQuestionType.PROJECT)
-                .difficultyLevel(DifficultyLevel.MEDIUM)
-                .questionText(questionText)
-                .build();
-        entityManager.persist(question);
-        entityManager.flush();
-        return question;
-    }
-
-    private InterviewSession persistSession(
-            com.back.backend.domain.user.entity.User user,
-            InterviewQuestionSet questionSet,
-            InterviewSessionStatus status
-    ) {
-        InterviewSession session = InterviewSession.builder()
-                .user(user)
-                .questionSet(questionSet)
-                .status(status)
-                .startedAt(FIXED_NOW)
-                .lastActivityAt(FIXED_NOW)
-                .endedAt(null)
-                .build();
-        entityManager.persist(session);
-        entityManager.flush();
-        return session;
-    }
-
-    private InterviewAnswer persistAnswer(
-            InterviewSession session,
-            InterviewQuestion question,
-            int answerOrder,
-            String answerText
-    ) {
-        InterviewAnswer answer = InterviewAnswer.builder()
-                .session(session)
-                .question(question)
-                .answerOrder(answerOrder)
-                .answerText(answerText)
-                .skipped(false)
-                .build();
-        entityManager.persist(answer);
-        entityManager.flush();
-        return answer;
-    }
-
     private record UserFixture(
-            com.back.backend.domain.user.entity.User user,
+            User user,
             InterviewQuestionSet questionSet,
             InterviewSession session,
             List<InterviewAnswer> answers

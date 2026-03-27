@@ -1,18 +1,14 @@
 package com.back.backend.domain.interview.controller;
 
 import com.back.backend.domain.application.entity.Application;
-import com.back.backend.domain.application.entity.ApplicationStatus;
-import com.back.backend.domain.interview.entity.DifficultyLevel;
-import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
-import com.back.backend.domain.interview.entity.InterviewQuestionType;
 import com.back.backend.domain.interview.entity.InterviewSession;
 import com.back.backend.domain.interview.entity.InterviewSessionStatus;
 import com.back.backend.domain.user.entity.User;
-import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
+import com.back.backend.support.TestFixtures;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +39,9 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
     @Autowired
     private EntityManager entityManager;
 
+    @Autowired
+    private TestFixtures fixtures;
+
     @MockitoBean
     private Clock clock;
 
@@ -53,8 +52,8 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
 
     @Test
     void pauseSession_returns200AndChangesStatusToPaused() throws Exception {
-        User user = persistUser("pause-success@example.com", "pause-success");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
+        User user = fixtures.createUser("pause-success@example.com", "pause-success");
+        InterviewSession session = createSessionWithQuestions(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/pause", session.getId())
                         .with(authenticated(user.getId())))
@@ -74,9 +73,9 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
 
     @Test
     void pauseSession_returns404WhenSessionIsNotOwned() throws Exception {
-        User owner = persistUser("pause-owner@example.com", "pause-owner");
-        User otherUser = persistUser("pause-other@example.com", "pause-other");
-        InterviewSession session = persistSession(owner, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
+        User owner = fixtures.createUser("pause-owner@example.com", "pause-owner");
+        User otherUser = fixtures.createUser("pause-other@example.com", "pause-other");
+        InterviewSession session = createSessionWithQuestions(owner, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/pause", session.getId())
                         .with(authenticated(otherUser.getId())))
@@ -86,8 +85,8 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
 
     @Test
     void pauseSession_returns409WhenStatusTransitionIsInvalid() throws Exception {
-        User user = persistUser("pause-conflict@example.com", "pause-conflict");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.PAUSED, FIXED_NOW);
+        User user = fixtures.createUser("pause-conflict@example.com", "pause-conflict");
+        InterviewSession session = createSessionWithQuestions(user, InterviewSessionStatus.PAUSED, FIXED_NOW);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/pause", session.getId())
                         .with(authenticated(user.getId())))
@@ -97,8 +96,8 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
 
     @Test
     void pauseSession_returns409WhenSessionAlreadyCompleted() throws Exception {
-        User user = persistUser("pause-completed@example.com", "pause-completed");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.COMPLETED, FIXED_NOW);
+        User user = fixtures.createUser("pause-completed@example.com", "pause-completed");
+        InterviewSession session = createSessionWithQuestions(user, InterviewSessionStatus.COMPLETED, FIXED_NOW);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/pause", session.getId())
                         .with(authenticated(user.getId())))
@@ -108,9 +107,9 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
 
     @Test
     void resumeSession_returns200AndUpdatesLastActivityAt() throws Exception {
-        User user = persistUser("resume-success@example.com", "resume-success");
+        User user = fixtures.createUser("resume-success@example.com", "resume-success");
         Instant previousActivityAt = FIXED_NOW.minus(Duration.ofMinutes(10));
-        InterviewSession session = persistSession(user, InterviewSessionStatus.PAUSED, previousActivityAt);
+        InterviewSession session = createSessionWithQuestions(user, InterviewSessionStatus.PAUSED, previousActivityAt);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/resume", session.getId())
                         .with(authenticated(user.getId())))
@@ -130,10 +129,9 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
 
     @Test
     void resumeSession_returns200WhenExpiredInProgressSessionIsNormalizedFirst() throws Exception {
-        User user = persistUser("resume-expired@example.com", "resume-expired");
-        // auto-pause 경계를 넘긴 in_progress 세션을 바로 resume했을 때,
-        // 내부적으로 paused 정규화를 거친 뒤 같은 요청에서 재개되는 흐름을 검증한다.
-        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW.minus(Duration.ofMinutes(31)));
+        User user = fixtures.createUser("resume-expired@example.com", "resume-expired");
+        InterviewSession session = createSessionWithQuestions(
+                user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW.minus(Duration.ofMinutes(31)));
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/resume", session.getId())
                         .with(authenticated(user.getId())))
@@ -150,8 +148,8 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
 
     @Test
     void resumeSession_returns409WhenSessionIsAlreadyActive() throws Exception {
-        User user = persistUser("resume-conflict@example.com", "resume-conflict");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
+        User user = fixtures.createUser("resume-conflict@example.com", "resume-conflict");
+        InterviewSession session = createSessionWithQuestions(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/resume", session.getId())
                         .with(authenticated(user.getId())))
@@ -161,8 +159,9 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
 
     @Test
     void resumeSession_returns409WhenSessionAlreadyCompleted() throws Exception {
-        User user = persistUser("resume-completed@example.com", "resume-completed");
-        InterviewSession session = persistSession(user, InterviewSessionStatus.FEEDBACK_COMPLETED, FIXED_NOW);
+        User user = fixtures.createUser("resume-completed@example.com", "resume-completed");
+        InterviewSession session = createSessionWithQuestions(
+                user, InterviewSessionStatus.FEEDBACK_COMPLETED, FIXED_NOW);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/resume", session.getId())
                         .with(authenticated(user.getId())))
@@ -177,75 +176,13 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
         ));
     }
 
-    private User persistUser(String email, String displayName) {
-        User user = User.builder()
-                .email(email)
-                .displayName(displayName)
-                .profileImageUrl("https://example.com/profile.png")
-                .status(UserStatus.ACTIVE)
-                .build();
-        entityManager.persist(user);
-        entityManager.flush();
-        return user;
-    }
-
-    private Application persistApplication(User user, String title) {
-        Application application = Application.builder()
-                .user(user)
-                .applicationTitle(title)
-                .companyName(title + "-company")
-                .applicationType("신입")
-                .jobRole("Backend Engineer")
-                .status(ApplicationStatus.READY)
-                .build();
-        entityManager.persist(application);
-        entityManager.flush();
-        return application;
-    }
-
-    private InterviewQuestionSet persistQuestionSet(User user, Application application) {
-        InterviewQuestionSet questionSet = InterviewQuestionSet.builder()
-                .user(user)
-                .application(application)
-                .title("질문 세트")
-                .questionCount(3)
-                .difficultyLevel(DifficultyLevel.MEDIUM)
-                .questionTypes(new String[]{"behavioral"})
-                .build();
-        entityManager.persist(questionSet);
-        entityManager.flush();
-        persistQuestion(questionSet, 1, "첫 번째 질문");
-        persistQuestion(questionSet, 2, "두 번째 질문");
-        persistQuestion(questionSet, 3, "세 번째 질문");
-        return questionSet;
-    }
-
-    private InterviewQuestion persistQuestion(InterviewQuestionSet questionSet, int order, String questionText) {
-        InterviewQuestion question = InterviewQuestion.builder()
-                .questionSet(questionSet)
-                .questionOrder(order)
-                .questionType(InterviewQuestionType.PROJECT)
-                .difficultyLevel(DifficultyLevel.MEDIUM)
-                .questionText(questionText)
-                .build();
-        entityManager.persist(question);
-        entityManager.flush();
-        return question;
-    }
-
-    private InterviewSession persistSession(User user, InterviewSessionStatus status, Instant activityAt) {
-        Application application = persistApplication(user, "application-title");
-        InterviewQuestionSet questionSet = persistQuestionSet(user, application);
-        InterviewSession session = InterviewSession.builder()
-                .user(user)
-                .questionSet(questionSet)
-                .status(status)
-                .startedAt(activityAt)
-                .lastActivityAt(activityAt)
-                .endedAt(null)
-                .build();
-        entityManager.persist(session);
-        entityManager.flush();
-        return session;
+    /** 3개의 질문을 포함한 세션을 한 번에 생성하는 내부 헬퍼. */
+    private InterviewSession createSessionWithQuestions(User user, InterviewSessionStatus status, Instant activityAt) {
+        Application application = fixtures.createApplication(user, "application-title");
+        InterviewQuestionSet questionSet = fixtures.createQuestionSet(user, application, 3);
+        fixtures.createInterviewQuestion(questionSet, 1, "첫 번째 질문");
+        fixtures.createInterviewQuestion(questionSet, 2, "두 번째 질문");
+        fixtures.createInterviewQuestion(questionSet, 3, "세 번째 질문");
+        return fixtures.createInterviewSession(user, questionSet, status, activityAt);
     }
 }
