@@ -85,13 +85,13 @@ class GithubApiTest extends ApiTestBase {
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBodyFile("github/user.json")));
+                        .withBody(readStub("github/user.json"))));
 
         wireMock.stubFor(WireMock.get(urlPathEqualTo("/user/repos"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBodyFile("github/user-repos.json")));
+                        .withBody(readStub("github/user-repos.json"))));
 
         GithubConnectRequest request = new GithubConnectRequest("oauth", null, "test-token", "repo,user:email");
 

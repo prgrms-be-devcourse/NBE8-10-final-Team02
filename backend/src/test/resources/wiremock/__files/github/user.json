@@ -1,9 +1,0 @@
-{
-  "id": 100001,
-  "login": "github-user",
-  "name": "Test User",
-  "email": "test@test.com",
-  "avatar_url": "https://avatars.githubusercontent.com/u/100001",
-  "html_url": "https://github.com/github-user",
-  "type": "User"
-}

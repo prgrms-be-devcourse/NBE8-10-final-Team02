@@ -11,6 +11,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
@@ -121,7 +124,7 @@ public abstract class ApiTestBase {
     // static: 컨텍스트 로드 전에 포트가 확정되어 @DynamicPropertySource에서 사용 가능.
     @RegisterExtension
     protected static WireMockExtension wireMock = WireMockExtension.newInstance()
-        .options(wireMockConfig().dynamicPort().usingFilesUnderDirectory("src/test/resources"))
+        .options(wireMockConfig().dynamicPort())
         .build();
 
     // WireMock 포트를 Spring 프로퍼티로 주입 — GithubApiClient, GeminiClient가 이 URL을 사용함.
@@ -129,5 +132,16 @@ public abstract class ApiTestBase {
     static void overrideExternalApiUrls(DynamicPropertyRegistry registry) {
         registry.add("github.api.base-url", wireMock::baseUrl);
         registry.add("ai.gemini.base-url", wireMock::baseUrl);
+    }
+
+    protected static String readStub(String path) throws IOException {
+        try (var is = ApiTestBase.class.getResourceAsStream("/__files/" + path)) {
+            // 1. 파일을 못 찾았을 때 명확한 에러 메시지 출력
+            if (is == null) {
+                throw new FileNotFoundException("Stub JSON 파일을 찾을 수 없습니다: /__files/" + path);
+            }
+            // 2. UTF-8 인코딩 명시
+            return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 }
