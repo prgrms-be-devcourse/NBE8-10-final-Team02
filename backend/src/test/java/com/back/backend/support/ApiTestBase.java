@@ -6,9 +6,12 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+
+import java.time.Clock;
 
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -93,6 +96,11 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
  */
 @IntegrationTest
 public abstract class ApiTestBase {
+
+    // 모든 하위 테스트가 동일한 Clock mock을 공유하여 Spring 컨텍스트 캐시를 최대화한다.
+    // 시각 고정이 필요한 테스트는 @BeforeEach에서 given(clock.instant()).willReturn(...)으로 설정한다.
+    @MockitoBean
+    protected Clock clock;
 
     @Autowired
     private WebApplicationContext context;
