@@ -37,6 +37,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.times;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -257,6 +258,65 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value(ErrorCode.INTERVIEW_RESULT_INCOMPLETE.name()))
                 .andExpect(jsonPath("$.error.retryable").value(true));
+
+        then(interviewResultGenerationService).should(times(1))
+                .generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList());
+    }
+
+    @Test
+    void getSessionResult_retriesGenerationAfterCooldownExpires() throws Exception {
+        UserFixture fixture = persistAnsweredSession("complete-recheck-after-cooldown");
+        InterviewSession session = fixture.session();
+
+        given(clock.instant()).willReturn(
+                FIXED_NOW,
+                FIXED_NOW,
+                FIXED_NOW.plusSeconds(31)
+        );
+        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList()))
+                .willThrow(new ServiceException(
+                        ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "외부 서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.",
+                        true
+                ))
+                .willReturn(new InterviewResultGenerationService.GeneratedInterviewResult(
+                        84,
+                        "기술 선택 근거는 좋았지만 결과 지표를 더 명확히 제시하면 좋습니다.",
+                        List.of(
+                                new InterviewResultGenerationService.GeneratedInterviewAnswerResult(
+                                        1,
+                                        80,
+                                        "핵심 설명은 있었지만 수치 근거가 더 필요합니다.",
+                                        List.of("근거 부족")
+                                ),
+                                new InterviewResultGenerationService.GeneratedInterviewAnswerResult(
+                                        2,
+                                        86,
+                                        "문제 해결 흐름은 명확하지만 사례를 더 압축하면 좋습니다.",
+                                        List.of("구체성 부족")
+                                ),
+                                new InterviewResultGenerationService.GeneratedInterviewAnswerResult(
+                                        3,
+                                        88,
+                                        "선택 이유는 잘 설명했지만 trade-off를 더 드러낼 수 있습니다.",
+                                        List.of("선택 근거 부족")
+                                )
+                        )
+                ));
+
+        mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isServiceUnavailable());
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}/result", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("feedback_completed"))
+                .andExpect(jsonPath("$.data.totalScore").value(84));
+
+        then(interviewResultGenerationService).should(times(2))
+                .generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList());
     }
 
     private RequestPostProcessor authenticated(long userId) {

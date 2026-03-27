@@ -55,6 +55,7 @@ export default function InterviewHistoryDetailPage() {
     try {
       const data = await getSessionResult(sessionId);
       setResult(data);
+      setSession((current) => (current ? { ...current, status: data.status } : current));
     } catch (err) {
       setResult(null);
 
@@ -91,6 +92,7 @@ export default function InterviewHistoryDetailPage() {
       try {
         const data = await getSessionResult(sessionId);
         setResult(data);
+        setSession((current) => (current ? { ...current, status: data.status } : current));
       } catch (err) {
         setResult(null);
 
