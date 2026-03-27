@@ -1,0 +1,22 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\"totalScore\":84,\"summaryFeedback\":\"전반적으로 답변 구조가 명확하고 경험 기반 서술이 돋보였습니다. 수치 근거와 구체적인 사례를 보강하면 더욱 설득력 있는 답변이 될 것입니다.\"}"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 1200,
+    "candidatesTokenCount": 100,
+    "totalTokenCount": 1300
+  },
+  "modelVersion": "gemini-2.5-flash"
+}

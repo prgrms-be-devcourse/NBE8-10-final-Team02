@@ -1,0 +1,22 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\"questions\":[{\"questionOrder\":1,\"questionText\":\"프로젝트에서 가장 어려웠던 기술적 도전과 해결 방법을 설명해주세요.\",\"questionType\":\"project\",\"difficultyLevel\":\"medium\"},{\"questionOrder\":2,\"questionText\":\"협업 중 갈등이 발생했을 때 어떻게 해결했는지 구체적인 사례를 들어 설명해주세요.\",\"questionType\":\"behavioral\",\"difficultyLevel\":\"medium\"},{\"questionOrder\":3,\"questionText\":\"지원 동기와 해당 직무를 선택한 이유를 설명해주세요.\",\"questionType\":\"behavioral\",\"difficultyLevel\":\"easy\"}]}"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 800,
+    "candidatesTokenCount": 200,
+    "totalTokenCount": 1000
+  },
+  "modelVersion": "gemini-2.5-flash"
+}

@@ -1,16 +1,24 @@
 package com.back.backend.support;
 
-import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
+import com.github.tomakehurst.wiremock.WireMockServer;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Instant;
+
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 
 /**
@@ -94,27 +102,43 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 @IntegrationTest
 public abstract class ApiTestBase {
 
+    // 모든 하위 테스트가 동일한 Clock mock을 공유하여 Spring 컨텍스트 캐시를 최대화한다.
+    // 시각 고정이 필요한 테스트는 @BeforeEach에서 given(clock.instant()).willReturn(...)으로 설정한다.
+    @MockitoBean
+    protected Clock clock;
+
     @Autowired
     private WebApplicationContext context;
 
     protected MockMvc mockMvc;
+
+    // GitHub API와 AI API(Gemini) 호출을 가로채는 WireMock 서버.
+    // @RegisterExtension static은 클래스마다 stop/restart되어 포트가 바뀌므로
+    // Spring context 캐시와 포트 불일치가 발생한다. 대신 JVM 전체에서 한 번만 시작한다.
+    protected static final WireMockServer wireMock;
+
+    static {
+        wireMock = new WireMockServer(wireMockConfig().dynamicPort());
+        wireMock.start();
+    }
 
     // SecurityConfig에 STATELESS 세션이 설정돼 있어 @AutoConfigureMockMvc만으로는
     // @WithMockUser가 동작하지 않음. springSecurity()를 명시적으로 적용해야
     // SecurityContextHolderFilter가 테스트용 인증 컨텍스트를 덮어쓰지 않음.
     @BeforeEach
     void setUpMockMvc() {
+        wireMock.resetAll(); // 이전 테스트의 stub이 다음 테스트에 영향을 주지 않도록 초기화
+        given(clock.instant()).willReturn(Instant.now());  // clock mock 기본값 설정 — NPE 방지
         this.mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
     }
 
-    // GitHub API와 AI API(Gemini) 호출을 가로채는 WireMock 서버.
-    // static: 컨텍스트 로드 전에 포트가 확정되어 @DynamicPropertySource에서 사용 가능.
-    @RegisterExtension
-    static WireMockExtension wireMock = WireMockExtension.newInstance()
-        .options(wireMockConfig().dynamicPort())
-        .build();
+    @AfterEach
+    void tearDown() {
+        // 매 테스트가 끝날 때마다 WireMock에 등록된 Stub들을 전부 날려버림
+        wireMock.resetAll();
+    }
 
     // WireMock 포트를 Spring 프로퍼티로 주입 — GithubApiClient, GeminiClient가 이 URL을 사용함.
     @DynamicPropertySource
@@ -123,4 +147,14 @@ public abstract class ApiTestBase {
         registry.add("ai.gemini.base-url", wireMock::baseUrl);
     }
 
+    protected static String readStub(String path) throws IOException {
+        try (var is = ApiTestBase.class.getResourceAsStream("/__files/" + path)) {
+            // 1. 파일을 못 찾았을 때 명확한 에러 메시지 출력
+            if (is == null) {
+                throw new FileNotFoundException("Stub JSON 파일을 찾을 수 없습니다: /__files/" + path);
+            }
+            // 2. UTF-8 인코딩 명시
+            return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
 }

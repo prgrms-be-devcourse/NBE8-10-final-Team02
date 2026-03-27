@@ -1,0 +1,53 @@
+{
+  "data": {
+    "viewer": {
+      "contributionsCollection": {
+        "commitContributionsByRepository": [
+          {
+            "repository": {
+              "nameWithOwner": "github-user/my-project",
+              "url": "https://github.com/github-user/my-project",
+              "isPrivate": false,
+              "databaseId": 200001,
+              "diskUsage": 512,
+              "primaryLanguage": {
+                "name": "Java"
+              }
+            },
+            "contributions": {
+              "totalCount": 42
+            }
+          },
+          {
+            "repository": {
+              "nameWithOwner": "other-org/shared-lib",
+              "url": "https://github.com/other-org/shared-lib",
+              "isPrivate": false,
+              "databaseId": 300002,
+              "diskUsage": 256,
+              "primaryLanguage": {
+                "name": "Java"
+              }
+            },
+            "contributions": {
+              "totalCount": 8
+            }
+          },
+          {
+            "repository": {
+              "nameWithOwner": "github-user/private-repo",
+              "url": "https://github.com/github-user/private-repo",
+              "isPrivate": true,
+              "databaseId": 400001,
+              "diskUsage": 128,
+              "primaryLanguage": null
+            },
+            "contributions": {
+              "totalCount": 15
+            }
+          }
+        ]
+      }
+    }
+  }
+}

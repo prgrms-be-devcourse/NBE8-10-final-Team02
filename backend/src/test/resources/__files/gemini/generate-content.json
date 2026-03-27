@@ -1,0 +1,22 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\"answers\":[{\"questionOrder\":1,\"answerText\":\"카카오의 기술 문화와 대규모 트래픽 처리 경험에 깊은 관심을 가지고 있습니다. 이전 프로젝트에서 유사한 문제를 해결하며 쌓은 역량을 발휘하고 싶습니다.\"}]}"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 500,
+    "candidatesTokenCount": 120,
+    "totalTokenCount": 620
+  },
+  "modelVersion": "gemini-2.5-flash"
+}

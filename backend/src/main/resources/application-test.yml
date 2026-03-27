@@ -51,6 +51,9 @@ ai:
       read: 5s # 빠른 실패
     retry:
       max-attempts: 0 # 재시도 비활성화
+github:
+  api:
+    base-url: http://localhost:8089 # WireMock이 @DynamicPropertySource로 덮어씀
 
 security:
   jwt:

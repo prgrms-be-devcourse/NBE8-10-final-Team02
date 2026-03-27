@@ -9,23 +9,15 @@ import com.back.backend.domain.application.repository.ApplicationRepository;
 import com.back.backend.domain.application.repository.ApplicationSourceDocumentBindingRepository;
 import com.back.backend.domain.application.repository.ApplicationSourceRepositoryBindingRepository;
 import com.back.backend.domain.application.entity.Application;
-import com.back.backend.domain.application.entity.ApplicationLengthOption;
-import com.back.backend.domain.application.entity.ApplicationQuestion;
 import com.back.backend.domain.application.entity.ApplicationStatus;
-import com.back.backend.domain.application.entity.ApplicationSourceRepository;
-import com.back.backend.domain.application.entity.ApplicationToneOption;
 import com.back.backend.domain.document.entity.Document;
-import com.back.backend.domain.document.entity.DocumentExtractStatus;
 import com.back.backend.domain.document.entity.DocumentType;
-import com.back.backend.domain.github.entity.GithubConnection;
 import com.back.backend.domain.github.entity.GithubRepository;
-import com.back.backend.domain.github.entity.GithubSyncStatus;
-import com.back.backend.domain.github.entity.RepositoryVisibility;
 import com.back.backend.domain.user.entity.User;
-import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
+import com.back.backend.support.TestFixtures;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
@@ -34,7 +26,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
-import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,11 +44,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class ApplicationApiTest extends ApiTestBase {
 
-    private static final Instant NOW = Instant.parse("2026-03-23T09:00:00Z");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private TestFixtures fixtures;
 
     @Autowired
     private ApplicationRepository applicationRepository;
@@ -71,12 +64,9 @@ class ApplicationApiTest extends ApiTestBase {
     @Autowired
     private ApplicationSourceDocumentBindingRepository applicationSourceDocumentBindingRepository;
 
-    private long nextGithubUserId = 1000L;
-    private long nextGithubRepoId = 2000L;
-
     @Test
     void createApplication_returns201AndDraft() throws Exception {
-        User user = persistUser("create@example.com", "creator");
+        User user = fixtures.createUser("create@example.com", "creator");
 
         mockMvc.perform(post("/api/v1/applications")
                         .with(authenticated(user.getId()))
@@ -103,9 +93,9 @@ class ApplicationApiTest extends ApiTestBase {
 
     @Test
     void getApplication_returns404WhenOwnedByAnotherUser() throws Exception {
-        User owner = persistUser("owner@example.com", "owner");
-        User otherUser = persistUser("other@example.com", "other");
-        Application application = persistApplication(owner, "owner-application", ApplicationStatus.DRAFT);
+        User owner = fixtures.createUser("owner@example.com", "owner");
+        User otherUser = fixtures.createUser("other@example.com", "other");
+        Application application = fixtures.createApplication(owner, "owner-application", ApplicationStatus.DRAFT);
 
         mockMvc.perform(get("/api/v1/applications/{applicationId}", application.getId())
                         .with(authenticated(otherUser.getId())))
@@ -115,12 +105,12 @@ class ApplicationApiTest extends ApiTestBase {
 
     @Test
     void listApplications_returnsOnlyOwnedApplications() throws Exception {
-        User user = persistUser("list-owner@example.com", "list-owner");
-        User otherUser = persistUser("list-other@example.com", "list-other");
+        User user = fixtures.createUser("list-owner@example.com", "list-owner");
+        User otherUser = fixtures.createUser("list-other@example.com", "list-other");
 
-        persistApplication(user, "네이버", ApplicationStatus.DRAFT);
-        persistApplication(user, "카카오", ApplicationStatus.DRAFT);
-        persistApplication(otherUser, "타사", ApplicationStatus.DRAFT);
+        fixtures.createApplication(user, "네이버", ApplicationStatus.DRAFT);
+        fixtures.createApplication(user, "카카오", ApplicationStatus.DRAFT);
+        fixtures.createApplication(otherUser, "타사", ApplicationStatus.DRAFT);
 
         mockMvc.perform(get("/api/v1/applications")
                         .with(authenticated(user.getId())))
@@ -131,12 +121,12 @@ class ApplicationApiTest extends ApiTestBase {
 
     @Test
     void listApplications_refreshesReadyStatusWhenStoredValueIsStale() throws Exception {
-        User user = persistUser("stale-list@example.com", "stale-list");
-        Application application = persistApplication(user, "stale-application", ApplicationStatus.DRAFT);
+        User user = fixtures.createUser("stale-list@example.com", "stale-list");
+        Application application = fixtures.createApplication(user, "stale-application", ApplicationStatus.DRAFT);
         GithubRepository repository = persistGithubRepository(user, "team/stale-project");
 
-        bindRepositorySource(application, repository);
-        persistAnsweredQuestion(application, 1, "지원 동기", "포트폴리오 기반으로 작성된 자소서 초안");
+        fixtures.bindRepositoryToApplication(application, repository);
+        fixtures.createApplicationQuestion(application, 1, "지원 동기", "포트폴리오 기반으로 작성된 자소서 초안");
 
         mockMvc.perform(get("/api/v1/applications")
                         .with(authenticated(user.getId())))
@@ -152,8 +142,8 @@ class ApplicationApiTest extends ApiTestBase {
 
     @Test
     void updateApplication_returns409WhenReadyRequirementsNotMet() throws Exception {
-        User user = persistUser("update@example.com", "updater");
-        Application application = persistApplication(user, "draft-application", ApplicationStatus.DRAFT);
+        User user = fixtures.createUser("update@example.com", "updater");
+        Application application = fixtures.createApplication(user, "draft-application", ApplicationStatus.DRAFT);
 
         mockMvc.perform(patch("/api/v1/applications/{applicationId}", application.getId())
                         .with(authenticated(user.getId()))
@@ -171,14 +161,14 @@ class ApplicationApiTest extends ApiTestBase {
 
     @Test
     void updateApplication_returns200WhenReadyRequirementsAreMet() throws Exception {
-        User user = persistUser("ready@example.com", "ready-owner");
-        Application application = persistApplication(user, "ready-application", ApplicationStatus.DRAFT);
+        User user = fixtures.createUser("ready@example.com", "ready-owner");
+        Application application = fixtures.createApplication(user, "ready-application", ApplicationStatus.DRAFT);
         GithubRepository repository = persistGithubRepository(user, "team/ready-project");
 
         // ready 판정은 source 1개 이상과 문항별 usable answer를 함께 본다.
         // editedAnswer가 없어도 generatedAnswer가 있으면 최소 충족 조건으로 인정되는지 검증한다.
-        bindRepositorySource(application, repository);
-        persistAnsweredQuestion(application, 1, "지원 동기", "포트폴리오 기반으로 작성된 자소서 초안");
+        fixtures.bindRepositoryToApplication(application, repository);
+        fixtures.createApplicationQuestion(application, 1, "지원 동기", "포트폴리오 기반으로 작성된 자소서 초안");
 
         mockMvc.perform(patch("/api/v1/applications/{applicationId}", application.getId())
                         .with(authenticated(user.getId()))
@@ -197,8 +187,8 @@ class ApplicationApiTest extends ApiTestBase {
 
     @Test
     void updateApplication_keepsExistingOptionalFieldsWhenPatchOmitsThem() throws Exception {
-        User user = persistUser("patch@example.com", "patcher");
-        Application application = persistApplication(user, "preserve-me", ApplicationStatus.DRAFT);
+        User user = fixtures.createUser("patch@example.com", "patcher");
+        Application application = fixtures.createApplication(user, "preserve-me", ApplicationStatus.DRAFT);
 
         mockMvc.perform(patch("/api/v1/applications/{applicationId}", application.getId())
                         .with(authenticated(user.getId()))
@@ -219,8 +209,8 @@ class ApplicationApiTest extends ApiTestBase {
 
     @Test
     void deleteApplication_returns204() throws Exception {
-        User user = persistUser("delete@example.com", "deleter");
-        Application application = persistApplication(user, "delete-target", ApplicationStatus.DRAFT);
+        User user = fixtures.createUser("delete@example.com", "deleter");
+        Application application = fixtures.createApplication(user, "delete-target", ApplicationStatus.DRAFT);
 
         mockMvc.perform(delete("/api/v1/applications/{applicationId}", application.getId())
                         .with(authenticated(user.getId())))
@@ -234,10 +224,10 @@ class ApplicationApiTest extends ApiTestBase {
 
     @Test
     void saveSources_returns200WhenOwnedSourcesExist() throws Exception {
-        User user = persistUser("sources@example.com", "sources-owner");
-        Application application = persistApplication(user, "source-application", ApplicationStatus.DRAFT);
+        User user = fixtures.createUser("sources@example.com", "sources-owner");
+        Application application = fixtures.createApplication(user, "source-application", ApplicationStatus.DRAFT);
         GithubRepository repository = persistGithubRepository(user, "team/project-a");
-        Document document = persistDocument(user, "resume.md");
+        Document document = fixtures.createDocument(user, DocumentType.RESUME, "resume content");
 
         mockMvc.perform(put("/api/v1/applications/{applicationId}/sources", application.getId())
                         .with(authenticated(user.getId()))
@@ -258,9 +248,9 @@ class ApplicationApiTest extends ApiTestBase {
 
     @Test
     void saveSources_returns404WhenRepositoryIsNotOwned() throws Exception {
-        User user = persistUser("owner-sources@example.com", "owner-sources");
-        User otherUser = persistUser("other-sources@example.com", "other-sources");
-        Application application = persistApplication(user, "source-ownership", ApplicationStatus.DRAFT);
+        User user = fixtures.createUser("owner-sources@example.com", "owner-sources");
+        User otherUser = fixtures.createUser("other-sources@example.com", "other-sources");
+        Application application = fixtures.createApplication(user, "source-ownership", ApplicationStatus.DRAFT);
         GithubRepository otherUsersRepository = persistGithubRepository(otherUser, "other/project");
 
         mockMvc.perform(put("/api/v1/applications/{applicationId}/sources", application.getId())
@@ -276,8 +266,8 @@ class ApplicationApiTest extends ApiTestBase {
 
     @Test
     void saveQuestions_returns200AndQuestionsCanBeRead() throws Exception {
-        User user = persistUser("questions@example.com", "questions-owner");
-        Application application = persistApplication(user, "questions-application", ApplicationStatus.DRAFT);
+        User user = fixtures.createUser("questions@example.com", "questions-owner");
+        Application application = fixtures.createApplication(user, "questions-application", ApplicationStatus.DRAFT);
 
         SaveApplicationQuestionsRequest request = new SaveApplicationQuestionsRequest(List.of(
                 new SaveApplicationQuestionsRequest.QuestionItem(2, "두 번째 문항", "balanced", "long", "협업"),
@@ -308,8 +298,8 @@ class ApplicationApiTest extends ApiTestBase {
 
     @Test
     void saveQuestions_returns400WhenQuestionCountExceedsLimit() throws Exception {
-        User user = persistUser("limit@example.com", "limit-owner");
-        Application application = persistApplication(user, "limit-application", ApplicationStatus.DRAFT);
+        User user = fixtures.createUser("limit@example.com", "limit-owner");
+        Application application = fixtures.createApplication(user, "limit-application", ApplicationStatus.DRAFT);
 
         List<SaveApplicationQuestionsRequest.QuestionItem> questions = java.util.stream.IntStream.rangeClosed(1, 11)
                 .mapToObj(index -> new SaveApplicationQuestionsRequest.QuestionItem(
@@ -337,105 +327,8 @@ class ApplicationApiTest extends ApiTestBase {
         ));
     }
 
-    private User persistUser(String email, String displayName) {
-        User user = User.builder()
-                .email(email)
-                .displayName(displayName)
-                .profileImageUrl("https://example.com/profile.png")
-                .status(UserStatus.ACTIVE)
-                .build();
-        entityManager.persist(user);
-        entityManager.flush();
-        return user;
-    }
-
-    private Application persistApplication(User user, String title, ApplicationStatus status) {
-        Application application = Application.builder()
-                .user(user)
-                .applicationTitle(title)
-                .companyName(title + "-company")
-                .applicationType("신입")
-                .jobRole("Backend Engineer")
-                .status(status)
-                .build();
-        entityManager.persist(application);
-        entityManager.flush();
-        return application;
-    }
-
     private GithubRepository persistGithubRepository(User user, String fullName) {
-        GithubConnection connection = GithubConnection.builder()
-                .user(user)
-                .githubUserId(nextGithubUserId++)
-                .githubLogin("github-" + user.getId())
-                .accessScope("repo")
-                .syncStatus(GithubSyncStatus.SUCCESS)
-                .connectedAt(NOW)
-                .lastSyncedAt(NOW)
-                .build();
-        entityManager.persist(connection);
-
-        GithubRepository repository = GithubRepository.builder()
-                .githubConnection(connection)
-                .githubRepoId(nextGithubRepoId++)
-                .ownerLogin("owner-" + user.getId())
-                .repoName(fullName.substring(fullName.indexOf('/') + 1))
-                .fullName(fullName)
-                .htmlUrl("https://github.com/" + fullName)
-                .visibility(RepositoryVisibility.PUBLIC)
-                .defaultBranch("main")
-                .selected(true)
-                .syncedAt(NOW)
-                .build();
-        entityManager.persist(repository);
-        entityManager.flush();
-        return repository;
-    }
-
-    private Document persistDocument(User user, String fileName) {
-        Document document = Document.builder()
-                .user(user)
-                .documentType(DocumentType.RESUME)
-                .originalFileName(fileName)
-                .storagePath("/documents/" + fileName)
-                .mimeType("text/markdown")
-                .fileSizeBytes(128L)
-                .extractStatus(DocumentExtractStatus.SUCCESS)
-                .uploadedAt(NOW)
-                .extractedAt(NOW)
-                .extractedText("resume content")
-                .build();
-        entityManager.persist(document);
-        entityManager.flush();
-        return document;
-    }
-
-    private void bindRepositorySource(Application application, GithubRepository repository) {
-        ApplicationSourceRepository binding = ApplicationSourceRepository.builder()
-                .application(application)
-                .repository(repository)
-                .build();
-        entityManager.persist(binding);
-        entityManager.flush();
-    }
-
-    private void persistAnsweredQuestion(
-            Application application,
-            int questionOrder,
-            String questionText,
-            String generatedAnswer
-    ) {
-        ApplicationQuestion question = ApplicationQuestion.builder()
-                .application(application)
-                .questionOrder(questionOrder)
-                .questionText(questionText)
-                .generatedAnswer(generatedAnswer)
-                .editedAnswer(null)
-                .toneOption(ApplicationToneOption.FORMAL)
-                .lengthOption(ApplicationLengthOption.MEDIUM)
-                .emphasisPoint("협업")
-                .build();
-        entityManager.persist(question);
-        entityManager.flush();
+        var connection = fixtures.createConnection(user);
+        return fixtures.createRepo(connection, fullName.substring(fullName.indexOf('/') + 1), true);
     }
 }

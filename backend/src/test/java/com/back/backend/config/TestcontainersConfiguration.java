@@ -5,6 +5,7 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.context.annotation.Bean;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.DockerImageName;
 
 import java.util.Map;
@@ -26,6 +27,7 @@ public class TestcontainersConfiguration {
         return new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
             .withTmpFs(Map.of("/data", "rw"))
             .withExposedPorts(6379)
+            .waitingFor(Wait.forListeningPort())
             .withReuse(true);
     }
 }
