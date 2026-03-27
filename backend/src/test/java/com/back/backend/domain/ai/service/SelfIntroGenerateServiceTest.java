@@ -6,11 +6,13 @@ import com.back.backend.domain.ai.service.SelfIntroGenerateService.GenerateResul
 import com.back.backend.domain.application.entity.Application;
 import com.back.backend.domain.application.entity.ApplicationLengthOption;
 import com.back.backend.domain.application.entity.ApplicationQuestion;
+import com.back.backend.domain.application.entity.ApplicationStatus;
 import com.back.backend.domain.application.entity.ApplicationSourceDocument;
 import com.back.backend.domain.application.entity.ApplicationToneOption;
 import com.back.backend.domain.application.repository.ApplicationQuestionRepository;
 import com.back.backend.domain.application.repository.ApplicationRepository;
 import com.back.backend.domain.application.repository.ApplicationSourceDocumentBindingRepository;
+import com.back.backend.domain.application.service.ApplicationStatusService;
 import com.back.backend.domain.document.entity.Document;
 import com.back.backend.domain.document.entity.DocumentExtractStatus;
 import com.back.backend.global.exception.ErrorCode;
@@ -34,6 +36,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class SelfIntroGenerateServiceTest {
@@ -54,6 +57,9 @@ class SelfIntroGenerateServiceTest {
     @Mock
     private AiPipeline aiPipeline;
 
+    @Mock
+    private ApplicationStatusService applicationStatusService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private SelfIntroGenerateService selfIntroGenerateService;
@@ -64,6 +70,7 @@ class SelfIntroGenerateServiceTest {
             applicationRepository,
             applicationQuestionRepository,
             sourceDocumentBindingRepository,
+            applicationStatusService,
             new SelfIntroPayloadBuilder(),
             aiPipeline
         );
@@ -106,12 +113,12 @@ class SelfIntroGenerateServiceTest {
         @Test
         @DisplayName("generatedAnswer가 없는 문항만 AI 호출 대상이 된다")
         void skips_already_generated() throws Exception {
+            Application application = givenApplicationExists();
             ApplicationQuestion answered = question(1, "질문1", "기존 답변",
                 ApplicationToneOption.FORMAL, ApplicationLengthOption.MEDIUM, null);
             ApplicationQuestion unanswered = question(2, "질문2", null,
                 ApplicationToneOption.BALANCED, ApplicationLengthOption.SHORT, "프로젝트 강조");
 
-            givenApplicationExists();
             givenQuestions(answered, unanswered);
             givenNoDocuments();
             givenAiResponse("""
@@ -124,6 +131,7 @@ class SelfIntroGenerateServiceTest {
             assertThat(result.allQuestions()).hasSize(2);
             assertThat(answered.getGeneratedAnswer()).isEqualTo("기존 답변");
             assertThat(unanswered.getGeneratedAnswer()).isEqualTo("AI 생성 답변");
+            verify(applicationStatusService).syncStatus(application);
         }
 
         @Test
@@ -140,6 +148,7 @@ class SelfIntroGenerateServiceTest {
             assertThat(result.allQuestions()).hasSize(1);
             assertThat(answered.getGeneratedAnswer()).isEqualTo("기존 답변");
             verify(aiPipeline, never()).execute(anyString(), anyString());
+            verifyNoInteractions(applicationStatusService);
         }
     }
 
@@ -255,9 +264,11 @@ class SelfIntroGenerateServiceTest {
 
     // --- given 헬퍼 ---
 
-    private void givenApplicationExists() {
+    private Application givenApplicationExists() {
+        Application application = application();
         given(applicationRepository.findByIdAndUserId(APPLICATION_ID, USER_ID))
-            .willReturn(Optional.of(application()));
+            .willReturn(Optional.of(application));
+        return application;
     }
 
     private void givenQuestions(ApplicationQuestion... questions) {
@@ -286,6 +297,7 @@ class SelfIntroGenerateServiceTest {
         return Application.builder()
             .jobRole("백엔드 개발자")
             .companyName("카카오")
+            .status(ApplicationStatus.DRAFT)
             .build();
     }
 
@@ -293,6 +305,7 @@ class SelfIntroGenerateServiceTest {
                                          ApplicationToneOption tone, ApplicationLengthOption length,
                                          String emphasisPoint) {
         return ApplicationQuestion.builder()
+            .application(application())
             .questionOrder(order)
             .questionText(text)
             .generatedAnswer(generatedAnswer)

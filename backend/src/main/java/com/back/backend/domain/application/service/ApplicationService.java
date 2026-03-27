@@ -52,6 +52,7 @@ public class ApplicationService {
     private final GithubRepositoryQueryRepository githubRepositoryQueryRepository;
     private final UserRepository userRepository;
     private final ApplicationResponseMapper applicationResponseMapper;
+    private final ApplicationStatusService applicationStatusService;
 
     @Transactional
     public ApplicationResponse createApplication(long userId, CreateApplicationRequest request) {
@@ -71,16 +72,18 @@ public class ApplicationService {
         return applicationResponseMapper.toApplicationResponse(application);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<ApplicationResponse> getApplications(long userId) {
-        return applicationResponseMapper.toApplicationResponses(
-                applicationRepository.findAllByUserIdOrderByCreatedAtDesc(userId)
-        );
+        List<Application> applications = applicationRepository.findAllByUserIdOrderByCreatedAtDesc(userId);
+        applications.forEach(applicationStatusService::syncStatus);
+        return applicationResponseMapper.toApplicationResponses(applications);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ApplicationResponse getApplication(long userId, long applicationId) {
-        return applicationResponseMapper.toApplicationResponse(getOwnedApplication(userId, applicationId));
+        Application application = getOwnedApplication(userId, applicationId);
+        applicationStatusService.syncStatus(application);
+        return applicationResponseMapper.toApplicationResponse(application);
     }
 
     @Transactional
@@ -112,7 +115,7 @@ public class ApplicationService {
             );
 
             // ready는 명시적으로 요청했을 때만 판정하고, 기준 미달이면 상태 승격을 막는다.
-            if (requestedStatus == ApplicationStatus.READY && !isReady(application)) {
+            if (requestedStatus == ApplicationStatus.READY && !applicationStatusService.isReady(application)) {
                 throw new ServiceException(
                         ErrorCode.APPLICATION_STATUS_CONFLICT,
                         HttpStatus.CONFLICT,
@@ -173,7 +176,7 @@ public class ApplicationService {
                         .toList()
         );
 
-        downgradeReadyStatusIfNeeded(application);
+        applicationStatusService.syncStatus(application);
 
         return applicationResponseMapper.toApplicationSourceBindingResponse(
                 applicationId,
@@ -217,7 +220,7 @@ public class ApplicationService {
                 .toList();
 
         List<ApplicationQuestion> savedQuestions = applicationQuestionRepository.saveAll(questions);
-        downgradeReadyStatusIfNeeded(application);
+        applicationStatusService.syncStatus(application);
 
         return applicationResponseMapper.toApplicationQuestionResponses(
                 savedQuestions.stream()
@@ -351,39 +354,6 @@ public class ApplicationService {
 
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
-    }
-
-    private void downgradeReadyStatusIfNeeded(Application application) {
-        // ready는 독립 입력값이 아니라 현재 source/question 충족 여부에서 다시 계산되는 파생 상태다.
-        // source나 문항을 바꾼 뒤에도 ready를 유지하면 이후 흐름이 오래된 충족 상태를 믿게 된다.
-        if (application.getStatus() == ApplicationStatus.READY && !isReady(application)) {
-            application.changeStatus(ApplicationStatus.DRAFT);
-        }
-    }
-
-    private boolean isReady(Application application) {
-        // ready 판정은 저장된 source와 문항, 그리고 질문별 유효 답변 존재 여부를 함께 본다.
-        long sourceCount = applicationSourceRepositoryBindingRepository.countByApplicationId(application.getId())
-                + applicationSourceDocumentBindingRepository.countByApplicationId(application.getId());
-
-        if (sourceCount == 0) {
-            return false;
-        }
-
-        List<ApplicationQuestion> questions = applicationQuestionRepository.findAllByApplicationIdOrderByQuestionOrderAsc(application.getId());
-        if (questions.isEmpty()) {
-            return false;
-        }
-
-        return questions.stream().allMatch(this::hasUsableAnswer);
-    }
-
-    private boolean hasUsableAnswer(ApplicationQuestion question) {
-        return hasText(question.getEditedAnswer()) || hasText(question.getGeneratedAnswer());
-    }
-
-    private boolean hasText(String value) {
-        return value != null && !value.isBlank();
     }
 
     private <E extends Enum<E> & StringCodeEnum> E parseNullableEnum(

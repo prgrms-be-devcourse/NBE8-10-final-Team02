@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -82,6 +83,12 @@ class ApplicationAiApiTest extends ApiTestBase {
                 .value("카카오의 기술 문화에 깊은 관심을 가지고 있습니다."))
             .andExpect(jsonPath("$.data.answers[0].toneOption").value("formal"))
             .andExpect(jsonPath("$.data.answers[0].lengthOption").value("medium"));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        Application refreshed = entityManager.find(Application.class, application.getId());
+        assertThat(refreshed.getStatus()).isEqualTo(ApplicationStatus.READY);
     }
 
     @Test
