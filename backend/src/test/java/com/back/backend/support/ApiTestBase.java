@@ -1,6 +1,7 @@
 package com.back.backend.support;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -131,6 +132,12 @@ public abstract class ApiTestBase {
         this.mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
+    }
+
+    @AfterEach
+    void tearDown() {
+        // 매 테스트가 끝날 때마다 WireMock에 등록된 Stub들을 전부 날려버림
+        wireMock.resetAll();
     }
 
     // WireMock 포트를 Spring 프로퍼티로 주입 — GithubApiClient, GeminiClient가 이 URL을 사용함.
