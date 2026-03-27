@@ -121,12 +121,12 @@ class ApplicationApiTest extends ApiTestBase {
 
     @Test
     void listApplications_refreshesReadyStatusWhenStoredValueIsStale() throws Exception {
-        User user = persistUser("stale-list@example.com", "stale-list");
-        Application application = persistApplication(user, "stale-application", ApplicationStatus.DRAFT);
+        User user = fixtures.createUser("stale-list@example.com", "stale-list");
+        Application application = fixtures.createApplication(user, "stale-application", ApplicationStatus.DRAFT);
         GithubRepository repository = persistGithubRepository(user, "team/stale-project");
 
-        bindRepositorySource(application, repository);
-        persistAnsweredQuestion(application, 1, "지원 동기", "포트폴리오 기반으로 작성된 자소서 초안");
+        fixtures.bindRepositoryToApplication(application, repository);
+        fixtures.createApplicationQuestion(application, 1, "지원 동기", "포트폴리오 기반으로 작성된 자소서 초안");
 
         mockMvc.perform(get("/api/v1/applications")
                         .with(authenticated(user.getId())))

@@ -2,11 +2,7 @@ package com.back.backend.domain.interview.controller;
 
 import com.back.backend.domain.ai.pipeline.AiPipeline;
 import com.back.backend.domain.application.entity.Application;
-import com.back.backend.domain.application.entity.ApplicationQuestion;
-import com.back.backend.domain.application.entity.ApplicationSourceDocument;
-import com.back.backend.domain.application.entity.ApplicationStatus;
 import com.back.backend.domain.document.entity.Document;
-import com.back.backend.domain.document.entity.DocumentExtractStatus;
 import com.back.backend.domain.document.entity.DocumentType;
 import com.back.backend.domain.interview.dto.request.CreateQuestionSetRequest;
 import com.back.backend.domain.interview.entity.DifficultyLevel;
@@ -15,10 +11,10 @@ import com.back.backend.domain.interview.entity.InterviewQuestionSet;
 import com.back.backend.domain.interview.entity.InterviewQuestionType;
 import com.back.backend.domain.interview.repository.InterviewQuestionRepository;
 import com.back.backend.domain.user.entity.User;
-import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
+import com.back.backend.support.TestFixtures;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
@@ -28,7 +24,6 @@ import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
-import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,12 +39,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class InterviewQuestionSetGenerateApiTest extends ApiTestBase {
 
-    private static final Instant NOW = Instant.parse("2026-03-27T09:00:00Z");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String TEMPLATE_ID = "ai.interview.questions.generate.v1";
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private TestFixtures fixtures;
 
     @Autowired
     private InterviewQuestionRepository interviewQuestionRepository;
@@ -59,10 +56,11 @@ class InterviewQuestionSetGenerateApiTest extends ApiTestBase {
 
     @Test
     void createQuestionSet_returns201WithGeneratedQuestions() throws Exception {
-        User user = persistUser("generate@example.com", "generate-tester");
-        Application application = persistApplication(user);
-        persistAppQuestion(application, 1, "지원 동기를 작성해주세요.", "저는 백엔드 개발자로서...");
-        persistDocument(user, application, "이력서 내용입니다.");
+        User user = fixtures.createUser("generate@example.com", "generate-tester");
+        Application application = fixtures.createApplication(user, "카카오 백엔드");
+        fixtures.createApplicationQuestion(application, 1, "지원 동기를 작성해주세요.", "저는 백엔드 개발자로서...");
+        Document document = fixtures.createDocument(user, DocumentType.RESUME, "이력서 내용입니다.");
+        fixtures.bindDocumentToApplication(application, document);
 
         given(aiPipeline.execute(eq(TEMPLATE_ID), anyString()))
             .willReturn(OBJECT_MAPPER.readTree("""
@@ -135,9 +133,9 @@ class InterviewQuestionSetGenerateApiTest extends ApiTestBase {
 
     @Test
     void createQuestionSet_returns404WhenApplicationNotOwned() throws Exception {
-        User owner = persistUser("owner@example.com", "owner");
-        User other = persistUser("other@example.com", "other");
-        Application application = persistApplication(owner);
+        User owner = fixtures.createUser("owner@example.com", "owner");
+        User other = fixtures.createUser("other@example.com", "other");
+        Application application = fixtures.createApplication(owner, "카카오 백엔드");
 
         CreateQuestionSetRequest request = new CreateQuestionSetRequest(
             application.getId(), "제목", 3, "medium", List.of("technical_cs")
@@ -153,10 +151,10 @@ class InterviewQuestionSetGenerateApiTest extends ApiTestBase {
 
     @Test
     void getQuestionSets_returns200WithList() throws Exception {
-        User user = persistUser("list@example.com", "list-tester");
-        Application application = persistApplication(user);
-        persistQuestionSet(user, application, "세트1", 3);
-        persistQuestionSet(user, application, "세트2", 5);
+        User user = fixtures.createUser("list@example.com", "list-tester");
+        Application application = fixtures.createApplication(user, "카카오 백엔드");
+        fixtures.createQuestionSet(user, application, "세트1", 3);
+        fixtures.createQuestionSet(user, application, "세트2", 5);
 
         mockMvc.perform(get("/api/v1/interview/question-sets")
                 .with(authenticated(user.getId())))
@@ -167,11 +165,11 @@ class InterviewQuestionSetGenerateApiTest extends ApiTestBase {
 
     @Test
     void getQuestionSet_returns200WithDetail() throws Exception {
-        User user = persistUser("detail@example.com", "detail-tester");
-        Application application = persistApplication(user);
-        InterviewQuestionSet questionSet = persistQuestionSet(user, application, "상세 세트", 2);
-        persistQuestion(questionSet, 1, "첫 번째 질문", InterviewQuestionType.TECHNICAL_CS);
-        persistQuestion(questionSet, 2, "두 번째 질문", InterviewQuestionType.PROJECT);
+        User user = fixtures.createUser("detail@example.com", "detail-tester");
+        Application application = fixtures.createApplication(user, "카카오 백엔드");
+        InterviewQuestionSet questionSet = fixtures.createQuestionSet(user, application, "상세 세트", 2);
+        createQuestion(questionSet, 1, "첫 번째 질문", InterviewQuestionType.TECHNICAL_CS);
+        createQuestion(questionSet, 2, "두 번째 질문", InterviewQuestionType.PROJECT);
 
         mockMvc.perform(get("/api/v1/interview/question-sets/{questionSetId}", questionSet.getId())
                 .with(authenticated(user.getId())))
@@ -187,10 +185,10 @@ class InterviewQuestionSetGenerateApiTest extends ApiTestBase {
 
     @Test
     void getQuestionSet_returns404WhenNotOwned() throws Exception {
-        User owner = persistUser("qs-owner@example.com", "qs-owner");
-        User other = persistUser("qs-other@example.com", "qs-other");
-        Application application = persistApplication(owner);
-        InterviewQuestionSet questionSet = persistQuestionSet(owner, application, "세트", 1);
+        User owner = fixtures.createUser("qs-owner@example.com", "qs-owner");
+        User other = fixtures.createUser("qs-other@example.com", "qs-other");
+        Application application = fixtures.createApplication(owner, "카카오 백엔드");
+        InterviewQuestionSet questionSet = fixtures.createQuestionSet(owner, application, "세트", 1);
 
         mockMvc.perform(get("/api/v1/interview/question-sets/{questionSetId}", questionSet.getId())
                 .with(authenticated(other.getId())))
@@ -207,92 +205,15 @@ class InterviewQuestionSetGenerateApiTest extends ApiTestBase {
         ));
     }
 
-    private User persistUser(String email, String displayName) {
-        User user = User.builder()
-            .email(email)
-            .displayName(displayName)
-            .profileImageUrl("https://example.com/profile.png")
-            .status(UserStatus.ACTIVE)
-            .build();
-        entityManager.persist(user);
-        entityManager.flush();
-        return user;
-    }
-
-    private Application persistApplication(User user) {
-        Application application = Application.builder()
-            .user(user)
-            .applicationTitle("카카오 백엔드")
-            .companyName("카카오")
-            .applicationType("신입")
-            .jobRole("Backend Engineer")
-            .status(ApplicationStatus.DRAFT)
-            .build();
-        entityManager.persist(application);
-        entityManager.flush();
-        return application;
-    }
-
-    private void persistAppQuestion(Application application, int order, String text, String generatedAnswer) {
-        ApplicationQuestion question = ApplicationQuestion.builder()
-            .application(application)
-            .questionOrder(order)
-            .questionText(text)
-            .generatedAnswer(generatedAnswer)
-            .build();
-        entityManager.persist(question);
-        entityManager.flush();
-    }
-
-    private void persistDocument(User user, Application application, String extractedText) {
-        Document document = Document.builder()
-            .user(user)
-            .documentType(DocumentType.RESUME)
-            .originalFileName("resume.pdf")
-            .storagePath("/documents/resume.pdf")
-            .mimeType("application/pdf")
-            .fileSizeBytes(1024L)
-            .extractStatus(DocumentExtractStatus.SUCCESS)
-            .extractedText(extractedText)
-            .uploadedAt(NOW)
-            .extractedAt(NOW)
-            .build();
-        entityManager.persist(document);
-
-        ApplicationSourceDocument binding = ApplicationSourceDocument.builder()
-            .application(application)
-            .document(document)
-            .build();
-        entityManager.persist(binding);
-        entityManager.flush();
-    }
-
-    private InterviewQuestionSet persistQuestionSet(User user, Application application,
-                                                     String title, int questionCount) {
-        InterviewQuestionSet questionSet = InterviewQuestionSet.builder()
-            .user(user)
-            .application(application)
-            .title(title)
-            .questionCount(questionCount)
-            .difficultyLevel(DifficultyLevel.MEDIUM)
-            .questionTypes(new String[]{"technical_cs", "project"})
-            .build();
-        entityManager.persist(questionSet);
-        entityManager.flush();
-        return questionSet;
-    }
-
-    private InterviewQuestion persistQuestion(InterviewQuestionSet questionSet, int order,
-                                               String questionText, InterviewQuestionType type) {
-        InterviewQuestion question = InterviewQuestion.builder()
+    /** TestFixtures.createInterviewQuestion은 타입을 PROJECT로 고정하므로 타입 지정이 필요한 경우에만 사용 */
+    private InterviewQuestion createQuestion(InterviewQuestionSet questionSet, int order,
+                                              String questionText, InterviewQuestionType type) {
+        return interviewQuestionRepository.save(InterviewQuestion.builder()
             .questionSet(questionSet)
             .questionOrder(order)
             .questionType(type)
             .difficultyLevel(DifficultyLevel.MEDIUM)
             .questionText(questionText)
-            .build();
-        entityManager.persist(question);
-        entityManager.flush();
-        return question;
+            .build());
     }
 }
