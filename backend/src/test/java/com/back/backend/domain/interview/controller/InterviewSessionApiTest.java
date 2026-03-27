@@ -17,7 +17,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.authority.AuthorityUtils;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Clock;
@@ -47,9 +46,6 @@ class InterviewSessionApiTest extends ApiTestBase {
 
     @Autowired
     private InterviewSessionRepository interviewSessionRepository;
-
-    @MockitoBean
-    private Clock clock;
 
     @BeforeEach
     void setUpClock() {
