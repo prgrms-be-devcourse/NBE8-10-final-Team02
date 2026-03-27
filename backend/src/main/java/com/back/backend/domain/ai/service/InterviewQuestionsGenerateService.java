@@ -27,6 +27,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -117,12 +118,8 @@ public class InterviewQuestionsGenerateService {
             .collect(Collectors.toMap(ApplicationQuestion::getQuestionOrder, Function.identity()));
 
         JsonNode questions = responseNode.get("questions");
+        List<InterviewQuestion> interviewQuestions = new ArrayList<>();
         for (JsonNode q : questions) {
-            int questionOrder = q.get("questionOrder").asInt();
-            String questionType = q.get("questionType").asText();
-            String qDifficultyLevel = q.get("difficultyLevel").asText();
-            String questionText = q.get("questionText").asText();
-
             ApplicationQuestion sourceAppQuestion = null;
             if (q.hasNonNull("sourceApplicationQuestionOrder")) {
                 sourceAppQuestion = appQuestionByOrder.get(
@@ -130,17 +127,16 @@ public class InterviewQuestionsGenerateService {
                 );
             }
 
-            InterviewQuestion interviewQuestion = InterviewQuestion.builder()
+            interviewQuestions.add(InterviewQuestion.builder()
                 .questionSet(questionSet)
-                .questionOrder(questionOrder)
-                .questionType(parseQuestionType(questionType))
-                .difficultyLevel(parseDifficultyLevel(qDifficultyLevel))
-                .questionText(questionText)
+                .questionOrder(q.get("questionOrder").asInt())
+                .questionType(parseQuestionType(q.get("questionType").asText()))
+                .difficultyLevel(parseDifficultyLevel(q.get("difficultyLevel").asText()))
+                .questionText(q.get("questionText").asText())
                 .sourceApplicationQuestion(sourceAppQuestion)
-                .build();
-
-            questionRepository.save(interviewQuestion);
+                .build());
         }
+        questionRepository.saveAll(interviewQuestions);
 
         questionSet.changeQuestionCount(questions.size());
 
