@@ -1,8 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { getQuestions, generateAnswers } from '@/api/application';
+import { getApplication, getQuestions, generateAnswers } from '@/api/application';
 import type { ApplicationQuestion, GeneratedAnswerItem } from '@/types/application';
 
 // 톤/길이 옵션 한글 라벨
@@ -24,6 +25,7 @@ export default function GeneratePage() {
 
   // 문항 목록
   const [questions, setQuestions] = useState<ApplicationQuestion[]>([]);
+  const [applicationStatus, setApplicationStatus] = useState<'draft' | 'ready' | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -37,11 +39,15 @@ export default function GeneratePage() {
   const [regenerate, setRegenerate] = useState(false);
 
   // ── 문항 목록 조회 ─────────────────────────────────
-  const loadQuestions = useCallback(async () => {
+  const loadPageData = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const data = await getQuestions(applicationId);
+      const [application, data] = await Promise.all([
+        getApplication(applicationId),
+        getQuestions(applicationId),
+      ]);
+      setApplicationStatus(application.status);
       setQuestions(data);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '문항을 불러오지 못했습니다.';
@@ -52,8 +58,8 @@ export default function GeneratePage() {
   }, [applicationId]);
 
   useEffect(() => {
-    loadQuestions();
-  }, [loadQuestions]);
+    loadPageData();
+  }, [loadPageData]);
 
   // ── AI 답변 생성 ──────────────────────────────────
   async function handleGenerate() {
@@ -67,8 +73,8 @@ export default function GeneratePage() {
       });
       setResult(res.answers);
       setGeneratedCount(res.generatedCount);
-      // 생성 후 문항 목록 갱신 (generatedAnswer 반영)
-      await loadQuestions();
+      // 생성 후 문항 목록과 상태를 함께 다시 읽어 게이팅 기준을 맞춘다.
+      await loadPageData();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'AI 답변 생성 중 오류가 발생했습니다.';
       setGenerateError(msg);
@@ -93,7 +99,7 @@ export default function GeneratePage() {
         <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {loadError}
         </div>
-        <button onClick={loadQuestions} className="mt-4 text-sm underline text-zinc-500">
+        <button onClick={loadPageData} className="mt-4 text-sm underline text-zinc-500">
           다시 시도
         </button>
       </main>
@@ -117,6 +123,19 @@ export default function GeneratePage() {
     <main className="mx-auto max-w-2xl px-4 py-10">
       {/* 헤더 */}
       <div className="mb-6">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <Link href={`/applications/${applicationId}`} className="text-xs text-zinc-400 hover:text-zinc-600">
+            ← 지원 준비 상세로
+          </Link>
+          {applicationStatus === 'ready' && (
+            <Link
+              href={`/applications/${applicationId}/question-sets/new`}
+              className="rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700"
+            >
+              질문 생성으로 이동
+            </Link>
+          )}
+        </div>
         <h1 className="text-xl font-semibold">AI 자기소개서 생성</h1>
         <p className="mt-1 text-sm text-zinc-500">
           등록된 {questions.length}개 문항에 대해 AI가 답변을 생성합니다.
@@ -204,6 +223,12 @@ export default function GeneratePage() {
         {result && (
           <p className="mt-3 text-sm text-green-700">
             {generatedCount}개 문항의 답변이 생성되었습니다.
+          </p>
+        )}
+
+        {applicationStatus === 'draft' && hasAnyAnswer && (
+          <p className="mt-2 text-xs text-zinc-500">
+            질문 생성 단계는 연결 소스와 모든 문항 답변이 함께 준비된 뒤 사용할 수 있습니다.
           </p>
         )}
       </div>
