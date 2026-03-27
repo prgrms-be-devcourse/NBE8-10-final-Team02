@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 @Service
@@ -47,6 +48,7 @@ import java.util.function.Supplier;
 public class InterviewSessionService {
 
     private static final Duration AUTO_PAUSE_THRESHOLD = Duration.ofMinutes(30);
+    private static final Duration RESULT_GENERATION_RETRY_COOLDOWN = Duration.ofSeconds(30);
     // paused 세션도 사용자가 이어서 재개할 수 있는 활성 세션으로 본다.
     // 여기서 제외하면 새 세션을 하나 더 시작해 단일 활성 세션 규칙이 깨질 수 있다.
     private static final List<InterviewSessionStatus> ACTIVE_STATUSES = List.of(
@@ -64,6 +66,8 @@ public class InterviewSessionService {
     private final InterviewResponseMapper interviewResponseMapper;
     private final Clock clock;
     private final PlatformTransactionManager transactionManager;
+    private final Set<Long> resultGenerationInFlight = ConcurrentHashMap.newKeySet();
+    private final Map<Long, Instant> deferredResultRetryAt = new ConcurrentHashMap<>();
 
     @Transactional
     public InterviewSessionResponse startSession(long userId, StartInterviewSessionRequest request) {
@@ -153,16 +157,28 @@ public class InterviewSessionService {
         SessionCompletionPreparation preparation = executeInTransaction(
                 () -> prepareSessionCompletion(userId, sessionId)
         );
-        InterviewResultGenerationService.GeneratedInterviewResult generatedResult =
-                interviewResultGenerationService.generate(
-                        preparation.sessionId(),
-                        preparation.questionSetId(),
-                        preparation.answers()
-                );
+        beginResultGenerationAttempt(preparation.sessionId());
 
-        return executeInTransaction(
-                () -> finalizeSessionCompletion(userId, preparation, generatedResult)
-        );
+        try {
+            InterviewResultGenerationService.GeneratedInterviewResult generatedResult =
+                    interviewResultGenerationService.generate(
+                            preparation.sessionId(),
+                            preparation.questionSetId(),
+                            preparation.answers()
+                    );
+
+            InterviewSessionCompletionResponse response = executeInTransaction(
+                    () -> finalizeSessionCompletion(userId, preparation, generatedResult)
+            );
+            clearResultGenerationRetryState(preparation.sessionId());
+            return response;
+        } catch (ServiceException exception) {
+            handleResultGenerationFailure(preparation.sessionId(), exception);
+            throw exception;
+        } catch (RuntimeException exception) {
+            finishResultGenerationAttempt(preparation.sessionId());
+            throw exception;
+        }
     }
 
     @Transactional
@@ -284,6 +300,10 @@ public class InterviewSessionService {
             return;
         }
 
+        if (!tryBeginDeferredResultGeneration(preparation.sessionId())) {
+            return;
+        }
+
         try {
             InterviewResultGenerationService.GeneratedInterviewResult generatedResult =
                     interviewResultGenerationService.generate(
@@ -292,10 +312,15 @@ public class InterviewSessionService {
                             preparation.answers()
                     );
             executeInTransaction(() -> finalizeGeneratedResult(userId, preparation, generatedResult));
+            clearResultGenerationRetryState(preparation.sessionId());
         } catch (ServiceException exception) {
+            handleResultGenerationFailure(preparation.sessionId(), exception);
             if (exception.isRetryable()) {
                 return;
             }
+            throw exception;
+        } catch (RuntimeException exception) {
+            finishResultGenerationAttempt(preparation.sessionId());
             throw exception;
         }
     }
@@ -303,6 +328,7 @@ public class InterviewSessionService {
     private SessionCompletionPreparation preparePendingResultGeneration(long userId, long sessionId) {
         InterviewSession session = getOwnedSession(userId, sessionId);
         if (session.getStatus() != InterviewSessionStatus.COMPLETED) {
+            clearResultGenerationRetryState(session.getId());
             return null;
         }
 
@@ -319,6 +345,37 @@ public class InterviewSessionService {
                 endedAt,
                 answers
         );
+    }
+
+    private boolean tryBeginDeferredResultGeneration(long sessionId) {
+        Instant deferredAt = deferredResultRetryAt.get(sessionId);
+        Instant now = clock.instant();
+        if (deferredAt != null && deferredAt.isAfter(now)) {
+            return false;
+        }
+        return resultGenerationInFlight.add(sessionId);
+    }
+
+    private void beginResultGenerationAttempt(long sessionId) {
+        resultGenerationInFlight.add(sessionId);
+    }
+
+    private void handleResultGenerationFailure(long sessionId, ServiceException exception) {
+        if (exception.isRetryable()) {
+            deferredResultRetryAt.put(sessionId, clock.instant().plus(RESULT_GENERATION_RETRY_COOLDOWN));
+            finishResultGenerationAttempt(sessionId);
+            return;
+        }
+        finishResultGenerationAttempt(sessionId);
+    }
+
+    private void clearResultGenerationRetryState(long sessionId) {
+        deferredResultRetryAt.remove(sessionId);
+        finishResultGenerationAttempt(sessionId);
+    }
+
+    private void finishResultGenerationAttempt(long sessionId) {
+        resultGenerationInFlight.remove(sessionId);
     }
 
     private InterviewSession finalizeGeneratedResult(
