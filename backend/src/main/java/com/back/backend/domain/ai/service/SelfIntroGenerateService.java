@@ -9,6 +9,7 @@ import com.back.backend.domain.application.entity.ApplicationSourceDocument;
 import com.back.backend.domain.application.repository.ApplicationQuestionRepository;
 import com.back.backend.domain.application.repository.ApplicationRepository;
 import com.back.backend.domain.application.repository.ApplicationSourceDocumentBindingRepository;
+import com.back.backend.domain.application.service.ApplicationStatusService;
 import com.back.backend.domain.document.entity.Document;
 import com.back.backend.domain.document.entity.DocumentExtractStatus;
 import com.back.backend.global.exception.ErrorCode;
@@ -33,6 +34,7 @@ public class SelfIntroGenerateService {
     private final ApplicationRepository applicationRepository;
     private final ApplicationQuestionRepository applicationQuestionRepository;
     private final ApplicationSourceDocumentBindingRepository sourceDocumentBindingRepository;
+    private final ApplicationStatusService applicationStatusService;
     private final SelfIntroPayloadBuilder payloadBuilder;
     private final AiPipeline aiPipeline;
 
@@ -115,6 +117,8 @@ public class SelfIntroGenerateService {
                 question.updateGeneratedAnswer(answer.get("answerText").asText());
             }
         }
+
+        applicationStatusService.syncStatus(application);
 
         // 전체 문항 목록 반환
         return new GenerateResult(allQuestions, targetQuestions.size());
