@@ -9,6 +9,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
@@ -37,6 +38,7 @@ class GeminiClientTest {
 
         RestClient restClient = RestClient.builder()
             .baseUrl(properties.baseUrl())
+            .requestFactory(new SimpleClientHttpRequestFactory())  // Apache HttpClient 5 자동선택 방지
             .build();
 
         geminiClient = new GeminiClient(restClient, properties);
