@@ -52,4 +52,19 @@ class PromptLoaderTest {
         assertThat(promptLoader.load("developer/ai.interview.evaluate.v1.txt")).isNotBlank();
         assertThat(promptLoader.load("developer/ai.interview.summary.v1.txt")).isNotBlank();
     }
+
+    @Test
+    @DisplayName("면접 질문 프롬프트는 필수 응답 키와 모든 질문 타입 설명을 포함한다")
+    void interviewQuestionPrompt_containsResponseContract() {
+        String content = promptLoader.load("developer/ai.interview.questions.generate.v1.txt");
+
+        assertThat(content).contains("project:");
+        assertThat(content).contains("behavioral:");
+        assertThat(content).contains("\"questions\": [");
+        assertThat(content).contains("\"qualityFlags\": []");
+        assertThat(content).contains("sourceApplicationQuestionOrder");
+        assertThat(content).contains("parentQuestionOrder");
+        assertThat(content).contains("usedEvidenceKeys");
+        assertThat(content).contains("questionId");
+    }
 }

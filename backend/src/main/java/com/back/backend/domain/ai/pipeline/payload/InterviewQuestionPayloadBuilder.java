@@ -17,6 +17,19 @@ public class InterviewQuestionPayloadBuilder {
     private static final String TASK_TYPE = "interview_question_generation";
     private static final String LOCALE = "ko-KR";
     private static final String CONFIDENCE_MEDIUM = "medium";
+    private static final List<String> QUALITY_FLAG_CANDIDATES = List.of(
+            "low_context",
+            "weak_evidence",
+            "missing_company_context",
+            "duplicate_risk"
+    );
+    private static final List<String> TOP_LEVEL_REQUIRED_KEYS = List.of("questions", "qualityFlags");
+    private static final List<String> QUESTION_REQUIRED_KEYS = List.of(
+            "questionOrder",
+            "questionType",
+            "difficultyLevel",
+            "questionText"
+    );
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -57,6 +70,7 @@ public class InterviewQuestionPayloadBuilder {
         ArrayNode questionTypeArray = root.putArray("questionTypes");
         questionTypes.forEach(questionTypeArray::add);
 
+        buildEnumCandidates(root, difficultyLevel, questionTypes);
         ArrayNode questionArray = root.putArray("applicationQuestions");
         for (ApplicationQuestionInput applicationQuestion : applicationQuestions) {
             ObjectNode questionNode = questionArray.addObject();
@@ -79,11 +93,38 @@ public class InterviewQuestionPayloadBuilder {
         questionGenerationRules.put("avoidQuestionCopy", true);
         questionGenerationRules.put("maxDuplicateSimilarity", 0.8);
         questionGenerationRules.put("includeCsBasicsWhenContextLow", true);
+        buildConstraints(root, preferredQuestionCount);
 
         try {
             return objectMapper.writeValueAsString(root);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Interview question payload serialization failed", exception);
         }
+    }
+
+    private void buildEnumCandidates(ObjectNode root, String difficultyLevel, List<String> questionTypes) {
+        ObjectNode enumCandidates = root.putObject("enumCandidates");
+
+        ArrayNode difficultyLevels = enumCandidates.putArray("difficultyLevels");
+        difficultyLevels.add(difficultyLevel);
+
+        ArrayNode questionTypeCandidates = enumCandidates.putArray("questionTypes");
+        questionTypes.forEach(questionTypeCandidates::add);
+
+        ArrayNode qualityFlags = enumCandidates.putArray("qualityFlags");
+        QUALITY_FLAG_CANDIDATES.forEach(qualityFlags::add);
+    }
+
+    private void buildConstraints(ObjectNode root, int preferredQuestionCount) {
+        ObjectNode constraints = root.putObject("constraints");
+        constraints.put("exactQuestionCount", preferredQuestionCount);
+        constraints.put("allowAdditionalTopLevelProperties", false);
+        constraints.put("allowAdditionalQuestionProperties", false);
+
+        ArrayNode topLevelRequiredKeys = constraints.putArray("topLevelRequiredKeys");
+        TOP_LEVEL_REQUIRED_KEYS.forEach(topLevelRequiredKeys::add);
+
+        ArrayNode questionRequiredKeys = constraints.putArray("questionRequiredKeys");
+        QUESTION_REQUIRED_KEYS.forEach(questionRequiredKeys::add);
     }
 }

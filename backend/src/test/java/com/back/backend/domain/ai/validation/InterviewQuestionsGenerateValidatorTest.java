@@ -85,6 +85,40 @@ class InterviewQuestionsGenerateValidatorTest {
             assertThat(result.valid()).isFalse();
             assertThat(result.errors()).anyMatch(e -> e.contains("difficultyLevel"));
         }
+
+        @Test
+        @DisplayName("누락된 qualityFlags는 빈 배열로 복구하고 schema_recovered를 남긴다")
+        void missing_qualityFlags_recovered() {
+            ObjectNode node = objectMapper.createObjectNode();
+            ArrayNode questions = node.putArray("questions");
+            questions.add(buildQuestion(1, "experience", "medium", "질문입니다"));
+
+            ValidationResult result = validator.validate(node);
+
+            assertThat(result.valid()).isTrue();
+            assertThat(node.get("qualityFlags")).isNotNull();
+            assertThat(node.get("qualityFlags").get(0).asText()).isEqualTo("schema_recovered");
+        }
+
+        @Test
+        @DisplayName("interviewQuestions와 questionId 응답은 schema 기준 키로 복구한다")
+        void legacy_keys_recovered() {
+            ObjectNode node = objectMapper.createObjectNode();
+            ArrayNode questions = node.putArray("interviewQuestions");
+            ObjectNode question = questions.addObject();
+            question.put("questionId", 1);
+            question.put("questionType", "project");
+            question.put("difficultyLevel", "medium");
+            question.put("questionText", "프로젝트 경험을 설명해주세요.");
+
+            ValidationResult result = validator.validate(node);
+
+            assertThat(result.valid()).isTrue();
+            assertThat(node.has("interviewQuestions")).isFalse();
+            assertThat(node.get("questions").get(0).get("questionOrder").asInt()).isEqualTo(1);
+            assertThat(node.get("questions").get(0).has("questionId")).isFalse();
+            assertThat(node.get("qualityFlags")).isNotNull();
+        }
     }
 
     @Nested

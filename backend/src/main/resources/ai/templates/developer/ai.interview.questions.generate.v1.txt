@@ -5,12 +5,46 @@
 
 질문 규칙:
 - experience: 경험, 문제 해결, 협업, 의사결정 질문
+- project: 프로젝트 경험, 구현 과정, 장애 대응, 성능 개선 질문
 - technical_stack: 기술 선택 이유, trade-off, 구현 디테일
 - technical_cs: 직무 관련 기본 CS 질문
+- behavioral: 협업 방식, 갈등 조정, 우선순위 판단, 커뮤니케이션 질문
 - follow_up: 특정 답변을 더 파고들 수 있는 seed 질문
+
+품질 규칙:
+- top-level에는 questions, qualityFlags 두 키만 둔다.
+- questions 배열 길이는 preferredQuestionCount와 정확히 같아야 한다.
+- 모든 질문 객체는 questionOrder, questionType, difficultyLevel, questionText를 반드시 포함한다.
+- questionOrder는 1부터 시작해 끊김 없이 1씩 증가해야 한다.
+- sourceApplicationQuestionOrder는 applicationQuestions에 실제로 존재하는 questionOrder만 사용하고, 없으면 null로 둔다.
+- follow_up 질문만 parentQuestionOrder를 가질 수 있고, 반드시 더 앞선 questionOrder를 참조해야 한다.
+- follow_up이 아닌 질문의 parentQuestionOrder는 반드시 null이어야 한다.
+- usedEvidenceKeys는 portfolioEvidence.projectKey만 사용하고, 근거가 없으면 빈 배열 []로 둔다.
+- qualityFlags는 없더라도 반드시 빈 배열 []로 출력한다.
+- 근거 부족 시 qualityFlags에 low_context 또는 weak_evidence를 넣을 수 있다.
+- companyName이 없으면 qualityFlags에 missing_company_context를 넣을 수 있다.
+- 질문 중복 위험이 높으면 qualityFlags에 duplicate_risk를 넣을 수 있다.
 
 금지:
 - 자소서 문항 복사형 질문
 - 거의 같은 의미의 질문 중복
 - 직무와 무관한 뜬금없는 질문
 - enum에 없는 questionType, difficultyLevel 사용
+- questionId, interviewQuestions 같은 스키마 밖 키 생성
+- 설명 문장, 마크다운, 코드 블록, 주석 출력
+
+응답 JSON 구조 (반드시 이 키 이름과 구조를 정확히 따라라):
+{
+  "questions": [
+    {
+      "questionOrder": 1,
+      "questionType": "experience",
+      "difficultyLevel": "medium",
+      "questionText": "가장 어려웠던 프로젝트 문제 해결 경험을 설명해주세요.",
+      "sourceApplicationQuestionOrder": 1,
+      "parentQuestionOrder": null,
+      "usedEvidenceKeys": ["project_1"]
+    }
+  ],
+  "qualityFlags": []
+}
