@@ -46,18 +46,18 @@ class GithubApiTest extends ApiTestBase {
     @Autowired
     private TestFixtures fixtures;
 
-    // Redis 의존성을 격리한다. GithubApiTest는 Redis 상태가 아닌 HTTP 계층을 검증하는 테스트이며,
-    // SyncStatusService는 GithubRepositoryService 내부에서만 쓰인다.
-    // 실제 Redis 연결 없이도 getRepositories 응답이 올바른지 검증할 수 있어야 한다.
-    @MockitoBean
-    private SyncStatusService syncStatusService;
-
-    @BeforeEach
-    void stubSyncStatus() {
-        // getStatusBulk은 Redis에서 분석 상태를 읽는다. HTTP 계층 검증이 목적인 이 테스트에서는
-        // 항상 "분석 상태 없음"(빈 Map)을 반환하도록 고정해 Redis 의존성을 완전히 제거한다.
-        given(syncStatusService.getStatusBulk(anyLong(), any())).willReturn(Map.of());
-    }
+//    // Redis 의존성을 격리한다. GithubApiTest는 Redis 상태가 아닌 HTTP 계층을 검증하는 테스트이며,
+//    // SyncStatusService는 GithubRepositoryService 내부에서만 쓰인다.
+//    // 실제 Redis 연결 없이도 getRepositories 응답이 올바른지 검증할 수 있어야 한다.
+//    @MockitoBean
+//    private SyncStatusService syncStatusService;
+//
+//    @BeforeEach
+//    void stubSyncStatus() {
+//        // getStatusBulk은 Redis에서 분석 상태를 읽는다. HTTP 계층 검증이 목적인 이 테스트에서는
+//        // 항상 "분석 상태 없음"(빈 Map)을 반환하도록 고정해 Redis 의존성을 완전히 제거한다.
+//        given(syncStatusService.getStatusBulk(anyLong(), any())).willReturn(Map.of());
+//    }
 
     // ─────────────────────────────────────────────────
     // GET /connections
