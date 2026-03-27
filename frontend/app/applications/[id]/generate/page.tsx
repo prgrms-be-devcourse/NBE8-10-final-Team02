@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { getQuestions, generateAnswers } from '@/api/application';
@@ -117,6 +118,19 @@ export default function GeneratePage() {
     <main className="mx-auto max-w-2xl px-4 py-10">
       {/* 헤더 */}
       <div className="mb-6">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <Link href={`/applications/${applicationId}`} className="text-xs text-zinc-400 hover:text-zinc-600">
+            ← 지원 준비 상세로
+          </Link>
+          {hasAnyAnswer && (
+            <Link
+              href={`/applications/${applicationId}/question-sets/new`}
+              className="rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700"
+            >
+              질문 생성으로 이동
+            </Link>
+          )}
+        </div>
         <h1 className="text-xl font-semibold">AI 자기소개서 생성</h1>
         <p className="mt-1 text-sm text-zinc-500">
           등록된 {questions.length}개 문항에 대해 AI가 답변을 생성합니다.
