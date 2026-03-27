@@ -121,7 +121,7 @@ public abstract class ApiTestBase {
     // static: 컨텍스트 로드 전에 포트가 확정되어 @DynamicPropertySource에서 사용 가능.
     @RegisterExtension
     protected static WireMockExtension wireMock = WireMockExtension.newInstance()
-        .options(wireMockConfig().dynamicPort())
+        .options(wireMockConfig().dynamicPort().usingFilesUnderClasspath(""))
         .build();
 
     // WireMock 포트를 Spring 프로퍼티로 주입 — GithubApiClient, GeminiClient가 이 URL을 사용함.
