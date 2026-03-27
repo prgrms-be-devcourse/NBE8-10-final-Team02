@@ -84,6 +84,27 @@ export interface InterviewSessionDetail {
   endedAt: string | null;
 }
 
+export interface InterviewAnswerSubmitRequest {
+  questionId: number;
+  answerOrder: number;
+  answerText?: string;
+  isSkipped: boolean;
+}
+
+export interface SessionAnswerSubmitData {
+  sessionId: number;
+  questionId: number;
+  answerOrder: number;
+  isSkipped: boolean;
+  submittedAt: string;
+}
+
+export interface InterviewSessionTransitionData {
+  sessionId: number;
+  status: Extract<InterviewSessionStatus, 'in_progress' | 'paused'>;
+  updatedAt: string;
+}
+
 export interface ApiFieldError {
   field: string;
   reason: string;

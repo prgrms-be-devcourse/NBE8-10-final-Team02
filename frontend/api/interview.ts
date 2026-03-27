@@ -1,5 +1,6 @@
 import type {
   ApiFieldError,
+  InterviewAnswerSubmitRequest,
   InterviewManualQuestionCreateRequest,
   InterviewQuestion,
   InterviewQuestionSetDetail,
@@ -7,6 +8,8 @@ import type {
   InterviewQuestionSetSummary,
   InterviewSession,
   InterviewSessionDetail,
+  InterviewSessionTransitionData,
+  SessionAnswerSubmitData,
 } from '@/types/interview';
 
 const base = () =>
@@ -138,4 +141,48 @@ export async function getSessionDetail(sessionId: number): Promise<InterviewSess
 
   const body = await res.json();
   return body.data as InterviewSessionDetail;
+}
+
+export async function submitSessionAnswer(
+  sessionId: number,
+  request: InterviewAnswerSubmitRequest,
+): Promise<SessionAnswerSubmitData> {
+  const res = await fetch(`${base()}/sessions/${sessionId}/answers`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+
+  const body = await res.json();
+  return body.data as SessionAnswerSubmitData;
+}
+
+async function transitionSession(
+  sessionId: number,
+  action: 'pause' | 'resume',
+): Promise<InterviewSessionTransitionData> {
+  const res = await fetch(`${base()}/sessions/${sessionId}/${action}`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+
+  const body = await res.json();
+  return body.data as InterviewSessionTransitionData;
+}
+
+export function pauseSession(sessionId: number): Promise<InterviewSessionTransitionData> {
+  return transitionSession(sessionId, 'pause');
+}
+
+export function resumeSession(sessionId: number): Promise<InterviewSessionTransitionData> {
+  return transitionSession(sessionId, 'resume');
 }
