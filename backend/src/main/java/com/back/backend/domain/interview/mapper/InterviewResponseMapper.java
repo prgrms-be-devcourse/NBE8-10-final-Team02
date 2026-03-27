@@ -4,6 +4,8 @@ import com.back.backend.domain.interview.dto.response.InterviewAnswerResultRespo
 import com.back.backend.domain.interview.dto.response.InterviewAnswerSubmitResponse;
 import com.back.backend.domain.interview.dto.response.InterviewFeedbackTagResponse;
 import com.back.backend.domain.interview.dto.response.InterviewQuestionResponse;
+import com.back.backend.domain.interview.dto.response.InterviewQuestionSetDetailResponse;
+import com.back.backend.domain.interview.dto.response.InterviewQuestionSetSummaryResponse;
 import com.back.backend.domain.interview.dto.response.InterviewResultResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionCompletionResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionCurrentQuestionResponse;
@@ -14,6 +16,7 @@ import com.back.backend.domain.interview.entity.FeedbackTag;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
 import com.back.backend.domain.interview.entity.InterviewAnswerTag;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
+import com.back.backend.domain.interview.entity.InterviewQuestionSet;
 import com.back.backend.domain.interview.entity.InterviewSession;
 
 import java.time.Instant;
@@ -23,6 +26,32 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class InterviewResponseMapper {
+
+    public InterviewQuestionSetSummaryResponse toInterviewQuestionSetSummaryResponse(InterviewQuestionSet questionSet) {
+        return new InterviewQuestionSetSummaryResponse(
+                questionSet.getId(),
+                questionSet.getApplication().getId(),
+                resolveQuestionSetTitle(questionSet),
+                questionSet.getQuestionCount(),
+                questionSet.getDifficultyLevel().getValue(),
+                questionSet.getCreatedAt()
+        );
+    }
+
+    public InterviewQuestionSetDetailResponse toInterviewQuestionSetDetailResponse(
+            InterviewQuestionSet questionSet,
+            List<InterviewQuestionResponse> questions
+    ) {
+        return new InterviewQuestionSetDetailResponse(
+                questionSet.getId(),
+                questionSet.getApplication().getId(),
+                resolveQuestionSetTitle(questionSet),
+                questionSet.getQuestionCount(),
+                questionSet.getDifficultyLevel().getValue(),
+                questions,
+                questionSet.getCreatedAt()
+        );
+    }
 
     public InterviewQuestionResponse toInterviewQuestionResponse(InterviewQuestion question) {
         return new InterviewQuestionResponse(
@@ -162,5 +191,18 @@ public class InterviewResponseMapper {
                 tag.getTagName(),
                 tag.getTagCategory().getValue()
         );
+    }
+
+    private String resolveQuestionSetTitle(InterviewQuestionSet questionSet) {
+        String title = questionSet.getTitle();
+        if (title != null && !title.isBlank()) {
+            return title;
+        }
+
+        String companyName = questionSet.getApplication().getCompanyName();
+        if (companyName != null && !companyName.isBlank()) {
+            return companyName + " " + questionSet.getApplication().getJobRole() + " 예상 질문 세트";
+        }
+        return questionSet.getApplication().getJobRole() + " 예상 질문 세트";
     }
 }
