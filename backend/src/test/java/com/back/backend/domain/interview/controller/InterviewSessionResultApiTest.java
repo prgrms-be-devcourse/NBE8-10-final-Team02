@@ -177,6 +177,7 @@ class InterviewSessionResultApiTest extends ApiTestBase {
 
     @Test
     void getSessionResult_returns409WhenResultIsNotReady() throws Exception {
+        given(clock.instant()).willReturn(Instant.now());
         ResultFixture fixture = persistCompletedFixture("result-incomplete");
 
         given(interviewResultGenerationService.generate(
