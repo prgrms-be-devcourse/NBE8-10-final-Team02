@@ -2,27 +2,33 @@ package com.back.backend.domain.github.controller;
 
 import com.back.backend.domain.github.dto.request.GithubConnectRequest;
 import com.back.backend.domain.github.dto.request.RepositorySelectionRequest;
-import com.back.backend.domain.github.entity.GithubConnection;
-import com.back.backend.domain.github.entity.GithubRepository;
-import com.back.backend.domain.user.entity.User;
+import com.back.backend.domain.github.dto.response.GithubConnectionResponse;
+import com.back.backend.domain.github.dto.response.GithubRepositoryResponse;
+import com.back.backend.domain.github.dto.response.RepositorySelectionResponse;
+import com.back.backend.domain.github.service.GithubConnectionService;
+import com.back.backend.domain.github.service.GithubRepositoryService;
 import com.back.backend.global.exception.ErrorCode;
+import com.back.backend.global.exception.ServiceException;
 import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
-import com.back.backend.support.TestFixtures;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.time.Instant;
 import java.util.List;
 
-import com.github.tomakehurst.wiremock.client.WireMock;
-
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -30,13 +36,21 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@Transactional
+/**
+ * GitHub API HTTP 레이어 통합 테스트.
+ *
+ * GithubConnectionService, GithubRepositoryService를 @MockitoBean으로 대체해
+ * HTTP 레이어(인증, 응답 형식, 상태 코드)에만 집중합니다.
+ */
 class GithubApiTest extends ApiTestBase {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    @Autowired
-    private TestFixtures fixtures;
+    @MockitoBean
+    private GithubConnectionService connectionService;
+
+    @MockitoBean
+    private GithubRepositoryService repositoryService;
 
     // ─────────────────────────────────────────────────
     // GET /connections
@@ -44,11 +58,14 @@ class GithubApiTest extends ApiTestBase {
 
     @Test
     void getConnection_returns200WithConnectionDataWhenConnected() throws Exception {
-        User user = fixtures.createUser("conn-exists@example.com", "conn-exists");
-        fixtures.createConnection(user);
+        GithubConnectionResponse response = new GithubConnectionResponse(
+                1L, 10L, 100001L, "github-user", "repo,user:email", "connected",
+                Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-01T01:00:00Z")
+        );
+        given(connectionService.getConnectionOrNull(any())).willReturn(response);
 
         mockMvc.perform(get("/api/v1/github/connections")
-                        .with(authenticated(user.getId())))
+                        .with(authenticated(10L)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.githubLogin").value("github-user"))
@@ -57,10 +74,10 @@ class GithubApiTest extends ApiTestBase {
 
     @Test
     void getConnection_returns200WithNullDataWhenNotConnected() throws Exception {
-        User user = fixtures.createUser("conn-none@example.com", "conn-none");
+        given(connectionService.getConnectionOrNull(any())).willReturn(null);
 
         mockMvc.perform(get("/api/v1/github/connections")
-                        .with(authenticated(user.getId())))
+                        .with(authenticated(10L)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").value(nullValue()));
@@ -78,24 +95,16 @@ class GithubApiTest extends ApiTestBase {
 
     @Test
     void createConnection_returns201AndSavesRepos() throws Exception {
-        User user = fixtures.createUser("conn-create@example.com", "conn-create");
-
-        wireMock.stubFor(WireMock.get(urlPathEqualTo("/user"))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBodyFile("github/user.json")));
-
-        wireMock.stubFor(WireMock.get(urlPathEqualTo("/user/repos"))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBodyFile("github/user-repos.json")));
+        GithubConnectionResponse response = new GithubConnectionResponse(
+                1L, 10L, 100001L, "github-user", "repo,user:email", "connected",
+                Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-01T01:00:00Z")
+        );
+        given(connectionService.createOrUpdateConnection(any(), any())).willReturn(response);
 
         GithubConnectRequest request = new GithubConnectRequest("oauth", null, "test-token", "repo,user:email");
 
         mockMvc.perform(post("/api/v1/github/connections")
-                        .with(authenticated(user.getId()))
+                        .with(authenticated(10L))
                         .contentType("application/json")
                         .content(OBJECT_MAPPER.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -116,12 +125,16 @@ class GithubApiTest extends ApiTestBase {
 
     @Test
     void createConnection_returns400WhenAccessTokenIsBlank() throws Exception {
-        User user = fixtures.createUser("conn-bad-token@example.com", "conn-bad-token");
+        willThrow(new ServiceException(
+                ErrorCode.REQUEST_VALIDATION_FAILED,
+                HttpStatus.BAD_REQUEST,
+                "oauth 모드에서는 accessToken이 필요합니다."
+        )).given(connectionService).createOrUpdateConnection(any(), any());
 
         GithubConnectRequest request = new GithubConnectRequest("oauth", null, "   ", "repo");
 
         mockMvc.perform(post("/api/v1/github/connections")
-                        .with(authenticated(user.getId()))
+                        .with(authenticated(10L))
                         .contentType("application/json")
                         .content(OBJECT_MAPPER.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
@@ -134,13 +147,21 @@ class GithubApiTest extends ApiTestBase {
 
     @Test
     void getRepositories_returns200WithReposAndPagination() throws Exception {
-        User user = fixtures.createUser("repo-list@example.com", "repo-list");
-        GithubConnection connection = fixtures.createConnection(user);
-        fixtures.createRepo(connection, "repo-a", true);
-        fixtures.createRepo(connection, "repo-b", false);
+        GithubRepositoryResponse repoA = new GithubRepositoryResponse(
+                1L, 1001L, "github-user", "repo-a", "github-user/repo-a",
+                "https://github.com/github-user/repo-a", "public", "main",
+                true, false, null, null, "owner", "Java"
+        );
+        GithubRepositoryResponse repoB = new GithubRepositoryResponse(
+                2L, 1002L, "github-user", "repo-b", "github-user/repo-b",
+                "https://github.com/github-user/repo-b", "public", "main",
+                false, false, null, null, "owner", null
+        );
+        given(repositoryService.getRepositories(any(), eq(null), eq(1), eq(20)))
+                .willReturn(new PageImpl<>(List.of(repoA, repoB), PageRequest.of(0, 20), 2));
 
         mockMvc.perform(get("/api/v1/github/repositories")
-                        .with(authenticated(user.getId())))
+                        .with(authenticated(10L)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").isArray())
@@ -150,14 +171,17 @@ class GithubApiTest extends ApiTestBase {
 
     @Test
     void getRepositories_returns200WithSelectedFilterApplied() throws Exception {
-        User user = fixtures.createUser("repo-filter@example.com", "repo-filter");
-        GithubConnection connection = fixtures.createConnection(user);
-        fixtures.createRepo(connection, "selected-repo", true);
-        fixtures.createRepo(connection, "unselected-repo", false);
+        GithubRepositoryResponse selected = new GithubRepositoryResponse(
+                1L, 1001L, "github-user", "selected-repo", "github-user/selected-repo",
+                "https://github.com/github-user/selected-repo", "public", "main",
+                true, false, null, null, "owner", null
+        );
+        given(repositoryService.getRepositories(any(), eq(true), eq(1), eq(20)))
+                .willReturn(new PageImpl<>(List.of(selected), PageRequest.of(0, 20), 1));
 
         mockMvc.perform(get("/api/v1/github/repositories")
                         .param("selected", "true")
-                        .with(authenticated(user.getId())))
+                        .with(authenticated(10L)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].repoName").value("selected-repo"));
@@ -165,10 +189,14 @@ class GithubApiTest extends ApiTestBase {
 
     @Test
     void getRepositories_returns404WhenNoConnection() throws Exception {
-        User user = fixtures.createUser("repo-no-conn@example.com", "repo-no-conn");
+        willThrow(new ServiceException(
+                ErrorCode.GITHUB_CONNECTION_NOT_FOUND,
+                HttpStatus.NOT_FOUND,
+                "GitHub 연결이 없습니다."
+        )).given(repositoryService).getRepositories(any(), any(), anyInt(), anyInt());
 
         mockMvc.perform(get("/api/v1/github/repositories")
-                        .with(authenticated(user.getId())))
+                        .with(authenticated(10L)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value(ErrorCode.GITHUB_CONNECTION_NOT_FOUND.name()));
     }
@@ -185,15 +213,13 @@ class GithubApiTest extends ApiTestBase {
 
     @Test
     void updateSelection_returns200AndUpdatesSelection() throws Exception {
-        User user = fixtures.createUser("sel-success@example.com", "sel-success");
-        GithubConnection connection = fixtures.createConnection(user);
-        GithubRepository repoA = fixtures.createRepo(connection, "repo-a", false);
-        GithubRepository repoB = fixtures.createRepo(connection, "repo-b", false);
+        given(repositoryService.saveSelection(any(), any()))
+                .willReturn(RepositorySelectionResponse.of(List.of(1L, 2L)));
 
-        RepositorySelectionRequest request = new RepositorySelectionRequest(List.of(repoA.getId(), repoB.getId()));
+        RepositorySelectionRequest request = new RepositorySelectionRequest(List.of(1L, 2L));
 
         mockMvc.perform(put("/api/v1/github/repositories/selection")
-                        .with(authenticated(user.getId()))
+                        .with(authenticated(10L))
                         .contentType("application/json")
                         .content(OBJECT_MAPPER.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -204,18 +230,16 @@ class GithubApiTest extends ApiTestBase {
 
     @Test
     void updateSelection_returns403WhenRepositoryDoesNotBelongToUser() throws Exception {
-        User owner = fixtures.createUser("sel-owner@example.com", "sel-owner");
-        User otherUser = fixtures.createUser("sel-other@example.com", "sel-other");
+        willThrow(new ServiceException(
+                ErrorCode.GITHUB_REPOSITORY_FORBIDDEN,
+                HttpStatus.FORBIDDEN,
+                "접근 권한이 없는 레포지토리입니다."
+        )).given(repositoryService).saveSelection(any(), any());
 
-        GithubConnection ownerConnection = fixtures.createConnection(owner);
-        GithubRepository ownerRepo = fixtures.createRepo(ownerConnection, "owner-repo", false);
-
-        fixtures.createConnection(otherUser);
-
-        RepositorySelectionRequest request = new RepositorySelectionRequest(List.of(ownerRepo.getId()));
+        RepositorySelectionRequest request = new RepositorySelectionRequest(List.of(1L));
 
         mockMvc.perform(put("/api/v1/github/repositories/selection")
-                        .with(authenticated(otherUser.getId()))
+                        .with(authenticated(10L))
                         .contentType("application/json")
                         .content(OBJECT_MAPPER.writeValueAsString(request)))
                 .andExpect(status().isForbidden())
