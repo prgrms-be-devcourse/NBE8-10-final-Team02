@@ -319,6 +319,45 @@ applies_to: storage-schema
 비고
 - `(answer_id, tag_id)`는 유일해야 한다.
 
+## 3.17 knowledge_items
+
+필수 컬럼
+- `id`
+- `source_key` — 출처 식별자 (예: "gyoogle-tech"). KnowledgeSourceRegistry에 하드코딩된 키와 매핑
+- `title` — 질문/개념 제목 (최대 500자)
+- `content` — 전체 내용 (마크다운, text)
+- `file_path` — 파일 경로 (GitHub 소스는 GitHub 경로, 로컬 소스는 classpath 경로)
+- `content_hash` — SHA-256, 변경 감지 및 중복 방지
+- `created_at`
+- `updated_at`
+
+비고
+- `(source_key, file_path, title)` 조합은 유일해야 한다 (upsert 키).
+- `content_hash`가 동일하면 재동기화 시 skip한다.
+- 유저 소유 데이터가 아니므로 `user_id` 컬럼이 없다.
+
+## 3.18 knowledge_tags
+
+필수 컬럼
+- `id`
+- `name` — 태그명 (예: "java", "network", "os"). 유일해야 한다
+- `category` — `language` | `topic` | `domain`
+
+비고
+- 초기 seed 데이터 없음. 동기화 시 파서가 자동 생성한다 (upsert).
+- 런타임 자유 태그 허용: 파서가 추출한 키워드 기반으로 동적 생성된다.
+  (`feedback_tags`와 달리 마스터 고정이 아님)
+
+## 3.19 knowledge_item_tags
+
+필수 컬럼
+- `knowledge_item_id` — FK → knowledge_items(id)
+- `knowledge_tag_id` — FK → knowledge_tags(id)
+
+비고
+- `(knowledge_item_id, knowledge_tag_id)`는 유일해야 한다 (복합 PK).
+- knowledge_items 삭제 시 함께 삭제한다 (CASCADE).
+
 ## 4. enum 후보
 
 - `user_status`: `active`, `withdrawn`
@@ -334,6 +373,7 @@ applies_to: storage-schema
 - `interview_question_type`: `experience`, `project`, `technical_cs`, `technical_stack`, `behavioral`, `follow_up`
 - `interview_session_status`: `ready`, `in_progress`, `paused`, `completed`, `feedback_completed`
 - `feedback_tag_category`: `content`, `structure`, `evidence`, `communication`, `technical`, `other`
+- `knowledge_tag_category`: `language`, `topic`, `domain`
 
 ## 5. 삭제 정책
 
@@ -341,6 +381,7 @@ applies_to: storage-schema
 - `applications` 삭제 시 자소서 문항, 선택 소스 연결, 질문 세트는 함께 삭제한다.
 - `interview_sessions` 삭제 시 답변과 답변 태그는 함께 삭제한다.
 - `documents`, `github_repositories`, `feedback_tags`는 참조 중이면 삭제를 막는 방향을 기본값으로 둔다.
+- `knowledge_items` 삭제 시 `knowledge_item_tags`는 함께 삭제한다 (CASCADE). `knowledge_tags`는 남긴다.
 
 ## 6. 인덱스 전략
 
@@ -366,6 +407,13 @@ applies_to: storage-schema
 - `applications(user_id, created_at desc)`
 - `interview_sessions(user_id, status, started_at desc)`
 - `interview_answers(session_id, answer_order)`
+- `knowledge_items(source_key, file_path, title)` — upsert 기준 unique
+- `knowledge_tags(name)` — unique
+- `knowledge_item_tags(knowledge_item_id, knowledge_tag_id)` — 복합 PK
+
+조회 최적화용 index (knowledge)
+- `knowledge_items(source_key)`
+- `knowledge_items(title)` — 검색용 (ILIKE 또는 full-text)
 
 ## 7. 이번 버전에서 확정한 항목
 
