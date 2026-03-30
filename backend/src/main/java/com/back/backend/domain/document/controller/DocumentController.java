@@ -27,6 +27,7 @@ import java.util.List;
  * 문서 관련 API endpoint를 제공하는 controller.
  * 업로드(POST), 목록 조회(GET), 단건 조회(GET /{id}), 삭제(DELETE /{id}) 기능.
  */
+
 @RestController
 @RequestMapping("/api/v1/documents")
 @RequiredArgsConstructor
