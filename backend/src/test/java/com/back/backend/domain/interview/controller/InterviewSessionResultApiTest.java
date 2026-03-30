@@ -11,9 +11,14 @@ import com.back.backend.domain.interview.entity.InterviewQuestionSet;
 import com.back.backend.domain.interview.entity.InterviewQuestionType;
 import com.back.backend.domain.interview.entity.InterviewSession;
 import com.back.backend.domain.interview.entity.InterviewSessionStatus;
+import com.back.backend.domain.interview.repository.InterviewAnswerRepository;
+import com.back.backend.domain.interview.repository.InterviewAnswerTagRepository;
+import com.back.backend.domain.interview.repository.InterviewSessionRepository;
+import com.back.backend.domain.interview.service.InterviewResultGenerationService;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.global.exception.ErrorCode;
+import com.back.backend.global.exception.ServiceException;
 import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
 import jakarta.persistence.EntityManager;
@@ -21,11 +26,16 @@ import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -40,6 +50,18 @@ class InterviewSessionResultApiTest extends ApiTestBase {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private InterviewSessionRepository interviewSessionRepository;
+
+    @Autowired
+    private InterviewAnswerRepository interviewAnswerRepository;
+
+    @Autowired
+    private InterviewAnswerTagRepository interviewAnswerTagRepository;
+
+    @MockitoBean
+    private InterviewResultGenerationService interviewResultGenerationService;
 
     @Test
     void getSessionResult_returns200ForFeedbackCompletedSession() throws Exception {
@@ -75,6 +97,74 @@ class InterviewSessionResultApiTest extends ApiTestBase {
     }
 
     @Test
+    void getSessionResult_returns200AndPromotesCompletedSessionWhenRetryGenerationSucceeds() throws Exception {
+        ResultFixture fixture = persistCompletedFixture("result-retry-success");
+
+        given(interviewResultGenerationService.generate(
+                eq(fixture.session().getId()),
+                eq(fixture.questionSet().getId()),
+                anyList()
+        )).willReturn(new InterviewResultGenerationService.GeneratedInterviewResult(
+                84,
+                "구조는 좋았고 경험 기반 근거를 더 구체화하면 좋습니다.",
+                List.of(
+                        new InterviewResultGenerationService.GeneratedInterviewAnswerResult(
+                                1,
+                                80,
+                                "핵심 설명은 있었지만 수치 근거가 더 필요합니다.",
+                                List.of("근거 부족")
+                        ),
+                        new InterviewResultGenerationService.GeneratedInterviewAnswerResult(
+                                2,
+                                86,
+                                "문제 해결 흐름은 명확하지만 사례를 더 압축하면 좋습니다.",
+                                List.of("구체성 부족")
+                        ),
+                        new InterviewResultGenerationService.GeneratedInterviewAnswerResult(
+                                3,
+                                88,
+                                "선택 이유는 잘 설명했지만 trade-off를 더 드러낼 수 있습니다.",
+                                List.of()
+                        )
+                )
+        ));
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}/result", fixture.session().getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.sessionId").value(fixture.session().getId()))
+                .andExpect(jsonPath("$.data.status").value("feedback_completed"))
+                .andExpect(jsonPath("$.data.totalScore").value(84))
+                .andExpect(jsonPath("$.data.summaryFeedback")
+                        .value("구조는 좋았고 경험 기반 근거를 더 구체화하면 좋습니다."))
+                .andExpect(jsonPath("$.data.answers", hasSize(3)))
+                .andExpect(jsonPath("$.data.answers[0].score").value(80))
+                .andExpect(jsonPath("$.data.answers[0].tags[0].tagName").value("근거 부족"))
+                .andExpect(jsonPath("$.data.answers[1].score").value(86))
+                .andExpect(jsonPath("$.data.answers[1].tags[0].tagName").value("구체성 부족"))
+                .andExpect(jsonPath("$.data.answers[2].score").value(88))
+                .andExpect(jsonPath("$.data.answers[2].tags", hasSize(0)));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        InterviewSession refreshedSession = interviewSessionRepository.findById(fixture.session().getId()).orElseThrow();
+        List<InterviewAnswer> refreshedAnswers = interviewAnswerRepository
+                .findAllBySessionIdOrderByAnswerOrderAsc(fixture.session().getId());
+
+        assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.FEEDBACK_COMPLETED);
+        assertThat(refreshedSession.getTotalScore()).isEqualTo(84);
+        assertThat(refreshedSession.getSummaryFeedback())
+                .isEqualTo("구조는 좋았고 경험 기반 근거를 더 구체화하면 좋습니다.");
+        assertThat(refreshedAnswers)
+                .extracting(InterviewAnswer::getScore)
+                .containsExactly(80, 86, 88);
+        assertThat(interviewAnswerTagRepository.findAllWithTagBySessionIdOrderByAnswerOrderAsc(fixture.session().getId()))
+                .hasSize(2);
+    }
+
+    @Test
     void getSessionResult_returns404WhenSessionIsNotOwned() throws Exception {
         ResultFixture fixture = persistFeedbackCompletedFixture("result-not-owned");
         User otherUser = persistUser("result-other@example.com", "result-other");
@@ -87,7 +177,19 @@ class InterviewSessionResultApiTest extends ApiTestBase {
 
     @Test
     void getSessionResult_returns409WhenResultIsNotReady() throws Exception {
+        given(clock.instant()).willReturn(Instant.now());
         ResultFixture fixture = persistCompletedFixture("result-incomplete");
+
+        given(interviewResultGenerationService.generate(
+                eq(fixture.session().getId()),
+                eq(fixture.questionSet().getId()),
+                anyList()
+        )).willThrow(new ServiceException(
+                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                "외부 서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.",
+                true
+        ));
 
         mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}/result", fixture.session().getId())
                         .with(authenticated(fixture.user().getId())))
@@ -153,18 +255,12 @@ class InterviewSessionResultApiTest extends ApiTestBase {
         );
         InterviewSession session = persistSession(user, questionSet, InterviewSessionStatus.COMPLETED, null, null);
         List<InterviewAnswer> answers = List.of(
-                persistEvaluatedAnswer(session, questions.get(0), 1,
-                        "첫 번째 답변입니다. 결과 준비 전 상태 검증용 답변입니다.",
-                        80,
-                        "핵심 설명은 있었지만 수치 근거가 더 필요합니다."),
-                persistEvaluatedAnswer(session, questions.get(1), 2,
-                        "두 번째 답변입니다. 결과 준비 전 상태 검증용 답변입니다.",
-                        86,
-                        "문제 해결 흐름은 명확하지만 사례를 더 압축하면 좋습니다."),
-                persistEvaluatedAnswer(session, questions.get(2), 3,
-                        "세 번째 답변입니다. 결과 준비 전 상태 검증용 답변입니다.",
-                        88,
-                        "선택 이유는 잘 설명했지만 trade-off를 더 드러낼 수 있습니다.")
+                persistPendingAnswer(session, questions.get(0), 1,
+                        "첫 번째 답변입니다. 결과 준비 전 상태 검증용 답변입니다."),
+                persistPendingAnswer(session, questions.get(1), 2,
+                        "두 번째 답변입니다. 결과 준비 전 상태 검증용 답변입니다."),
+                persistPendingAnswer(session, questions.get(2), 3,
+                        "세 번째 답변입니다. 결과 준비 전 상태 검증용 답변입니다.")
         );
         return new ResultFixture(user, questionSet, session, questions, answers, List.of());
     }
@@ -260,6 +356,24 @@ class InterviewSessionResultApiTest extends ApiTestBase {
                 .skipped(false)
                 .score(score)
                 .evaluationRationale(evaluationRationale)
+                .build();
+        entityManager.persist(answer);
+        entityManager.flush();
+        return answer;
+    }
+
+    private InterviewAnswer persistPendingAnswer(
+            InterviewSession session,
+            InterviewQuestion question,
+            int answerOrder,
+            String answerText
+    ) {
+        InterviewAnswer answer = InterviewAnswer.builder()
+                .session(session)
+                .question(question)
+                .answerOrder(answerOrder)
+                .answerText(answerText)
+                .skipped(false)
                 .build();
         entityManager.persist(answer);
         entityManager.flush();

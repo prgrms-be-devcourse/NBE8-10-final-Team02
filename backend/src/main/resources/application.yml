@@ -65,7 +65,6 @@ ai:
     retry:
       max-attempts: 1
 
-
 analysis:
   # OCI 파일시스템의 repo clone 베이스 경로 (/data/repos/{userId}/{repoId}/)
   repo-base-path: /data/repos
@@ -83,3 +82,7 @@ security:
     secure: false # 개발 환경 기본값, HTTPS 환경에서는 true로 설정
   oauth2:
     frontend-redirect-url: http://localhost:3000
+
+knowledge:
+  github:
+    token: ${KNOWLEDGE_GITHUB_TOKEN}

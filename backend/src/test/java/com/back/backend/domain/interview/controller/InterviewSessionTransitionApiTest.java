@@ -43,9 +43,6 @@ class InterviewSessionTransitionApiTest extends ApiTestBase {
     @Autowired
     private EntityManager entityManager;
 
-    @MockitoBean
-    private Clock clock;
-
     @BeforeEach
     void setUpClock() {
         given(clock.instant()).willReturn(FIXED_CLOCK.instant());

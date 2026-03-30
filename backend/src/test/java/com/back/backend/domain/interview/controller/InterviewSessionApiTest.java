@@ -50,9 +50,6 @@ class InterviewSessionApiTest extends ApiTestBase {
     @Autowired
     private InterviewSessionRepository interviewSessionRepository;
 
-    @MockitoBean
-    private Clock clock;
-
     @BeforeEach
     void setUpClock() {
         given(clock.instant()).willReturn(FIXED_CLOCK.instant());

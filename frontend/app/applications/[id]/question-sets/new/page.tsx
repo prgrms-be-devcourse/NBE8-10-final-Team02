@@ -2,354 +2,353 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getApplication } from '@/api/application';
-import { createQuestionSet, InterviewApiError } from '@/api/interview';
+import { createQuestionSet, getQuestionSets } from '@/api/interview';
 import type { Application } from '@/types/application';
 import type {
   InterviewDifficultyLevel,
+  InterviewQuestionSetSummary,
   InterviewQuestionType,
 } from '@/types/interview';
 
+// 난이도 옵션
+const DIFFICULTY_OPTIONS: Array<{ value: InterviewDifficultyLevel; label: string }> = [
+  { value: 'easy', label: '쉬움' },
+  { value: 'medium', label: '보통' },
+  { value: 'hard', label: '어려움' },
+];
+
+// 질문 유형 옵션 (follow_up은 AI가 자동 생성하므로 선택지에서 제외)
 const QUESTION_TYPE_OPTIONS: Array<{ value: InterviewQuestionType; label: string; description: string }> = [
-  { value: 'experience', label: '경험', description: '지원 동기, 성장 과정, 문제 해결 경험 중심' },
-  { value: 'project', label: '프로젝트', description: '프로젝트 설계와 협업 경험 중심' },
-  { value: 'technical_cs', label: 'CS', description: '기초 CS와 이론 확인' },
-  { value: 'technical_stack', label: '기술 스택', description: '사용 기술 선택 이유와 적용 경험' },
-  { value: 'behavioral', label: '행동', description: '협업, 갈등 해결, 의사소통 확인' },
-  { value: 'follow_up', label: '꼬리 질문', description: '답변을 더 깊게 파고드는 추가 질문' },
+  { value: 'experience', label: '경험', description: '과거 경험 기반 질문' },
+  { value: 'project', label: '프로젝트', description: '프로젝트 관련 심층 질문' },
+  { value: 'technical_cs', label: 'CS 기초', description: '컴퓨터 과학 기초 질문' },
+  { value: 'technical_stack', label: '기술 스택', description: '사용 기술 관련 질문' },
+  { value: 'behavioral', label: '행동', description: '상황 대처 능력 질문' },
 ];
 
-const DIFFICULTY_OPTIONS: Array<{ value: InterviewDifficultyLevel; label: string; description: string }> = [
-  { value: 'easy', label: '쉬움', description: '핵심 개념과 경험을 먼저 점검' },
-  { value: 'medium', label: '보통', description: '실전 면접 기준의 기본 난이도' },
-  { value: 'hard', label: '어려움', description: '압박 질문과 깊은 기술 질문 포함' },
-];
-
-function getDefaultTitle(application: Application) {
-  if (application.companyName) {
-    return `${application.companyName} ${application.jobRole} 예상 질문 세트`;
-  }
-
-  return `${application.jobRole} 예상 질문 세트`;
-}
+// 난이도 라벨 매핑
+const DIFFICULTY_LABEL: Record<InterviewDifficultyLevel, string> = {
+  easy: '쉬움',
+  medium: '보통',
+  hard: '어려움',
+};
 
 export default function NewQuestionSetPage() {
   const params = useParams();
   const router = useRouter();
   const applicationId = Number(params.id);
 
+  // 지원 준비 정보
   const [application, setApplication] = useState<Application | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // 기존 질문 세트 목록 (이 지원 준비에 속한 것만 필터)
+  const [existingSets, setExistingSets] = useState<InterviewQuestionSetSummary[]>([]);
+
+  // 생성 폼 상태
   const [title, setTitle] = useState('');
-  const [questionCount, setQuestionCount] = useState('5');
+  const [questionCount, setQuestionCount] = useState(5);
   const [difficultyLevel, setDifficultyLevel] = useState<InterviewDifficultyLevel>('medium');
-  const [questionTypes, setQuestionTypes] = useState<InterviewQuestionType[]>(
-    QUESTION_TYPE_OPTIONS.map((option) => option.value),
+  const [selectedTypes, setSelectedTypes] = useState<Set<InterviewQuestionType>>(
+    new Set(['experience', 'project', 'technical_stack']),
   );
 
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  // 생성 처리 상태
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
-  const applicationSummary = useMemo(() => {
-    if (!application) {
-      return null;
-    }
-
-    return {
-      title: application.applicationTitle || application.jobRole,
-      companyName: application.companyName,
-      jobRole: application.jobRole,
-      applicationType: application.applicationType,
-      status: application.status,
-    };
-  }, [application]);
-
-  const loadApplication = useCallback(async () => {
-    if (!Number.isFinite(applicationId)) {
-      setLoadError('올바른 지원 준비 경로가 아닙니다.');
-      setLoading(false);
-      return;
-    }
-
+  // ── 데이터 로딩 ─────────────────────────────────
+  const loadPageData = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
-
     try {
-      const data = await getApplication(applicationId);
-      setApplication(data);
-      setTitle(getDefaultTitle(data));
+      // 지원 준비 정보와 기존 질문 세트를 병렬로 조회
+      const [app, allSets] = await Promise.all([
+        getApplication(applicationId),
+        getQuestionSets(),
+      ]);
+      setApplication(app);
+      // 현재 지원 준비에 속한 질문 세트만 필터링
+      setExistingSets(allSets.filter((s) => s.applicationId === applicationId));
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : '지원 준비를 불러오지 못했습니다.');
+      setLoadError(err instanceof Error ? err.message : '정보를 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
   }, [applicationId]);
 
   useEffect(() => {
-    void loadApplication();
-  }, [loadApplication]);
+    loadPageData();
+  }, [loadPageData]);
 
+  // ── 질문 유형 토글 ────────────────────────────────
   function toggleQuestionType(type: InterviewQuestionType) {
-    setQuestionTypes((prev) =>
-      prev.includes(type) ? prev.filter((value) => value !== type) : [...prev, type],
-    );
+    setSelectedTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) {
+        // 최소 1개는 선택해야 함
+        if (next.size > 1) next.delete(type);
+      } else {
+        next.add(type);
+      }
+      return next;
+    });
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  // ── AI 질문 세트 생성 ──────────────────────────────
+  async function handleCreate() {
+    if (selectedTypes.size === 0) return;
 
-    const parsedQuestionCount = Number(questionCount);
-    if (!Number.isFinite(parsedQuestionCount) || parsedQuestionCount < 1 || parsedQuestionCount > 20) {
-      setSubmitError('질문 수는 1개 이상 20개 이하로 입력해주세요.');
-      return;
-    }
-
-    if (questionTypes.length === 0) {
-      setSubmitError('질문 카테고리를 하나 이상 선택해주세요.');
-      return;
-    }
-
-    setSubmitting(true);
-    setSubmitError(null);
+    setCreating(true);
+    setCreateError(null);
 
     try {
-      const created = await createQuestionSet({
+      const result = await createQuestionSet({
         applicationId,
-        title: title.trim() || undefined,
-        questionCount: parsedQuestionCount,
+        ...(title.trim() && { title: title.trim() }),
+        questionCount,
         difficultyLevel,
-        questionTypes,
+        questionTypes: Array.from(selectedTypes),
       });
-      router.push(`/interview/question-sets/${created.questionSetId}`);
+
+      // 생성 완료 후 질문 세트 상세 페이지로 이동
+      router.push(`/interview/question-sets/${result.questionSetId}`);
     } catch (err) {
-      if (err instanceof InterviewApiError) {
-        const fieldHint = err.fieldErrors[0];
-        setSubmitError(fieldHint ? `${err.message} (${fieldHint.field})` : err.message);
-      } else {
-        setSubmitError(err instanceof Error ? err.message : '질문 세트를 생성하지 못했습니다.');
-      }
+      setCreateError(err instanceof Error ? err.message : 'AI 질문 생성 중 오류가 발생했습니다.');
     } finally {
-      setSubmitting(false);
+      setCreating(false);
     }
   }
+
+  // ── 렌더링 ────────────────────────────────────────
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-12">
-        <p className="text-sm text-zinc-400">지원 준비 정보를 불러오는 중...</p>
+      <main className="mx-auto max-w-2xl px-4 py-12">
+        <p className="text-sm text-zinc-400">불러오는 중...</p>
       </main>
     );
   }
 
-  if (loadError || !applicationSummary) {
+  if (loadError || !application) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-12">
+      <main className="mx-auto max-w-2xl px-4 py-12">
         <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {loadError ?? '지원 준비를 찾을 수 없습니다.'}
+          {loadError ?? '지원 준비 정보를 찾을 수 없습니다.'}
         </div>
-        <Link
-          href="/applications"
-          className="mt-4 inline-block text-sm font-medium text-zinc-500 underline"
-        >
+        <Link href="/applications" className="mt-4 inline-block text-sm underline text-zinc-500">
           지원 준비 목록으로
         </Link>
       </main>
     );
   }
 
-  if (applicationSummary.status !== 'ready') {
+  if (application.status !== 'ready') {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
+      <main className="mx-auto max-w-2xl px-4 py-12">
+        <h1 className="text-xl font-semibold">AI 면접 질문 생성</h1>
+        <div className="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          질문 생성은 지원 준비가 &quot;준비 완료&quot; 상태일 때만 가능합니다.
+          소스 연결과 자소서 문항 답변을 먼저 완료해 주세요.
+        </div>
         <Link
           href={`/applications/${applicationId}`}
-          className="text-xs text-zinc-400 hover:text-zinc-600"
+          className="mt-4 inline-block text-sm underline text-zinc-500"
         >
-          ← 지원 준비 상세로
+          지원 준비 상세로
         </Link>
-
-        <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-6 py-6">
-          <p className="text-xs font-medium text-amber-700">면접 질문 생성 전 확인</p>
-          <h1 className="mt-2 text-xl font-semibold text-zinc-900">아직 질문 세트를 만들 수 없습니다.</h1>
-          <p className="mt-3 text-sm text-zinc-700">
-            현재 지원 준비 상태는 <span className="font-medium">작성 중</span>입니다. 자소서 답변과 연결 소스가 모두 준비되면
-            질문 생성 화면을 사용할 수 있습니다.
-          </p>
-
-          <div className="mt-5 rounded-xl border border-amber-200 bg-white px-4 py-4">
-            <p className="text-sm font-medium text-zinc-900">{applicationSummary.title}</p>
-            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500">
-              {applicationSummary.companyName && <span>{applicationSummary.companyName}</span>}
-              <span>{applicationSummary.jobRole}</span>
-              {applicationSummary.applicationType && <span>{applicationSummary.applicationType}</span>}
-            </div>
-          </div>
-
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Link
-              href={`/applications/${applicationId}/generate`}
-              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-            >
-              자소서 생성으로 이동
-            </Link>
-            <Link
-              href={`/applications/${applicationId}`}
-              className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700"
-            >
-              지원 준비 상세 보기
-            </Link>
-          </div>
-        </section>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10">
-      <div className="mb-8">
+    <main className="mx-auto max-w-2xl px-4 py-10">
+      {/* 헤더 */}
+      <div className="mb-6">
         <Link
           href={`/applications/${applicationId}`}
           className="text-xs text-zinc-400 hover:text-zinc-600"
         >
           ← 지원 준비 상세로
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-zinc-900">면접 질문 생성</h1>
-        <p className="mt-2 text-sm text-zinc-500">
-          자소서와 포트폴리오를 기준으로 예상 질문 세트를 생성합니다.
+        <h1 className="mt-2 text-xl font-semibold">AI 면접 질문 생성</h1>
+        <p className="mt-1 text-sm text-zinc-500">
+          {application.companyName && `${application.companyName} · `}
+          {application.jobRole} — 포트폴리오 기반으로 AI가 면접 질문을 생성합니다.
         </p>
       </div>
 
-      <section className="mb-6 rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
-        <p className="text-xs font-medium text-zinc-500">기준 지원 준비</p>
-        <h2 className="mt-2 text-lg font-semibold text-zinc-900">{applicationSummary.title}</h2>
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-500">
-          {applicationSummary.companyName && <span>{applicationSummary.companyName}</span>}
-          <span>{applicationSummary.jobRole}</span>
-          {applicationSummary.applicationType && <span>{applicationSummary.applicationType}</span>}
-          <span>상태: 준비 완료</span>
+      {/* 기존 질문 세트 목록 */}
+      {existingSets.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-medium text-zinc-700">
+            기존 질문 세트 ({existingSets.length}개)
+          </h2>
+          <ul className="flex flex-col gap-2">
+            {existingSets.map((set) => (
+              <li key={set.questionSetId} className="rounded border border-zinc-200 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <button
+                      onClick={() => router.push(`/interview/question-sets/${set.questionSetId}`)}
+                      className="text-sm font-medium text-zinc-900 hover:underline text-left truncate"
+                    >
+                      {set.title}
+                    </button>
+                    <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-zinc-500">
+                      <span>질문 {set.questionCount}개</span>
+                      <span>난이도 {DIFFICULTY_LABEL[set.difficultyLevel]}</span>
+                      <span>{new Date(set.createdAt).toLocaleDateString('ko-KR')}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => router.push(`/interview/question-sets/${set.questionSetId}`)}
+                    className="shrink-0 rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700"
+                  >
+                    상세
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* 생성 폼 */}
+      <section className="rounded border border-zinc-200 px-5 py-5">
+        <h2 className="mb-4 text-sm font-medium text-zinc-700">새 질문 세트 생성</h2>
+
+        <div className="flex flex-col gap-5">
+          {/* 제목 (선택) */}
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">세트 제목 (선택)</label>
+            <input
+              type="text"
+              placeholder="예: 네이버 백엔드 1차 기술면접"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+            />
+          </div>
+
+          {/* 질문 수 */}
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">
+              질문 수 <span className="text-red-500">*</span>
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={1}
+                max={20}
+                value={questionCount}
+                onChange={(e) => setQuestionCount(Number(e.target.value))}
+                className="flex-1 accent-zinc-800"
+              />
+              <span className="w-12 text-center text-sm font-medium text-zinc-900">
+                {questionCount}개
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-zinc-400">1~20개 (모의면접 세션은 3개 이상 필요)</p>
+            {questionCount < selectedTypes.size && (
+              <p className="mt-1 text-xs text-amber-600">
+                질문 수({questionCount}개)가 선택한 유형({selectedTypes.size}개)보다 적어,
+                일부 유형은 포함되지 않을 수 있습니다.
+              </p>
+            )}
+          </div>
+
+          {/* 난이도 */}
+          <div>
+            <label className="block text-xs text-zinc-500 mb-2">
+              난이도 <span className="text-red-500">*</span>
+            </label>
+            <div className="flex gap-2">
+              {DIFFICULTY_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setDifficultyLevel(opt.value)}
+                  className={`flex-1 rounded border px-3 py-2 text-sm font-medium transition-colors ${
+                    difficultyLevel === opt.value
+                      ? 'border-zinc-900 bg-zinc-900 text-white'
+                      : 'border-zinc-300 text-zinc-600 hover:border-zinc-400'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 질문 유형 */}
+          <div>
+            <label className="block text-xs text-zinc-500 mb-2">
+              질문 유형 <span className="text-red-500">*</span>
+              <span className="ml-1 text-zinc-400">(1개 이상 선택)</span>
+            </label>
+            <div className="flex flex-col gap-2">
+              {QUESTION_TYPE_OPTIONS.map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`flex cursor-pointer items-center gap-3 rounded border px-4 py-3 transition-colors ${
+                    selectedTypes.has(opt.value)
+                      ? 'border-zinc-900 bg-zinc-50'
+                      : 'border-zinc-200 hover:border-zinc-300'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedTypes.has(opt.value)}
+                    onChange={() => toggleQuestionType(opt.value)}
+                    className="h-4 w-4 accent-zinc-800"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-zinc-900">{opt.label}</span>
+                    <span className="ml-2 text-xs text-zinc-400">{opt.description}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* 에러 메시지 */}
+          {createError && (
+            <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {createError}
+            </div>
+          )}
+
+          {/* 생성 버튼 */}
+          <button
+            onClick={handleCreate}
+            disabled={creating || selectedTypes.size === 0}
+            className="w-full rounded bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {creating ? 'AI 질문 생성 중... (최대 30초 소요)' : `AI 면접 질문 ${questionCount}개 생성`}
+          </button>
+
+          <p className="text-xs text-zinc-400 text-center">
+            포트폴리오와 자소서 내용을 기반으로 AI가 맞춤 면접 질문을 생성합니다.
+          </p>
         </div>
       </section>
 
-      <form onSubmit={handleSubmit} className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
-        <div className="mb-6">
-          <label className="mb-1.5 block text-sm font-medium text-zinc-700">세트 제목</label>
-          <input
-            type="text"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="질문 세트 제목"
-            className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none"
-          />
-          <p className="mt-1.5 text-xs text-zinc-400">
-            비워두면 현재 지원 준비 정보를 기준으로 제목을 저장합니다.
-          </p>
-        </div>
-
-        <div className="mb-6">
-          <label className="mb-1.5 block text-sm font-medium text-zinc-700">질문 수</label>
-          <input
-            type="number"
-            min={1}
-            max={20}
-            value={questionCount}
-            onChange={(event) => setQuestionCount(event.target.value)}
-            className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none"
-          />
-          <p className="mt-1.5 text-xs text-zinc-400">한 번에 최대 20개까지 생성할 수 있습니다.</p>
-        </div>
-
-        <div className="mb-6">
-          <p className="mb-2 text-sm font-medium text-zinc-700">난이도</p>
-          <div className="grid gap-3 md:grid-cols-3">
-            {DIFFICULTY_OPTIONS.map((option) => (
-              <label
-                key={option.value}
-                className={`cursor-pointer rounded-2xl border px-4 py-4 ${
-                  difficultyLevel === option.value
-                    ? 'border-zinc-900 bg-zinc-900 text-white'
-                    : 'border-zinc-200 bg-white text-zinc-900'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="difficultyLevel"
-                  value={option.value}
-                  checked={difficultyLevel === option.value}
-                  onChange={() => setDifficultyLevel(option.value)}
-                  className="sr-only"
-                />
-                <p className="text-sm font-medium">{option.label}</p>
-                <p
-                  className={`mt-1 text-xs ${
-                    difficultyLevel === option.value ? 'text-zinc-200' : 'text-zinc-500'
-                  }`}
-                >
-                  {option.description}
-                </p>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-sm font-medium text-zinc-700">질문 카테고리</p>
-            <span className="text-xs text-zinc-400">{questionTypes.length}개 선택됨</span>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            {QUESTION_TYPE_OPTIONS.map((option) => {
-              const checked = questionTypes.includes(option.value);
-
-              return (
-                <label
-                  key={option.value}
-                  className={`cursor-pointer rounded-2xl border px-4 py-4 ${
-                    checked ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-200 bg-white'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleQuestionType(option.value)}
-                      className="mt-0.5 h-4 w-4 accent-zinc-900"
-                    />
-                    <div>
-                      <p className="text-sm font-medium text-zinc-900">{option.label}</p>
-                      <p className="mt-1 text-xs text-zinc-500">{option.description}</p>
-                    </div>
-                  </div>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-
-        {submitError && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {submitError}
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {submitting ? '질문 생성 중...' : '질문 세트 생성'}
-          </button>
-          <Link
-            href={`/applications/${applicationId}`}
-            className="rounded-full border border-zinc-300 px-5 py-2.5 text-sm font-medium text-zinc-700"
-          >
-            취소
-          </Link>
-        </div>
-      </form>
+      {/* 하단 네비게이션 */}
+      <div className="mt-10 flex justify-between text-sm">
+        <Link
+          href={`/applications/${applicationId}/generate`}
+          className="text-zinc-500 hover:text-zinc-700"
+        >
+          ← 자소서 생성
+        </Link>
+        <Link href="/interview/history" className="text-zinc-500 hover:text-zinc-700">
+          면접 이력 →
+        </Link>
+      </div>
     </main>
   );
 }
