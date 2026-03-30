@@ -59,3 +59,7 @@ security:
     refresh-ttl-seconds: 120 # 2분
   cookie:
     secure: false # 테스트 환경
+
+knowledge:
+  github:
+    token: ${KNOWLEDGE_GITHUB_TOKEN:KNOWLEDGE_GITHUB_TOKEN}
