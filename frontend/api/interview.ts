@@ -71,6 +71,24 @@ export async function createQuestionSet(
   return body.data as InterviewQuestionSetSummary;
 }
 
+/**
+ * GET /interview/question-sets
+ * 내 질문 세트 목록 조회.
+ */
+export async function getQuestionSets(): Promise<InterviewQuestionSetSummary[]> {
+  const res = await fetch(`${base()}/question-sets`, {
+    credentials: 'include',
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+
+  const body = await res.json();
+  return body.data as InterviewQuestionSetSummary[];
+}
+
 export async function getQuestionSetDetail(questionSetId: number): Promise<InterviewQuestionSetDetail> {
   const res = await fetch(`${base()}/question-sets/${questionSetId}`, {
     credentials: 'include',
