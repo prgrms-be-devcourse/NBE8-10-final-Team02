@@ -12,6 +12,7 @@ import {
 import DocumentUploadZone from '@/components/documents/DocumentUploadZone';
 import DocumentList from '@/components/documents/DocumentList';
 import ConfirmModal from '@/components/documents/ConfirmModal';
+import DocumentDetailModal from '@/components/documents/DocumentDetailModal';
 
 interface ConfirmState {
   type: 'delete' | 'overwrite';
@@ -28,6 +29,8 @@ export default function DocumentsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<ConfirmState | null>(null);
   const [pendingIds, setPendingIds] = useState<Set<number>>(new Set());
+  const [userName, setUserName] = useState('');
+  const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
 
   const loadDocuments = useCallback(async () => {
     setLoading(true);
@@ -166,6 +169,30 @@ export default function DocumentsPage() {
         </div>
       )}
 
+      {/* PII Warning Banner */}
+      <div className="mb-6 rounded border border-yellow-200 bg-yellow-50 px-4 py-3">
+        <p className="text-sm text-yellow-800">
+          업로드 전 이름, 주민번호, 연락처 등 민감한 개인정보를 미리 제거해 주세요. 업로드 후 자동으로 마스킹되지만 완벽하지 않을 수 있습니다.
+        </p>
+      </div>
+
+      {/* Name Input for Masking */}
+      <div className="mb-6 space-y-2">
+        <label className="text-xs font-medium text-zinc-700">
+          마스킹할 이름 (선택사항)
+        </label>
+        <input
+          type="text"
+          value={userName}
+          onChange={(e) => setUserName(e.target.value)}
+          placeholder="예: 김철수"
+          className="w-full rounded border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
+        />
+        <p className="text-xs text-zinc-400">
+          입력한 이름은 추출된 텍스트에서 [이름]으로 표시됩니다.
+        </p>
+      </div>
+
       <DocumentUploadZone
         documentCount={documents.length}
         onUpload={handleUpload}
@@ -197,6 +224,7 @@ export default function DocumentsPage() {
             documents={documents}
             onDelete={handleDelete}
             onReupload={handleReupload}
+            onViewDetails={setSelectedDoc}
           />
         )}
       </div>
@@ -223,6 +251,21 @@ export default function DocumentsPage() {
         onConfirm={handleConfirm}
         onCancel={() => setConfirmModal(null)}
       />
+
+      {selectedDoc && (
+        <DocumentDetailModal
+          open={true}
+          doc={selectedDoc}
+          userName={userName}
+          onClose={() => setSelectedDoc(null)}
+          onSave={(updated) => {
+            setDocuments((prev) =>
+              prev.map((d) => (d.id === updated.id ? updated : d))
+            );
+            setSelectedDoc(null);
+          }}
+        />
+      )}
     </main>
   );
 }
