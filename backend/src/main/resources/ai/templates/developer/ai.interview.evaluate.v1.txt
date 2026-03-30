@@ -13,7 +13,22 @@
 
 규칙:
 - isSkipped=true면 score는 0으로 부여한다.
-- rationale은 1~2문장으로 짧게 쓴다.
+- evaluationRationale은 1~2문장으로 짧게 쓴다.
 - 태그는 tagMaster 안에서만 선택한다.
 - 태그 수는 최대 3개다.
-- summary는 전체 답변 경향을 요약해야 한다.
+- summaryFeedback은 전체 답변 경향을 요약해야 한다.
+
+응답 JSON 구조 (반드시 이 키 이름과 구조를 정확히 따라라):
+{
+  "totalScore": 75,
+  "summaryFeedback": "전체 답변에 대한 종합 피드백",
+  "answers": [
+    {
+      "questionOrder": 1,
+      "score": 80,
+      "evaluationRationale": "해당 답변에 대한 평가 근거",
+      "tagNames": ["태그1", "태그2"]
+    }
+  ],
+  "qualityFlags": []
+}

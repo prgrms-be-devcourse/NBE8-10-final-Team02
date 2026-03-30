@@ -35,7 +35,7 @@ public class PromptTemplateRegistry {
             "system/common-system.txt",
             "developer/ai.portfolio.summary.v1.txt",
             "schema/portfolio-summary.schema.json",
-            0.2, 2000,
+            0.2, 4000, // 레포지토리 분석 요약이 잘리지 않도록 토큰 여유 확보
             new PromptTemplate.RetryPolicy(2, false)
         ));
 
@@ -71,7 +71,7 @@ public class PromptTemplateRegistry {
             "system/common-system.txt",
             "developer/ai.interview.evaluate.v1.txt",
             "schema/interview-evaluate.schema.json",
-            0.2, 2500,
+            0.2, 8000, // 질문 최대 20개 × 평가 항목(score, rationale, tags) 감안하여 토큰 여유 확보
             new PromptTemplate.RetryPolicy(2, false)
         ));
 
