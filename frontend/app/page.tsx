@@ -1,6 +1,16 @@
+'use client';
+
 import Link from "next/link";
+import { useState, useEffect } from "react";
+import { getMe } from "@/api/auth";
 
 export default function Home() {
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  useEffect(() => {
+    getMe().then((user) => setLoggedIn(!!user));
+  }, []);
+
   return (
     <main className="flex flex-col items-center justify-center gap-8 py-24 px-8 text-center">
       <h1 className="text-4xl font-bold">AI 기술 면접 연습</h1>
@@ -12,7 +22,7 @@ export default function Home() {
           href="/login"
           className="rounded border border-zinc-300 px-6 py-2 font-medium hover:bg-zinc-50"
         >
-          로그인
+          {loggedIn ? "다른 계정으로 로그인" : "로그인"}
         </Link>
         <Link
           href="/portfolio"

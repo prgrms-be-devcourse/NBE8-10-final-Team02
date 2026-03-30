@@ -13,11 +13,17 @@ async function parseError(res: Response): Promise<string> {
   }
 }
 
+export class UnauthenticatedError extends Error {
+  constructor() { super('UNAUTHENTICATED'); }
+}
+
 export async function getPortfolioReadiness(): Promise<PortfolioReadinessDashboard> {
   const res = await fetch(base(), {
     credentials: 'include',
     cache: 'no-store',
   });
+
+  if (res.status === 401) throw new UnauthenticatedError();
 
   if (!res.ok) {
     throw new Error(await parseError(res));
