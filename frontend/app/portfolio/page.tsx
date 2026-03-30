@@ -1,6 +1,21 @@
+'use client';
+
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
+import { getGithubConnection } from '@/api/github';
+import type { GithubConnection } from '@/types/github';
 
 export default function PortfolioPage() {
+  const [connection, setConnection] = useState<GithubConnection | null>(null);
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    getGithubConnection()
+      .then(setConnection)
+      .catch(() => setConnection(null))
+      .finally(() => setChecked(true));
+  }, []);
+
   return (
     <main className="mx-auto max-w-2xl px-4 py-16">
       <h1 className="mb-2 text-2xl font-semibold">포트폴리오</h1>
@@ -18,13 +33,31 @@ export default function PortfolioPage() {
               <p className="mt-0.5 text-xs text-zinc-500">
                 GitHub 계정을 연결해 활동 내역을 가져옵니다.
               </p>
+              {checked && connection && (
+                <p className="mt-1.5 text-xs font-medium text-green-600">
+                  ✓ @{connection.githubLogin} 연결됨
+                </p>
+              )}
             </div>
-            <Link
-              href="/portfolio/github"
-              className="shrink-0 rounded bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white"
-            >
-              연결하기
-            </Link>
+            <div className="shrink-0 flex flex-col items-end gap-1.5">
+              {!checked ? (
+                <span className="text-xs text-zinc-400">확인 중...</span>
+              ) : connection ? (
+                <Link
+                  href="/portfolio/github"
+                  className="rounded border border-zinc-300 px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  변경하기
+                </Link>
+              ) : (
+                <Link
+                  href="/portfolio/github"
+                  className="rounded bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white"
+                >
+                  연결하기
+                </Link>
+              )}
+            </div>
           </div>
         </li>
 

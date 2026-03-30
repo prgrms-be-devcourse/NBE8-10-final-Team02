@@ -12,6 +12,7 @@ export default function GithubConnectPage() {
 
   // 초기 로딩: 현재 연결 상태 + 로그인 provider 확인
   const [loading, setLoading] = useState(true);
+  const [notLoggedIn, setNotLoggedIn] = useState(false);
   const [existingConnection, setExistingConnection] = useState<GithubConnection | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
 
@@ -22,13 +23,17 @@ export default function GithubConnectPage() {
   // ── 진입 시: 이미 연결된 GitHub 계정 확인 ─────────────────
   // Google/Kakao 로그인 사용자도 이전에 연동한 적 있으면 여기서 감지된다.
   useEffect(() => {
-    Promise.all([getMe(), getGithubConnection()])
+    Promise.all([getMe(), getGithubConnection().catch(() => null)])
       .then(([user, connection]) => {
-        if (user) setProviders(user.connectedProviders ?? []);
+        if (!user) {
+          setNotLoggedIn(true);
+          return;
+        }
+        setProviders(user.connectedProviders ?? []);
         setExistingConnection(connection);
       })
       .catch(() => {
-        // 오류 시 빈 상태로 폼 표시
+        setNotLoggedIn(true);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -41,8 +46,12 @@ export default function GithubConnectPage() {
       const authorizationUrl = await getGithubLinkUrl('/portfolio/github');
       window.location.href = authorizationUrl;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'GitHub OAuth 연동 중 오류가 발생했습니다.';
-      setApiError(msg);
+      const raw = err instanceof Error ? err.message : '';
+      if (raw.includes('401')) {
+        setNotLoggedIn(true);
+      } else {
+        setApiError('GitHub OAuth 연동 중 오류가 발생했습니다.');
+      }
       setSubmitting(false);
     }
   }
@@ -71,6 +80,27 @@ export default function GithubConnectPage() {
     return (
       <main className="mx-auto max-w-lg px-4 py-12">
         <p className="text-sm text-zinc-400">로딩 중...</p>
+      </main>
+    );
+  }
+
+  // ── 미로그인 ────────────────────────────────────────────
+  if (notLoggedIn) {
+    return (
+      <main className="mx-auto max-w-lg px-4 py-12">
+        <h1 className="mb-2 text-2xl font-semibold">GitHub 연결</h1>
+        <div className="rounded border border-amber-200 bg-amber-50 px-4 py-4 mb-6">
+          <p className="text-sm font-semibold text-amber-800 mb-1">로그인이 필요합니다</p>
+          <p className="text-xs text-amber-700">
+            GitHub 계정을 연결하려면 먼저 로그인해 주세요.
+          </p>
+        </div>
+        <a
+          href="/login"
+          className="block w-full rounded bg-zinc-900 py-2.5 text-center text-sm font-medium text-white"
+        >
+          로그인하기
+        </a>
       </main>
     );
   }
