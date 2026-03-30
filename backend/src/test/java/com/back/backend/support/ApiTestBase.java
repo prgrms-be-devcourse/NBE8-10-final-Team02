@@ -6,9 +6,12 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+
+import java.time.Clock;
 
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -99,6 +102,9 @@ public abstract class ApiTestBase {
 
     protected MockMvc mockMvc;
 
+    @MockitoBean
+    protected Clock clock;
+
     // SecurityConfig에 STATELESS 세션이 설정돼 있어 @AutoConfigureMockMvc만으로는
     // @WithMockUser가 동작하지 않음. springSecurity()를 명시적으로 적용해야
     // SecurityContextHolderFilter가 테스트용 인증 컨텍스트를 덮어쓰지 않음.
@@ -107,20 +113,6 @@ public abstract class ApiTestBase {
         this.mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
-    }
-
-    // GitHub API와 AI API(Gemini) 호출을 가로채는 WireMock 서버.
-    // static: 컨텍스트 로드 전에 포트가 확정되어 @DynamicPropertySource에서 사용 가능.
-    @RegisterExtension
-    static WireMockExtension wireMock = WireMockExtension.newInstance()
-        .options(wireMockConfig().dynamicPort())
-        .build();
-
-    // WireMock 포트를 Spring 프로퍼티로 주입 — GithubApiClient, GeminiClient가 이 URL을 사용함.
-    @DynamicPropertySource
-    static void overrideExternalApiUrls(DynamicPropertyRegistry registry) {
-        registry.add("github.api.base-url", wireMock::baseUrl);
-        registry.add("ai.gemini.base-url", wireMock::baseUrl);
     }
 
 }
