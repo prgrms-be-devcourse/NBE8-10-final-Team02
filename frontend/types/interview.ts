@@ -122,6 +122,7 @@ export interface FeedbackTag {
 export interface InterviewAnswerResult {
   answerId: number;
   questionId: number;
+  questionType: InterviewQuestionType;
   questionText: string;
   answerText: string | null;
   score: number;

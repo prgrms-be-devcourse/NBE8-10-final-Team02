@@ -660,6 +660,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 결과가 아직 준비되지 않았으면 대기 또는 재확인 안내를 노출한다.
 - 결과 리포트는 `GET /interview/sessions/{sessionId}/result`의 `answers[]` 순서를 프론트에서 재정렬하지 않고 그대로 렌더링한다.
 - 답변된 dynamic follow-up도 결과 리포트의 같은 질문/답변 목록 안에 포함하고 별도 섹션으로 분리하지 않는다.
+- 결과 리포트의 질문 카드에는 `answers[].questionType`이 `follow_up`인 항목에 한해 `꼬리 질문` 배지를 노출한다.
 - v1의 재시도 CTA는 `POST /interview/sessions/{sessionId}/complete` 재전송이 아니라 `GET /interview/sessions/{sessionId}/result` 재조회 또는 히스토리 재진입이다.
 
 ---

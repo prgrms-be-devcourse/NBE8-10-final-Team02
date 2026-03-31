@@ -180,6 +180,11 @@ export default function InterviewResultReport({
                       건너뜀
                     </span>
                   )}
+                  {answer.questionType === 'follow_up' && (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+                      꼬리 질문
+                    </span>
+                  )}
                   <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                     점수 {answer.score}
                   </span>
