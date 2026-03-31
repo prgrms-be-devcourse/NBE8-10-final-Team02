@@ -100,6 +100,24 @@ class InterviewSessionResultApiTest extends ApiTestBase {
     }
 
     @Test
+    void getSessionResult_includesAnsweredDynamicFollowupInAnswers() throws Exception {
+        ResultFixture fixture = persistFeedbackCompletedFixtureWithDynamicFollowup("result-followup");
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}/result", fixture.session().getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.answers", hasSize(4)))
+                .andExpect(jsonPath("$.data.answers[1].questionId").value(fixture.sessionQuestions().get(1).getId()))
+                .andExpect(jsonPath("$.data.answers[1].questionText")
+                        .value("방금 답변한 선택 기준을 조금 더 구체적으로 설명해주실 수 있나요?"))
+                .andExpect(jsonPath("$.data.answers[1].answerText")
+                        .value("두 번째 답변입니다. 동적 꼬리질문 결과 응답 검증용 답변입니다."))
+                .andExpect(jsonPath("$.data.answers[1].score").value(84))
+                .andExpect(jsonPath("$.data.answers[1].tags", hasSize(1)))
+                .andExpect(jsonPath("$.data.answers[1].tags[0].tagName").value("구체성 부족"));
+    }
+
+    @Test
     void getSessionResult_returns200AndPromotesCompletedSessionWhenRetryGenerationSucceeds() throws Exception {
         ResultFixture fixture = persistCompletedFixture("result-retry-success");
 
@@ -252,6 +270,85 @@ class InterviewSessionResultApiTest extends ApiTestBase {
         return new ResultFixture(user, questionSet, session, sessionQuestions, answers, tags);
     }
 
+    private ResultFixture persistFeedbackCompletedFixtureWithDynamicFollowup(String prefix) {
+        User user = persistUser(prefix + "@example.com", prefix);
+        Application application = persistApplication(user, prefix + "-application");
+        InterviewQuestionSet questionSet = persistQuestionSet(user, application);
+        InterviewQuestion firstQuestion = persistQuestion(questionSet, 1, "첫 번째 질문");
+        InterviewQuestion secondQuestion = persistQuestion(questionSet, 2, "두 번째 질문");
+        InterviewQuestion thirdQuestion = persistQuestion(questionSet, 3, "세 번째 질문");
+        InterviewSession session = persistSessionWithoutSnapshot(
+                user,
+                questionSet,
+                InterviewSessionStatus.FEEDBACK_COMPLETED,
+                86,
+                "동적 꼬리질문까지 포함한 결과입니다."
+        );
+        InterviewSessionQuestion firstSessionQuestion = persistSessionQuestion(
+                session,
+                firstQuestion,
+                null,
+                1,
+                InterviewQuestionType.PROJECT,
+                "첫 번째 질문"
+        );
+        InterviewSessionQuestion followupSessionQuestion = persistSessionQuestion(
+                session,
+                null,
+                firstSessionQuestion,
+                2,
+                InterviewQuestionType.FOLLOW_UP,
+                "방금 답변한 선택 기준을 조금 더 구체적으로 설명해주실 수 있나요?"
+        );
+        InterviewSessionQuestion secondSessionQuestion = persistSessionQuestion(
+                session,
+                secondQuestion,
+                null,
+                3,
+                InterviewQuestionType.PROJECT,
+                "두 번째 질문"
+        );
+        InterviewSessionQuestion thirdSessionQuestion = persistSessionQuestion(
+                session,
+                thirdQuestion,
+                null,
+                4,
+                InterviewQuestionType.PROJECT,
+                "세 번째 질문"
+        );
+        List<InterviewSessionQuestion> sessionQuestions = List.of(
+                firstSessionQuestion,
+                followupSessionQuestion,
+                secondSessionQuestion,
+                thirdSessionQuestion
+        );
+        List<InterviewAnswer> answers = List.of(
+                persistEvaluatedAnswer(session, firstSessionQuestion, 1,
+                        "첫 번째 답변입니다. 결과 조회 응답 검증용으로 충분히 긴 답변입니다.",
+                        80,
+                        "핵심 설명은 있었지만 수치 근거가 더 필요합니다."),
+                persistEvaluatedAnswer(session, followupSessionQuestion, 2,
+                        "두 번째 답변입니다. 동적 꼬리질문 결과 응답 검증용 답변입니다.",
+                        84,
+                        "추가 근거를 보완한 점은 좋지만 수치가 더 있으면 좋습니다."),
+                persistEvaluatedAnswer(session, secondSessionQuestion, 3,
+                        "세 번째 답변입니다. 결과 조회 응답 검증용으로 충분히 긴 답변입니다.",
+                        86,
+                        "문제 해결 흐름은 명확하지만 사례를 더 압축하면 좋습니다."),
+                persistEvaluatedAnswer(session, thirdSessionQuestion, 4,
+                        "네 번째 답변입니다. 결과 조회 응답 검증용으로 충분히 긴 답변입니다.",
+                        88,
+                        "선택 이유는 잘 설명했지만 trade-off를 더 드러낼 수 있습니다.")
+        );
+        List<FeedbackTag> tags = List.of(
+                findFeedbackTag("근거 부족"),
+                findFeedbackTag("구체성 부족")
+        );
+        persistAnswerTag(answers.get(0), tags.get(0));
+        persistAnswerTag(answers.get(1), tags.get(1));
+        return new ResultFixture(user, questionSet, session, sessionQuestions, answers, tags);
+    }
+
     private ResultFixture persistCompletedFixture(String prefix) {
         User user = persistUser(prefix + "@example.com", prefix);
         Application application = persistApplication(user, prefix + "-application");
@@ -352,6 +449,50 @@ class InterviewSessionResultApiTest extends ApiTestBase {
         entityManager.flush();
         persistSessionQuestionSnapshot(entityManager, session);
         return session;
+    }
+
+    private InterviewSession persistSessionWithoutSnapshot(
+            User user,
+            InterviewQuestionSet questionSet,
+            InterviewSessionStatus status,
+            Integer totalScore,
+            String summaryFeedback
+    ) {
+        InterviewSession session = InterviewSession.builder()
+                .user(user)
+                .questionSet(questionSet)
+                .status(status)
+                .totalScore(totalScore)
+                .summaryFeedback(summaryFeedback)
+                .startedAt(STARTED_AT)
+                .lastActivityAt(STARTED_AT)
+                .endedAt(ENDED_AT)
+                .build();
+        entityManager.persist(session);
+        entityManager.flush();
+        return session;
+    }
+
+    private InterviewSessionQuestion persistSessionQuestion(
+            InterviewSession session,
+            InterviewQuestion sourceQuestion,
+            InterviewSessionQuestion parentSessionQuestion,
+            int questionOrder,
+            InterviewQuestionType questionType,
+            String questionText
+    ) {
+        InterviewSessionQuestion sessionQuestion = InterviewSessionQuestion.builder()
+                .session(session)
+                .sourceQuestion(sourceQuestion)
+                .parentSessionQuestion(parentSessionQuestion)
+                .questionOrder(questionOrder)
+                .questionType(questionType)
+                .difficultyLevel(DifficultyLevel.MEDIUM)
+                .questionText(questionText)
+                .build();
+        entityManager.persist(sessionQuestion);
+        entityManager.flush();
+        return sessionQuestion;
     }
 
     private InterviewAnswer persistEvaluatedAnswer(

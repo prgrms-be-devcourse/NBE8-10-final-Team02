@@ -714,6 +714,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 ### 비고
 - `GET /interview/sessions/{sessionId}`는 세션 기본 정보, 진행 count, 상태 확인에 사용한다.
 - 질문/답변 기록, 질문별 피드백, 태그 목록, 종합 점수와 총평은 `GET /interview/sessions/{sessionId}/result` 성공 응답 기준으로 그린다.
+- 답변된 dynamic follow-up도 `result.answers[]`에 일반 질문과 같은 형태로 포함되며, 히스토리 상세에서는 별도 구분 없이 순서대로 렌더링한다.
 - `GET /interview/sessions/{sessionId}/result`가 `409 INTERVIEW_RESULT_INCOMPLETE`를 반환하면 v1에서는 결과 미준비 안내와 재확인 CTA만 제공한다.
 - v1에는 히스토리 전용 질문/답변 기록 API를 별도로 두지 않는다.
 

@@ -61,6 +61,7 @@ applies_to: interview-domain
 - 결과 상세 조회는 `feedback_completed` 상태에서만 성공한다.
 - 결과 상세 조회 대상이 없거나 현재 사용자 소유가 아니면 `RESOURCE_NOT_FOUND`를 반환한다.
 - 결과 상세 조회 시 세션이 `completed` 상태면 `INTERVIEW_RESULT_INCOMPLETE`를 반환한다.
+- 실제로 답변이 저장된 dynamic follow-up은 `complete` 미답변 검증, 결과 생성 입력, 결과 응답, 히스토리 상세 기록에서 일반 질문과 동일하게 포함한다.
 - v1의 결과 재시도는 `POST /interview/sessions/{sessionId}/complete` 재전송이 아니라 `GET /interview/sessions/{sessionId}/result` 재확인 흐름으로 처리한다.
 - 전용 결과 재생성 endpoint는 이 단계에서 열지 않고 별도 이슈로 분리한다.
 - 현재 질문은 `answerCount + 1` 고정 순번이 아니라, 답변이 없는 세션 질문 중 가장 작은 `question_order`로 계산한다.
