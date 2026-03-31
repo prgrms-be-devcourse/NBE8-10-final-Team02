@@ -2,6 +2,13 @@
 set -euo pipefail
 exec > /var/log/user_data.log 2>&1
 
+echo "=== [0/5] 스왑 메모리 설정 (2GB) ==="
+fallocate -l 2G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
 echo "=== [1/5] 시스템 업데이트 ==="
 dnf update -y
 
@@ -78,32 +85,15 @@ services:
     container_name: lt-app
     ports:
       - "8080:8080"
+    env_file:
+      - ./app.env
     environment:
-      SPRING_PROFILES_ACTIVE: prod
-      JAVA_OPTS: "-Xms256m -Xmx400m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
-      # DB
+      # docker-compose 내부 네트워크 고정값 (app.env 값을 덮어씀)
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/appdb
       SPRING_DATASOURCE_USERNAME: user
-      SPRING_DATASOURCE_PASSWORD: $${DB_PASSWORD}
-      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 10
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
-      SPRING_JPA_SHOW_SQL: "false"
-      # Redis
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
-      SPRING_DATA_REDIS_PASSWORD: $${REDIS_PASSWORD}
-      # JWT
-      SECURITY_JWT_SECRET: $${JWT_SECRET}
-      SECURITY_JWT_ACCESS_TTL_SECONDS: 900
-      SECURITY_JWT_REFRESH_TTL_SECONDS: 86400
-      SECURITY_COOKIE_SECURE: "false"
-      # 부하테스트 스텁 모드 키 (빈 문자열이면 기능 비활성화)
-      APP_LOAD_TEST_KEY: $${LOAD_TEST_KEY}
-      # AI - 스텁 모드 전환 전까지는 실제 키 없이 실패 허용
-      GEMINI_API_KEY: "load-test-placeholder"
-      AI_PROVIDER: gemini
-      # GitHub 레포 분석 기능 (미테스트 시 빈 문자열)
-      KNOWLEDGE_GITHUB_TOKEN: $${KNOWLEDGE_GITHUB_TOKEN}
+      JAVA_OPTS: "-Xms256m -Xmx400m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
     networks:
       - lt-net
     deploy:
@@ -131,15 +121,19 @@ volumes:
 COMPOSE_EOF
 
 echo "=== [4/5] 환경변수 파일 생성 ==="
+# docker-compose 변수 치환용 .env
 cat > /opt/load-test/.env << ENV_EOF
 APP_IMAGE=${app_image}
 DB_PASSWORD=${db_password}
 REDIS_PASSWORD=${redis_password}
-LOAD_TEST_KEY=${load_test_key}
-JWT_SECRET=${jwt_secret}
-KNOWLEDGE_GITHUB_TOKEN=${knowledge_github_token}
 ENV_EOF
 chmod 600 /opt/load-test/.env
+
+# Spring Boot 앱 설정 (app.env)
+cat > /opt/load-test/app.env << 'APP_ENV_EOF'
+${app_env_content}
+APP_ENV_EOF
+chmod 600 /opt/load-test/app.env
 
 echo "=== [5/5] 컨테이너 기동 ==="
 cd /opt/load-test
