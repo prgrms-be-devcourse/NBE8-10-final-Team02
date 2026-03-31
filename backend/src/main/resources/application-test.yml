@@ -42,6 +42,7 @@ app:
     upload-dir: /tmp/test-uploads #파일업로드 위치
 
 ai:
+  fallback-provider: # 테스트 환경에서는 fallback 비활성화
   gemini:
     api-key: test-key-not-real
     base-url: http://localhost:8089  # WireMock이 @DynamicPropertySource로 덮어씀
@@ -51,6 +52,15 @@ ai:
       read: 5s # 빠른 실패
     retry:
       max-attempts: 0 # 재시도 비활성화
+  groq:
+    api-key: test-key-not-real
+    base-url: http://localhost:8089  # WireMock이 @DynamicPropertySource로 덮어씀
+    model: llama-3.3-70b-versatile
+    timeout:
+      connect: 1s
+      read: 5s
+    retry:
+      max-attempts: 0
 
 security:
   jwt:

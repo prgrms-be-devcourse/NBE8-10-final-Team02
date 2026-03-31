@@ -60,7 +60,17 @@ public class GeminiClient implements AiClient {
                 .retrieve()
                 .body(GeminiResponse.class);
         } catch (RestClientResponseException e) {
-            // Gemini API가 4xx/5xx 응답을 반환한 경우 — 에러 바디에 원인이 있음
+            // 429 할당량 초과 — 별도 로그로 명확히 표시
+            if (e.getStatusCode().value() == 429) {
+                log.warn("[Gemini] API 호출 횟수 초과. 무료 티어 일일 한도에 도달했습니다. body={}", e.getResponseBodyAsString());
+                throw new AiClientException(
+                    AiProvider.GEMINI,
+                    ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                    "AI API 호출 횟수가 부족합니다. 잠시 후 다시 시도해주세요.",
+                    e
+                );
+            }
+            // 그 외 4xx/5xx 응답
             log.error("[Gemini] API 에러 응답: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString(), e);
             throw new AiClientException(
                 AiProvider.GEMINI,
