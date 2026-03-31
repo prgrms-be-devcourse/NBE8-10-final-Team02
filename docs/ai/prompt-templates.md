@@ -2,7 +2,7 @@
 owner: AI 기능/생성 파이프라인
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-03-31
 linked_issue_or_pr: docs-governance-v4
 applies_to: ai-prompt-io-contract
 ---
@@ -631,8 +631,9 @@ applies_to: ai-prompt-io-contract
 
 ### 6.4.8 저장 매핑
 
-- 세션 전용 임시 질문 또는 `interview_questions` 신규 row
-- 최종 저장 방식은 후속 결정 항목으로 둔다.
+- `followUpQuestion`이 null이면 저장하지 않는다.
+- follow-up은 질문 세트 원본 `interview_questions` 신규 row가 아니라 세션 전용 질문 저장 구조에 저장한다.
+- 저장 대상은 `interview_session_questions`이며, `parentQuestionOrder`는 현재 세션의 부모 세션 질문으로 매핑한다.
 
 ### 6.4.9 재시도 규칙
 
@@ -953,7 +954,6 @@ ai/
 
 - `qualityFlags`를 DB에 저장할지 API 응답용으로만 둘지
 - `ai.portfolio.summary.v1` 결과를 Redis 캐시에만 둘지 별도 테이블로 둘지
-- 꼬리 질문을 `interview_questions`에 영구 저장할지 세션 메모리/Redis에 둘지
 - 템플릿 파일을 코드 저장소에 둘지 관리자 콘솔에서 버전 관리할지
 
 ## 11. 추천 다음 단계

@@ -6,6 +6,7 @@ import com.back.backend.domain.interview.entity.DifficultyLevel;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
+import com.back.backend.domain.interview.entity.InterviewSessionQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionType;
 import com.back.backend.domain.interview.entity.InterviewSession;
 import com.back.backend.domain.interview.entity.InterviewSessionStatus;
@@ -29,6 +30,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.findSessionQuestion;
+import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.persistSessionQuestionSnapshot;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -54,8 +57,8 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
     void getSessionDetail_returns200ForPausedSession() throws Exception {
         User user = persistUser("detail-paused@example.com", "detail-paused");
         InterviewSession session = persistSession(user, InterviewSessionStatus.PAUSED, FIXED_NOW);
-        InterviewQuestion firstQuestion = findQuestion(session, 1);
-        InterviewQuestion secondQuestion = findQuestion(session, 2);
+        InterviewSessionQuestion firstQuestion = findSessionQuestion(entityManager, session, 1);
+        InterviewSessionQuestion secondQuestion = findSessionQuestion(entityManager, session, 2);
         persistAnswer(session, firstQuestion, 1, false, "첫 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.");
 
         mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
@@ -80,7 +83,7 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
     void getSessionDetail_returns200ForInProgressSession() throws Exception {
         User user = persistUser("detail-in-progress@example.com", "detail-in-progress");
         InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
-        InterviewQuestion firstQuestion = findQuestion(session, 1);
+        InterviewSessionQuestion firstQuestion = findSessionQuestion(entityManager, session, 1);
 
         mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
                         .with(authenticated(user.getId())))
@@ -131,9 +134,9 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
     void getSessionDetail_returnsNullCurrentQuestionWhenAllQuestionsAnswered() throws Exception {
         User user = persistUser("detail-complete@example.com", "detail-complete");
         InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
-        InterviewQuestion firstQuestion = findQuestion(session, 1);
-        InterviewQuestion secondQuestion = findQuestion(session, 2);
-        InterviewQuestion thirdQuestion = findQuestion(session, 3);
+        InterviewSessionQuestion firstQuestion = findSessionQuestion(entityManager, session, 1);
+        InterviewSessionQuestion secondQuestion = findSessionQuestion(entityManager, session, 2);
+        InterviewSessionQuestion thirdQuestion = findSessionQuestion(entityManager, session, 3);
         // 마지막 질문까지 답변이 저장된 상태를 만들어 currentQuestion=null 계약을 확인한다.
         persistAnswer(session, firstQuestion, 1, false, "첫 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.");
         persistAnswer(session, secondQuestion, 2, false, "두 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.");
@@ -154,9 +157,9 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
         Instant startedAt = FIXED_NOW.minus(Duration.ofMinutes(20));
         Instant endedAt = FIXED_NOW.minus(Duration.ofMinutes(5));
         InterviewSession session = persistTerminalSession(user, InterviewSessionStatus.COMPLETED, startedAt, endedAt);
-        InterviewQuestion firstQuestion = findQuestion(session, 1);
-        InterviewQuestion secondQuestion = findQuestion(session, 2);
-        InterviewQuestion thirdQuestion = findQuestion(session, 3);
+        InterviewSessionQuestion firstQuestion = findSessionQuestion(entityManager, session, 1);
+        InterviewSessionQuestion secondQuestion = findSessionQuestion(entityManager, session, 2);
+        InterviewSessionQuestion thirdQuestion = findSessionQuestion(entityManager, session, 3);
         persistAnswer(session, firstQuestion, 1, false, "첫 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.");
         persistAnswer(session, secondQuestion, 2, false, "두 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.");
         persistAnswer(session, thirdQuestion, 3, true, null);
@@ -237,16 +240,6 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
         return question;
     }
 
-    private InterviewQuestion findQuestion(InterviewSession session, int questionOrder) {
-        return entityManager.createQuery(
-                        "select q from InterviewQuestion q where q.questionSet.id = :questionSetId and q.questionOrder = :questionOrder",
-                        InterviewQuestion.class
-                )
-                .setParameter("questionSetId", session.getQuestionSet().getId())
-                .setParameter("questionOrder", questionOrder)
-                .getSingleResult();
-    }
-
     private InterviewSession persistSession(User user, InterviewSessionStatus status, Instant activityAt) {
         Application application = persistApplication(user, "application-title");
         InterviewQuestionSet questionSet = persistQuestionSet(user, application);
@@ -262,6 +255,7 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 .build();
         entityManager.persist(session);
         entityManager.flush();
+        persistSessionQuestionSnapshot(entityManager, session);
         return session;
     }
 
@@ -283,19 +277,20 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 .build();
         entityManager.persist(session);
         entityManager.flush();
+        persistSessionQuestionSnapshot(entityManager, session);
         return session;
     }
 
     private void persistAnswer(
             InterviewSession session,
-            InterviewQuestion question,
+            InterviewSessionQuestion question,
             int answerOrder,
             boolean skipped,
             String answerText
     ) {
         InterviewAnswer answer = InterviewAnswer.builder()
                 .session(session)
-                .question(question)
+                .sessionQuestion(question)
                 .answerOrder(answerOrder)
                 .answerText(answerText)
                 .skipped(skipped)

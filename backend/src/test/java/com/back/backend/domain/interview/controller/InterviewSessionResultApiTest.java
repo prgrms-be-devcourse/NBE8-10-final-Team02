@@ -8,6 +8,7 @@ import com.back.backend.domain.interview.entity.InterviewAnswer;
 import com.back.backend.domain.interview.entity.InterviewAnswerTag;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
+import com.back.backend.domain.interview.entity.InterviewSessionQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionType;
 import com.back.backend.domain.interview.entity.InterviewSession;
 import com.back.backend.domain.interview.entity.InterviewSessionStatus;
@@ -32,6 +33,8 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.time.Instant;
 import java.util.List;
 
+import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.findSessionQuestion;
+import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.persistSessionQuestionSnapshot;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
@@ -79,7 +82,7 @@ class InterviewSessionResultApiTest extends ApiTestBase {
                         .value("구조는 좋았고 경험 기반 근거를 더 구체화하면 좋습니다."))
                 .andExpect(jsonPath("$.data.answers", hasSize(3)))
                 .andExpect(jsonPath("$.data.answers[0].answerId").value(fixture.answers().get(0).getId()))
-                .andExpect(jsonPath("$.data.answers[0].questionId").value(fixture.questions().get(0).getId()))
+                .andExpect(jsonPath("$.data.answers[0].questionId").value(fixture.sessionQuestions().get(0).getId()))
                 .andExpect(jsonPath("$.data.answers[0].questionText").value("첫 번째 질문"))
                 .andExpect(jsonPath("$.data.answers[0].answerText").value("첫 번째 답변입니다. 결과 조회 응답 검증용으로 충분히 긴 답변입니다."))
                 .andExpect(jsonPath("$.data.answers[0].score").value(80))
@@ -221,16 +224,21 @@ class InterviewSessionResultApiTest extends ApiTestBase {
                 84,
                 "구조는 좋았고 경험 기반 근거를 더 구체화하면 좋습니다."
         );
+        List<InterviewSessionQuestion> sessionQuestions = List.of(
+                findSessionQuestion(entityManager, session, 1),
+                findSessionQuestion(entityManager, session, 2),
+                findSessionQuestion(entityManager, session, 3)
+        );
         List<InterviewAnswer> answers = List.of(
-                persistEvaluatedAnswer(session, questions.get(0), 1,
+                persistEvaluatedAnswer(session, sessionQuestions.get(0), 1,
                         "첫 번째 답변입니다. 결과 조회 응답 검증용으로 충분히 긴 답변입니다.",
                         80,
                         "핵심 설명은 있었지만 수치 근거가 더 필요합니다."),
-                persistEvaluatedAnswer(session, questions.get(1), 2,
+                persistEvaluatedAnswer(session, sessionQuestions.get(1), 2,
                         "두 번째 답변입니다. 결과 조회 응답 검증용으로 충분히 긴 답변입니다.",
                         86,
                         "문제 해결 흐름은 명확하지만 사례를 더 압축하면 좋습니다."),
-                persistEvaluatedAnswer(session, questions.get(2), 3,
+                persistEvaluatedAnswer(session, sessionQuestions.get(2), 3,
                         "세 번째 답변입니다. 결과 조회 응답 검증용으로 충분히 긴 답변입니다.",
                         88,
                         "선택 이유는 잘 설명했지만 trade-off를 더 드러낼 수 있습니다.")
@@ -241,7 +249,7 @@ class InterviewSessionResultApiTest extends ApiTestBase {
         );
         persistAnswerTag(answers.get(0), tags.get(0));
         persistAnswerTag(answers.get(1), tags.get(1));
-        return new ResultFixture(user, questionSet, session, questions, answers, tags);
+        return new ResultFixture(user, questionSet, session, sessionQuestions, answers, tags);
     }
 
     private ResultFixture persistCompletedFixture(String prefix) {
@@ -254,15 +262,20 @@ class InterviewSessionResultApiTest extends ApiTestBase {
                 persistQuestion(questionSet, 3, "세 번째 질문")
         );
         InterviewSession session = persistSession(user, questionSet, InterviewSessionStatus.COMPLETED, null, null);
+        List<InterviewSessionQuestion> sessionQuestions = List.of(
+                findSessionQuestion(entityManager, session, 1),
+                findSessionQuestion(entityManager, session, 2),
+                findSessionQuestion(entityManager, session, 3)
+        );
         List<InterviewAnswer> answers = List.of(
-                persistPendingAnswer(session, questions.get(0), 1,
+                persistPendingAnswer(session, sessionQuestions.get(0), 1,
                         "첫 번째 답변입니다. 결과 준비 전 상태 검증용 답변입니다."),
-                persistPendingAnswer(session, questions.get(1), 2,
+                persistPendingAnswer(session, sessionQuestions.get(1), 2,
                         "두 번째 답변입니다. 결과 준비 전 상태 검증용 답변입니다."),
-                persistPendingAnswer(session, questions.get(2), 3,
+                persistPendingAnswer(session, sessionQuestions.get(2), 3,
                         "세 번째 답변입니다. 결과 준비 전 상태 검증용 답변입니다.")
         );
-        return new ResultFixture(user, questionSet, session, questions, answers, List.of());
+        return new ResultFixture(user, questionSet, session, sessionQuestions, answers, List.of());
     }
 
     private User persistUser(String email, String displayName) {
@@ -337,12 +350,13 @@ class InterviewSessionResultApiTest extends ApiTestBase {
                 .build();
         entityManager.persist(session);
         entityManager.flush();
+        persistSessionQuestionSnapshot(entityManager, session);
         return session;
     }
 
     private InterviewAnswer persistEvaluatedAnswer(
             InterviewSession session,
-            InterviewQuestion question,
+            InterviewSessionQuestion question,
             int answerOrder,
             String answerText,
             int score,
@@ -350,7 +364,7 @@ class InterviewSessionResultApiTest extends ApiTestBase {
     ) {
         InterviewAnswer answer = InterviewAnswer.builder()
                 .session(session)
-                .question(question)
+                .sessionQuestion(question)
                 .answerOrder(answerOrder)
                 .answerText(answerText)
                 .skipped(false)
@@ -364,13 +378,13 @@ class InterviewSessionResultApiTest extends ApiTestBase {
 
     private InterviewAnswer persistPendingAnswer(
             InterviewSession session,
-            InterviewQuestion question,
+            InterviewSessionQuestion question,
             int answerOrder,
             String answerText
     ) {
         InterviewAnswer answer = InterviewAnswer.builder()
                 .session(session)
-                .question(question)
+                .sessionQuestion(question)
                 .answerOrder(answerOrder)
                 .answerText(answerText)
                 .skipped(false)
@@ -402,7 +416,7 @@ class InterviewSessionResultApiTest extends ApiTestBase {
             User user,
             InterviewQuestionSet questionSet,
             InterviewSession session,
-            List<InterviewQuestion> questions,
+            List<InterviewSessionQuestion> sessionQuestions,
             List<InterviewAnswer> answers,
             List<FeedbackTag> tags
     ) {

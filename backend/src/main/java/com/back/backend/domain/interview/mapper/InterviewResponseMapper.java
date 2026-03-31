@@ -14,6 +14,7 @@ import com.back.backend.domain.interview.entity.FeedbackTag;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
 import com.back.backend.domain.interview.entity.InterviewAnswerTag;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
+import com.back.backend.domain.interview.entity.InterviewSessionQuestion;
 import com.back.backend.domain.interview.entity.InterviewSession;
 
 import java.time.Instant;
@@ -51,14 +52,14 @@ public class InterviewResponseMapper {
     public InterviewAnswerSubmitResponse toInterviewAnswerSubmitResponse(InterviewAnswer answer) {
         return new InterviewAnswerSubmitResponse(
                 answer.getSession().getId(),
-                answer.getQuestion().getId(),
+                answer.getSessionQuestion().getId(),
                 answer.getAnswerOrder(),
                 answer.isSkipped(),
                 answer.getCreatedAt()
         );
     }
 
-    public InterviewSessionCurrentQuestionResponse toInterviewSessionCurrentQuestionResponse(InterviewQuestion question) {
+    public InterviewSessionCurrentQuestionResponse toInterviewSessionCurrentQuestionResponse(InterviewSessionQuestion question) {
         if (question == null) {
             return null;
         }
@@ -74,7 +75,7 @@ public class InterviewResponseMapper {
 
     public InterviewSessionDetailResponse toInterviewSessionDetailResponse(
             InterviewSession session,
-            InterviewQuestion currentQuestion,
+            InterviewSessionQuestion currentQuestion,
             long totalQuestionCount,
             long answeredQuestionCount,
             long remainingQuestionCount,
@@ -144,8 +145,8 @@ public class InterviewResponseMapper {
     ) {
         return new InterviewAnswerResultResponse(
                 answer.getId(),
-                answer.getQuestion().getId(),
-                answer.getQuestion().getQuestionText(),
+                answer.getSessionQuestion().getId(),
+                answer.getSessionQuestion().getQuestionText(),
                 answer.getAnswerText(),
                 answer.getScore(),
                 answer.getEvaluationRationale(),

@@ -78,7 +78,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./backend
-          platforms: linux/arm64
+          platforms: linux/arm64,linux/amd64
           push: true
           tags: |
             ${{ env.BE_IMAGE_PATH }}:${{ needs.calculate-tag.outputs.tag_name }}
@@ -90,7 +90,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
-          platforms: linux/arm64
+          platforms: linux/arm64,linux/amd64
           push: true
           tags: |
             ${{ env.FE_IMAGE_PATH }}:${{ needs.calculate-tag.outputs.tag_name }}

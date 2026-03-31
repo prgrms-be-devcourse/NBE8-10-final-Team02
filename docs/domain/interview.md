@@ -2,7 +2,7 @@
 owner: 면접 세션/서비스 흐름 + 대시보드/히스토리
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-26
+last_updated: 2026-03-31
 linked_issue_or_pr: docs-sync-requirements-v5
 applies_to: interview-domain
 ---
@@ -16,12 +16,15 @@ applies_to: interview-domain
 - `interview_question_sets`
 - `interview_questions`
 - `interview_sessions`
+- `interview_session_questions`
 - `interview_answers`
 - `feedback_tags`
 - `interview_answer_tags`
 
 ## 핵심 규칙
 - 질문 세트와 실제 세션은 분리한다.
+- 세션 시작 시 질문 세트 질문을 세션 전용 질문 스냅샷으로 복사한다.
+- dynamic follow-up은 질문 세트 원본이 아니라 세션 전용 질문에만 추가한다.
 - 질문 생성은 1회 최대 20개까지 허용한다.
 - 질문 세트 편집은 세션 시작 전까지만 허용한다.
 - 세션이 한 번이라도 시작된 질문 세트에 대한 편집 요청은 `INTERVIEW_QUESTION_SET_NOT_EDITABLE`로 거절한다.
@@ -35,8 +38,9 @@ applies_to: interview-domain
 - 질문 수 `3..20` 검증은 편집 시점이 아니라 세션 시작 시점에 수행한다.
 - 질문 수가 `3..20` 범위를 벗어난 질문 세트는 `REQUEST_VALIDATION_FAILED`로 세션 시작을 거절한다.
 - `ready` 상태는 시작 전 상태이며 답변 제출을 허용하지 않는다.
-- 답변 제출은 현재 사용자 소유 세션과 해당 세션에서 진행 중인 질문에 대해서만 허용한다.
-- 답변 제출 요청의 `questionId`, `answerOrder`는 현재 순번과 일치해야 하며 어긋나면 `REQUEST_VALIDATION_FAILED`로 거절한다.
+- 답변 제출은 현재 사용자 소유 세션과 해당 세션의 현재 세션 질문에 대해서만 허용한다.
+- 답변 제출 요청의 `questionId`는 세션 질문 id이며, `answerOrder`는 다음 제출 순번이어야 한다.
+- 답변 제출 요청의 `questionId`, `answerOrder`가 현재 세션 질문과 다음 제출 순번에 맞지 않으면 `REQUEST_VALIDATION_FAILED`로 거절한다.
 - `in_progress` 상태의 세션만 일반 답변 제출을 허용한다.
 - 명시적 `pause`는 `in_progress` 상태에서만 허용한다.
 - `paused` 상태는 재개 후 `in_progress`로 전환한 뒤 답변을 제출한다.
@@ -53,7 +57,9 @@ applies_to: interview-domain
 - 결과 상세 조회 시 세션이 `completed` 상태면 `INTERVIEW_RESULT_INCOMPLETE`를 반환한다.
 - v1의 결과 재시도는 `POST /interview/sessions/{sessionId}/complete` 재전송이 아니라 `GET /interview/sessions/{sessionId}/result` 재확인 흐름으로 처리한다.
 - 전용 결과 재생성 endpoint는 이 단계에서 열지 않고 별도 이슈로 분리한다.
+- 현재 질문은 `answerCount + 1` 고정 순번이 아니라, 답변이 없는 세션 질문 중 가장 작은 `question_order`로 계산한다.
 - 세션 상세 조회는 복원 화면과 히스토리 상세의 기본 정보 영역 기준으로 `currentQuestion`, 진행률 계산용 count, `resumeAvailable`, `lastActivityAt`를 함께 반환한다.
+- 세션 상세의 `currentQuestion.id`, 답변 제출의 `questionId`, 결과 응답의 `answers[].questionId`는 모두 세션 질문 id를 사용한다.
 - 히스토리 상세 v1은 전용 backend endpoint를 추가하지 않고 `GET /interview/sessions/{sessionId}`와 `GET /interview/sessions/{sessionId}/result`를 함께 재사용한다.
 - 히스토리 상세의 질문/답변/피드백 전체 기록은 `result` 성공 응답이 있을 때만 그린다.
 - `completed` 상태로 남아 있는 세션은 히스토리에서도 결과 미준비 상태로 해석하고 `GET /interview/sessions/{sessionId}/result` 재확인 흐름으로 연결한다.
