@@ -143,6 +143,12 @@ chmod 600 /opt/load-test/.env
 
 echo "=== [5/5] 컨테이너 기동 ==="
 cd /opt/load-test
+
+# ghcr.io 인증 (PAT이 있을 때만)
+if [ -n "${ghcr_token}" ]; then
+  echo "${ghcr_token}" | docker login ghcr.io -u x-access-token --password-stdin
+fi
+
 docker compose --env-file .env up -d
 
 echo "=== 헬스체크 대기 (최대 120초) ==="

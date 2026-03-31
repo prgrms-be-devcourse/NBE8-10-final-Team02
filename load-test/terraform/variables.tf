@@ -50,6 +50,13 @@ variable "jwt_secret" {
   default     = "loadtest-jwt-secret-key-change-this-in-real-use-f8e7d6c5b4a39281"
 }
 
+variable "ghcr_token" {
+  description = "GitHub PAT (read:packages) - ghcr.io 이미지 pull용"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "knowledge_github_token" {
   description = "GitHub PAT (레포 분석 기능용). 해당 기능 미테스트 시 빈 문자열 가능"
   type        = string
