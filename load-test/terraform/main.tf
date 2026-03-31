@@ -10,7 +10,7 @@ terraform {
 
   # 팀원과 상태 공유 시 아래 주석 해제 + S3 버킷 이름 지정
   # backend "s3" {
-  #   bucket = "nbe8-10-team02-terraform-state"
+  #   bucket = "devcos-team2-terraform-state"
   #   key    = "load-test/terraform.tfstate"
   #   region = "ap-northeast-2"
   # }
@@ -38,13 +38,13 @@ data "aws_ami" "al2023" {
 
 # ── SSH 키 페어 ────────────────────────────────────────────────────────────
 resource "aws_key_pair" "load_test" {
-  key_name   = "nbe8-10-load-test-key"
+  key_name   = "devcos-team2-load-test-key"
   public_key = file(var.ssh_public_key_path)
 }
 
 # ── Security Group ─────────────────────────────────────────────────────────
 resource "aws_security_group" "load_test" {
-  name        = "nbe8-10-load-test-sg"
+  name        = "devcos-team2-load-test-sg"
   description = "Load test EC2 security group"
 
   # SSH
@@ -72,8 +72,8 @@ resource "aws_security_group" "load_test" {
   }
 
   tags = {
-    Name    = "nbe8-10-load-test-sg"
-    Project = "nbe8-10-team02"
+    Name    = "devcos-team2-load-test-sg"
+    Project = "devcos-team2"
     Purpose = "load-test"
   }
 }
@@ -106,8 +106,8 @@ resource "aws_instance" "load_test" {
   })
 
   tags = {
-    Name    = "nbe8-10-load-test"
-    Project = "nbe8-10-team02"
+    Name    = "devcos-team2-load-test"
+    Project = "devcos-team2"
     Purpose = "load-test"
   }
 }
