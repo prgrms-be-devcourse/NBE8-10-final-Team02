@@ -14,6 +14,7 @@ export default function GithubConnectPage() {
   const [loading, setLoading] = useState(true);
   const [notLoggedIn, setNotLoggedIn] = useState(false);
   const [existingConnection, setExistingConnection] = useState<GithubConnection | null>(null);
+  const [forceReconnect, setForceReconnect] = useState(false);
   const [providers, setProviders] = useState<Provider[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
@@ -147,7 +148,7 @@ export default function GithubConnectPage() {
             repository 선택하기 →
           </button>
           <button
-            onClick={() => setExistingConnection(null)}
+            onClick={() => { setExistingConnection(null); setForceReconnect(true); }}
             className="text-sm text-zinc-500 underline"
           >
             다른 GitHub 계정으로 변경하기
@@ -159,7 +160,7 @@ export default function GithubConnectPage() {
 
   // ── GitHub OAuth로 로그인한 사용자 (연결 없음) ────────────
   // 로그인 시점에 token이 저장되므로 별도 입력 없이 repo를 가져올 수 있다.
-  if (providers.includes('github')) {
+  if (providers.includes('github') && !forceReconnect) {
     return (
       <main className="mx-auto max-w-lg px-4 py-12">
         <h1 className="mb-2 text-2xl font-semibold">GitHub 연결</h1>
