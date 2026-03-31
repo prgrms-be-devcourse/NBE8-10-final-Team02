@@ -97,11 +97,12 @@ resource "aws_instance" "load_test" {
   }
 
   user_data = templatefile("${path.module}/user_data.sh", {
-    app_image      = var.app_image
-    db_password    = var.db_password
-    redis_password = var.redis_password
-    load_test_key  = var.load_test_key
-    jwt_secret     = var.jwt_secret
+    app_image             = var.app_image
+    db_password           = var.db_password
+    redis_password        = var.redis_password
+    load_test_key         = var.load_test_key
+    jwt_secret            = var.jwt_secret
+    knowledge_github_token = var.knowledge_github_token
   })
 
   tags = {

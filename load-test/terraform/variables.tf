@@ -50,6 +50,13 @@ variable "jwt_secret" {
   default     = "loadtest-jwt-secret-key-change-this-in-real-use-f8e7d6c5b4a39281"
 }
 
+variable "knowledge_github_token" {
+  description = "GitHub PAT (레포 분석 기능용). 해당 기능 미테스트 시 빈 문자열 가능"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "k6_runner_cidr" {
   description = "k6를 실행할 머신의 IP CIDR (EC2 외부 실행 시). 비우면 0.0.0.0/0"
   type        = string
