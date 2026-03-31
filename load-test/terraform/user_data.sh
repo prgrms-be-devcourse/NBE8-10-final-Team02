@@ -82,20 +82,28 @@ services:
       SPRING_PROFILES_ACTIVE: prod
       JAVA_OPTS: "-Xms256m -Xmx400m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
       # DB
-      DB_URL: jdbc:postgresql://db:5432/appdb
-      DB_USERNAME: user
-      DB_PASSWORD: ${DB_PASSWORD}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/appdb
+      SPRING_DATASOURCE_USERNAME: user
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 10
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_SHOW_SQL: "false"
       # Redis
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
       # JWT
       SECURITY_JWT_SECRET: ${JWT_SECRET}
+      SECURITY_JWT_ACCESS_TTL_SECONDS: 900
+      SECURITY_JWT_REFRESH_TTL_SECONDS: 86400
+      SECURITY_COOKIE_SECURE: "false"
       # 부하테스트 스텁 모드 키 (빈 문자열이면 기능 비활성화)
       APP_LOAD_TEST_KEY: ${LOAD_TEST_KEY}
       # AI - 스텁 모드 전환 전까지는 실제 키 없이 실패 허용
       GEMINI_API_KEY: "load-test-placeholder"
       AI_PROVIDER: gemini
+      # GitHub 레포 분석 기능 (미테스트 시 빈 문자열)
+      KNOWLEDGE_GITHUB_TOKEN: ${KNOWLEDGE_GITHUB_TOKEN}
     networks:
       - lt-net
     deploy:
@@ -129,6 +137,7 @@ DB_PASSWORD=${db_password}
 REDIS_PASSWORD=${redis_password}
 LOAD_TEST_KEY=${load_test_key}
 JWT_SECRET=${jwt_secret}
+KNOWLEDGE_GITHUB_TOKEN=${knowledge_github_token}
 ENV_EOF
 chmod 600 /opt/load-test/.env
 
