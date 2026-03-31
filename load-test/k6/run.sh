@@ -12,10 +12,18 @@
 #   TEST_JWT_TOKEN   - 인증이 필요한 API 테스트 시 미리 발급한 JWT
 #   LOAD_TEST_KEY    - 스텁 모드 전환 키
 #   K6_OUT           - 결과 출력 형식 (예: json=result.json)
+#   PROMETHEUS_URL   - Prometheus remote write URL (예: http://<OCI_IP>:9090/api/v1/write)
+#                      설정 시 --out experimental-prometheus-rw 자동 추가
 set -euo pipefail
 
 SCENARIO="${1:-ramp-up}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# .env 파일이 있으면 로드 (git 추적 안 함)
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  # shellcheck disable=SC1091
+  set -a; source "$SCRIPT_DIR/.env"; set +a
+fi
 
 VUS="${VUS:-10}"
 BASE_URL="${BASE_URL:-http://localhost:8080}"
@@ -23,6 +31,7 @@ DURATION="${DURATION:-2m}"
 TEST_JWT_TOKEN="${TEST_JWT_TOKEN:-}"
 LOAD_TEST_KEY="${LOAD_TEST_KEY:-}"
 K6_OUT="${K6_OUT:-}"
+PROMETHEUS_URL="${PROMETHEUS_URL:-}"
 
 # ── 시나리오 파일 선택 ────────────────────────────────────────────────────
 case "$SCENARIO" in
@@ -78,6 +87,13 @@ fi
 
 if [ -n "$K6_OUT" ]; then
   K6_ARGS+=(--out "$K6_OUT")
+fi
+
+if [ -n "$PROMETHEUS_URL" ]; then
+  K6_ARGS+=(--out experimental-prometheus-rw)
+  export K6_PROMETHEUS_RW_SERVER_URL="$PROMETHEUS_URL"
+  export K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true
+  echo "=== Prometheus remote write: $PROMETHEUS_URL ==="
 fi
 
 K6_ARGS+=("$SCRIPT")
