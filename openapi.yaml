@@ -594,6 +594,16 @@ components:
           type: integer
           format: int64
           description: 세션 질문 id
+        questionType:
+          type: string
+          description: 세션 질문 유형. `follow_up`이면 결과 화면에서 꼬리 질문 배지를 표시할 수 있다.
+          enum:
+          - experience
+          - project
+          - technical_cs
+          - technical_stack
+          - behavioral
+          - follow_up
         questionText:
           type: string
         answerText:
@@ -613,6 +623,7 @@ components:
       required:
       - answerId
       - questionId
+      - questionType
       - questionText
       - score
       - evaluationRationale
@@ -3649,6 +3660,7 @@ paths:
                       answers:
                       - answerId: 1001
                         questionId: 801
+                        questionType: project
                         questionText: 프로젝트에서 가장 어려웠던 장애 대응 경험을 설명해주세요.
                         answerText: Redis 캐시 장애 상황에서 DB 부하를 줄이기 위해 읽기 경로를 단계적으로 우회했습니다.
                         score: 86

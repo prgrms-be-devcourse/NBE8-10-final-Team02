@@ -146,6 +146,7 @@ public class InterviewResponseMapper {
         return new InterviewAnswerResultResponse(
                 answer.getId(),
                 answer.getSessionQuestion().getId(),
+                answer.getSessionQuestion().getQuestionType().getValue(),
                 answer.getSessionQuestion().getQuestionText(),
                 answer.getAnswerText(),
                 answer.getScore(),
