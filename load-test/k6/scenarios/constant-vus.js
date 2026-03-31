@@ -10,8 +10,9 @@
 import http from 'k6/http';
 import { sleep } from 'k6';
 import { ENDPOINTS } from '../lib/endpoints.js';
-import { getAuthHeaders } from '../lib/auth.js';
-import { assertResponse, assertHealthy } from '../lib/checks.js';
+// import { getAuthHeaders } from '../lib/auth.js';
+import { assertHealthy } from '../lib/checks.js';
+// import { assertResponse } from '../lib/checks.js';
 
 const VUS      = parseInt(__ENV.VUS || '10');
 const DURATION = __ENV.DURATION || '2m';
@@ -29,17 +30,16 @@ export const options = {
 };
 
 export default function () {
-  const authHeaders = getAuthHeaders();
-
+  // 환경 확인용: health 체크만 활성화
   const res = http.get(ENDPOINTS.health, { tags: { type: 'health' } });
   assertHealthy(res);
-  sleep(0.2);
-
-  const csRes = http.get(ENDPOINTS.csQuestions, {
-    headers: authHeaders,
-    tags: { type: 'read' },
-  });
-  assertResponse(csRes, [200], 1000);
-
   sleep(1);
+
+  // TODO: 환경 확인 후 아래 시나리오 순차 활성화
+  // const authHeaders = getAuthHeaders();
+  // const csRes = http.get(ENDPOINTS.csQuestions, {
+  //   headers: authHeaders,
+  //   tags: { type: 'read' },
+  // });
+  // assertResponse(csRes, [200], 1000);
 }

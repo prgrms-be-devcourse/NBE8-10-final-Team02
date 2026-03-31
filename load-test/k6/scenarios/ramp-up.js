@@ -10,8 +10,9 @@
 import http from 'k6/http';
 import { sleep } from 'k6';
 import { ENDPOINTS } from '../lib/endpoints.js';
-import { getAuthHeaders } from '../lib/auth.js';
-import { assertResponse, assertHealthy } from '../lib/checks.js';
+// import { getAuthHeaders } from '../lib/auth.js';
+import { assertHealthy } from '../lib/checks.js';
+// import { assertResponse } from '../lib/checks.js';
 
 const MAX_VUS = parseInt(__ENV.VUS || '10');
 
@@ -37,60 +38,24 @@ export const options = {
 
 // ── 시나리오 본문 ──────────────────────────────────────────────────────────
 export default function () {
-  const authHeaders = getAuthHeaders();
+  // 환경 확인용: health 체크만 활성화
+  const res = http.get(ENDPOINTS.health, { tags: { type: 'health' } });
+  assertHealthy(res);
+  sleep(1);
 
-  // 1. 헬스 체크
-  {
-    const res = http.get(ENDPOINTS.health, { tags: { type: 'health' } });
-    assertHealthy(res);
-  }
+  // TODO: 환경 확인 후 아래 시나리오 순차 활성화
+  // const authHeaders = getAuthHeaders();
 
-  sleep(0.5);
+  // 2. CS 질문 목록 조회
+  // const csRes = http.get(ENDPOINTS.csQuestions, { headers: authHeaders, tags: { type: 'read' } });
+  // assertResponse(csRes, [200], 1000);
 
-  // 2. CS 질문 목록 조회 (읽기, AI 없음)
-  {
-    const res = http.get(ENDPOINTS.csQuestions, {
-      headers: authHeaders,
-      tags: { type: 'read' },
-    });
-    assertResponse(res, [200], 1000);
-  }
-
-  sleep(0.3);
-
-  // 3. 내 프로필 조회 (인증 필요)
-  if (authHeaders['Authorization']) {
-    const res = http.get(ENDPOINTS.me, {
-      headers: authHeaders,
-      tags: { type: 'read' },
-    });
-    assertResponse(res, [200], 1000);
-    sleep(0.3);
-  }
-
-  // 4. Application 생성 (쓰기)
-  // TODO: FakeAiClient 없이도 application 생성 자체는 AI 호출 없으므로 활성화 가능
+  // 3. 내 프로필 조회 (JWT 필요)
   // if (authHeaders['Authorization']) {
-  //   const payload = JSON.stringify({
-  //     companyName: 'k6-test-company',
-  //     jobTitle: '백엔드 개발자',
-  //     jobDescription: '부하테스트용 임시 지원 공고',
-  //   });
-  //   const res = http.post(ENDPOINTS.applications, payload, {
-  //     headers: authHeaders,
-  //     tags: { type: 'write' },
-  //   });
-  //   assertResponse(res, [200, 201], 2000);
-  //   sleep(0.5);
+  //   const meRes = http.get(ENDPOINTS.me, { headers: authHeaders, tags: { type: 'read' } });
+  //   assertResponse(meRes, [200], 1000);
   // }
 
-  // 5. 자소서 생성 (AI 호출) → FakeAiClient 준비 후 주석 해제
-  // const genRes = http.post(
-  //   ENDPOINTS.generateCoverLetter(appId),
-  //   null,
-  //   { headers: authHeaders, tags: { type: 'ai-gen' } }
-  // );
-  // assertResponse(genRes, [200, 202], 500); // fake는 즉시 응답
-
-  sleep(1);
+  // 4. Application 생성 (AI 없이 가능)
+  // 5. 자소서/질문 생성 → FakeAiClient 구현 후 활성화
 }
