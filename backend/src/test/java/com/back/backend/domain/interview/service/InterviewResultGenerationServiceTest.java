@@ -28,8 +28,10 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 @ExtendWith(MockitoExtension.class)
 class InterviewResultGenerationServiceTest {
@@ -198,6 +200,48 @@ class InterviewResultGenerationServiceTest {
                         .isEqualTo(ErrorCode.INTERVIEW_RESULT_GENERATION_FAILED));
     }
 
+    @Test
+    void generate_includesDynamicFollowupAnswerInEvaluatePayload() throws Exception {
+        List<FeedbackTag> tagMaster = List.of(feedbackTag("근거 부족", FeedbackTagCategory.EVIDENCE));
+        List<InterviewAnswer> answers = List.of(
+                answer(1, "첫 번째 질문", "첫 번째 답변", InterviewQuestionType.PROJECT),
+                answer(2, "방금 답변한 선택 기준을 조금 더 구체적으로 설명해주실 수 있나요?", "두 번째 답변", InterviewQuestionType.FOLLOW_UP)
+        );
+
+        given(feedbackTagRepository.findAllByOrderByIdAsc()).willReturn(tagMaster);
+        given(aiPipeline.execute(eq("ai.interview.evaluate.v1"), anyString()))
+                .willReturn(OBJECT_MAPPER.readTree("""
+                        {
+                          "totalScore": 82,
+                          "summaryFeedback": "follow-up 답변까지 포함해 평가했습니다.",
+                          "answers": [
+                            {
+                              "questionOrder": 1,
+                              "score": 80,
+                              "evaluationRationale": "첫 번째 평가",
+                              "tagNames": ["근거 부족"]
+                            },
+                            {
+                              "questionOrder": 2,
+                              "score": 84,
+                              "evaluationRationale": "두 번째 평가",
+                              "tagNames": []
+                            }
+                          ],
+                          "qualityFlags": []
+                        }
+                        """));
+
+        InterviewResultGenerationService.GeneratedInterviewResult result =
+                interviewResultGenerationService.generate(901L, 301L, answers);
+
+        assertThat(result.answers()).hasSize(2);
+        then(aiPipeline).should().execute(eq("ai.interview.evaluate.v1"), argThat(payload ->
+                payload.contains("\"questionType\":\"follow_up\"")
+                        && payload.contains("\"questionText\":\"방금 답변한 선택 기준을 조금 더 구체적으로 설명해주실 수 있나요?\"")
+        ));
+    }
+
     private FeedbackTag feedbackTag(String tagName, FeedbackTagCategory category) {
         FeedbackTag tag = FeedbackTag.builder()
                 .tagName(tagName)
@@ -209,6 +253,15 @@ class InterviewResultGenerationServiceTest {
     }
 
     private InterviewAnswer answer(int answerOrder, String questionText, String answerText) {
+        return answer(answerOrder, questionText, answerText, InterviewQuestionType.PROJECT);
+    }
+
+    private InterviewAnswer answer(
+            int answerOrder,
+            String questionText,
+            String answerText,
+            InterviewQuestionType questionType
+    ) {
         InterviewQuestionSet questionSet = InterviewQuestionSet.builder()
                 .title("질문 세트")
                 .questionCount(2)
@@ -222,7 +275,7 @@ class InterviewResultGenerationServiceTest {
         InterviewSessionQuestion sessionQuestion = InterviewSessionQuestion.builder()
                 .session(session)
                 .questionOrder(answerOrder)
-                .questionType(InterviewQuestionType.PROJECT)
+                .questionType(questionType)
                 .difficultyLevel(DifficultyLevel.MEDIUM)
                 .questionText(questionText)
                 .build();
