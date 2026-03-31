@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { refreshGithubConnection, getGithubConnection } from '@/api/github';
 import { getMe, getGithubLinkUrl } from '@/api/auth';
-import { getPortfolioReadiness, UnauthenticatedError } from '@/api/portfolio';
 import type { GithubConnection } from '@/types/github';
 import type { Provider } from '@/types/auth';
 
@@ -14,35 +13,23 @@ export default function GithubConnectPage() {
   // 초기 로딩: 현재 연결 상태 + 로그인 provider 확인
   const [loading, setLoading] = useState(true);
   const [notLoggedIn, setNotLoggedIn] = useState(false);
-  // isConnected: OAuth 외 다른 방식 포함 모든 연결 여부 (백엔드 종합)
-  const [isConnected, setIsConnected] = useState(false);
-  // oauthConnection: OAuth 연결 시 로그인명 표시용 (없을 수 있음)
-  const [oauthConnection, setOauthConnection] = useState<GithubConnection | null>(null);
+  const [existingConnection, setExistingConnection] = useState<GithubConnection | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [connected, setConnected] = useState<GithubConnection | null>(null);
 
-  // ── 진입 시: 연결 상태 확인 ────────────────────────────────
-  // connectionStatus(백엔드 종합)로 연결 여부 판단, OAuth 연결은 로그인명 표시용으로만 사용
+  // ── 진입 시: 이미 연결된 GitHub 계정 확인 ─────────────────
   useEffect(() => {
-    Promise.all([
-      getMe(),
-      getPortfolioReadiness().catch((err) => {
-        if (err instanceof UnauthenticatedError) return null;
-        return null;
-      }),
-      getGithubConnection().catch(() => null),
-    ])
-      .then(([user, readiness, oauthConn]) => {
+    Promise.all([getMe(), getGithubConnection().catch(() => null)])
+      .then(([user, connection]) => {
         if (!user) {
           setNotLoggedIn(true);
           return;
         }
         setProviders(user.connectedProviders ?? []);
-        setIsConnected(readiness?.github.connectionStatus === 'connected');
-        setOauthConnection(oauthConn);
+        setExistingConnection(connection);
       })
       .catch(() => {
         setNotLoggedIn(true);
@@ -139,8 +126,8 @@ export default function GithubConnectPage() {
     );
   }
 
-  // ── 이미 연결된 경우 (연결 방식 무관) ─────────────────────
-  if (isConnected) {
+  // ── 이미 연결된 계정이 있는 경우 ──────────────────────────
+  if (existingConnection) {
     return (
       <main className="mx-auto max-w-lg px-4 py-12">
         <h1 className="mb-2 text-2xl font-semibold">GitHub 연결</h1>
@@ -148,10 +135,7 @@ export default function GithubConnectPage() {
         <div className="rounded border border-green-100 bg-green-50 px-4 py-4 mb-6">
           <p className="text-sm font-medium text-green-800 mb-1">이미 연결된 GitHub 계정이 있습니다</p>
           <p className="text-sm text-green-700">
-            {oauthConnection
-              ? <><span className="font-medium">{oauthConnection.githubLogin}</span> 계정이 연결되어 있습니다.</>
-              : 'GitHub 계정이 연결되어 있습니다.'
-            }
+            <span className="font-medium">{existingConnection.githubLogin}</span> 계정이 연결되어 있습니다.
           </p>
         </div>
 
@@ -163,7 +147,7 @@ export default function GithubConnectPage() {
             repository 선택하기 →
           </button>
           <button
-            onClick={() => setIsConnected(false)}
+            onClick={() => setExistingConnection(null)}
             className="text-sm text-zinc-500 underline"
           >
             다른 GitHub 계정으로 변경하기
