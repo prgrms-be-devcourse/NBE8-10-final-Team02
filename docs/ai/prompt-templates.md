@@ -635,7 +635,15 @@ applies_to: ai-prompt-io-contract
 - follow-up은 질문 세트 원본 `interview_questions` 신규 row가 아니라 세션 전용 질문 저장 구조에 저장한다.
 - 저장 대상은 `interview_session_questions`이며, `parentQuestionOrder`는 현재 세션의 부모 세션 질문으로 매핑한다.
 
-### 6.4.9 재시도 규칙
+### 6.4.9 호출 시점과 소비 규칙
+
+- `POST /interview/sessions/{sessionId}/answers`는 답변 저장까지만 담당한다.
+- follow-up 생성 시도는 답변 저장 직후의 `GET /interview/sessions/{sessionId}` 재조회 경로에서 best-effort로 1회 수행한다.
+- 같은 부모 답변에 대한 follow-up 생성 결과는 최대 1개만 확정한다.
+- 부모 세션 질문에 child 세션 질문이 이미 있으면 추가 dynamic follow-up 생성은 생략한다.
+- `followUpQuestion=null`, timeout, schema 오류면 세션은 멈추지 않고 다음 기본 질문으로 진행한다.
+
+### 6.4.10 재시도 규칙
 
 - malformed JSON 1회 재시도
 - 품질 미달 시 재시도보다 null 반환을 우선

@@ -9,6 +9,7 @@ import com.back.backend.domain.interview.dto.response.InterviewSessionTransition
 import com.back.backend.domain.interview.entity.FeedbackTag;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
 import com.back.backend.domain.interview.entity.InterviewAnswerTag;
+import com.back.backend.domain.interview.entity.InterviewQuestionType;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
 import com.back.backend.domain.interview.entity.InterviewSession;
@@ -52,6 +53,8 @@ public class InterviewSessionService {
 
     private static final Duration AUTO_PAUSE_THRESHOLD = Duration.ofMinutes(30);
     private static final Duration RESULT_GENERATION_RETRY_COOLDOWN = Duration.ofSeconds(30);
+    private static final int MAX_FOLLOWUP_DEPTH = 1;
+    private static final int QUESTION_ORDER_SHIFT_OFFSET = 1000;
     // paused 세션도 사용자가 이어서 재개할 수 있는 활성 세션으로 본다.
     // 여기서 제외하면 새 세션을 하나 더 시작해 단일 활성 세션 규칙이 깨질 수 있다.
     private static final List<InterviewSessionStatus> ACTIVE_STATUSES = List.of(
@@ -66,10 +69,12 @@ public class InterviewSessionService {
     private final InterviewQuestionRepository interviewQuestionRepository;
     private final InterviewSessionQuestionRepository interviewSessionQuestionRepository;
     private final InterviewSessionRepository interviewSessionRepository;
+    private final InterviewFollowupGenerationService interviewFollowupGenerationService;
     private final InterviewResultGenerationService interviewResultGenerationService;
     private final InterviewResponseMapper interviewResponseMapper;
     private final Clock clock;
     private final PlatformTransactionManager transactionManager;
+    private final Set<Long> followupGenerationInFlight = ConcurrentHashMap.newKeySet();
     private final Set<Long> resultGenerationInFlight = ConcurrentHashMap.newKeySet();
     private final Map<Long, Instant> deferredResultRetryAt = new ConcurrentHashMap<>();
 
@@ -113,8 +118,12 @@ public class InterviewSessionService {
                 .toList();
     }
 
-    @Transactional
     public InterviewSessionDetailResponse getSessionDetail(long userId, long sessionId) {
+        resolvePendingFollowupIfNeeded(userId, sessionId);
+        return executeInTransaction(() -> loadSessionDetailResponse(userId, sessionId));
+    }
+
+    private InterviewSessionDetailResponse loadSessionDetailResponse(long userId, long sessionId) {
         InterviewSession session = getOwnedSession(userId, sessionId);
         normalizeAutoPauseIfExpired(session);
 
@@ -483,6 +492,168 @@ public class InterviewSessionService {
                 .orElse(null);
     }
 
+    private void resolvePendingFollowupIfNeeded(long userId, long sessionId) {
+        PendingFollowupResolution pendingFollowup = executeNullableInTransaction(
+                () -> preparePendingFollowupResolution(userId, sessionId)
+        );
+        if (pendingFollowup == null) {
+            return;
+        }
+
+        if (!pendingFollowup.aiRequired()) {
+            executeWithoutResultInTransaction(() -> markFollowupResolved(sessionId, pendingFollowup.answerId()));
+            return;
+        }
+
+        if (!followupGenerationInFlight.add(pendingFollowup.answerId())) {
+            return;
+        }
+
+        try {
+            InterviewFollowupGenerationService.GeneratedInterviewFollowup generatedFollowup =
+                    interviewFollowupGenerationService.generate(pendingFollowup.request());
+            executeWithoutResultInTransaction(
+                    () -> finalizePendingFollowup(sessionId, pendingFollowup, generatedFollowup)
+            );
+        } catch (ServiceException exception) {
+            executeWithoutResultInTransaction(() -> markFollowupResolved(sessionId, pendingFollowup.answerId()));
+        } catch (RuntimeException exception) {
+            executeWithoutResultInTransaction(() -> markFollowupResolved(sessionId, pendingFollowup.answerId()));
+        } finally {
+            followupGenerationInFlight.remove(pendingFollowup.answerId());
+        }
+    }
+
+    private PendingFollowupResolution preparePendingFollowupResolution(long userId, long sessionId) {
+        InterviewSession session = getOwnedSession(userId, sessionId);
+        normalizeAutoPauseIfExpired(session);
+        if (session.getStatus() != InterviewSessionStatus.IN_PROGRESS) {
+            return null;
+        }
+
+        InterviewAnswer answer = interviewAnswerRepository.findAllPendingFollowupCandidatesBySessionId(
+                        sessionId,
+                        PageRequest.of(0, 1)
+                ).stream()
+                .findFirst()
+                .orElse(null);
+        if (answer == null) {
+            return null;
+        }
+
+        InterviewSessionQuestion parentQuestion = answer.getSessionQuestion();
+        int followUpDepth = calculateFollowupDepth(parentQuestion);
+        boolean childAlreadyExists = interviewSessionQuestionRepository.existsBySessionIdAndParentSessionQuestionId(
+                sessionId,
+                parentQuestion.getId()
+        );
+
+        InterviewFollowupGenerationService.FollowupGenerationRequest request =
+                new InterviewFollowupGenerationService.FollowupGenerationRequest(
+                        session.getQuestionSet().getApplication().getJobRole(),
+                        session.getQuestionSet().getApplication().getCompanyName(),
+                        new com.back.backend.domain.ai.pipeline.payload.InterviewFollowupPayloadBuilder.CurrentQuestion(
+                                parentQuestion.getQuestionOrder(),
+                                parentQuestion.getQuestionType().getValue(),
+                                parentQuestion.getQuestionText(),
+                                parentQuestion.getDifficultyLevel().getValue()
+                        ),
+                        new com.back.backend.domain.ai.pipeline.payload.InterviewFollowupPayloadBuilder.CurrentAnswer(
+                                answer.getAnswerText(),
+                                answer.isSkipped()
+                        ),
+                        followUpDepth,
+                        MAX_FOLLOWUP_DEPTH
+                );
+
+        return new PendingFollowupResolution(
+                answer.getId(),
+                parentQuestion.getId(),
+                !(childAlreadyExists
+                        || parentQuestion.getQuestionType() == InterviewQuestionType.FOLLOW_UP
+                        || answer.isSkipped()
+                        || followUpDepth >= MAX_FOLLOWUP_DEPTH),
+                request
+        );
+    }
+
+    private void finalizePendingFollowup(
+            long sessionId,
+            PendingFollowupResolution pendingFollowup,
+            InterviewFollowupGenerationService.GeneratedInterviewFollowup generatedFollowup
+    ) {
+        InterviewAnswer answer = interviewAnswerRepository.findByIdAndSessionId(
+                        pendingFollowup.answerId(),
+                        sessionId
+                )
+                .orElse(null);
+        if (answer == null || answer.getFollowupResolvedAt() != null) {
+            return;
+        }
+
+        if (generatedFollowup != null) {
+            InterviewSessionQuestion parentQuestion = interviewSessionQuestionRepository.findByIdAndSessionId(
+                            pendingFollowup.parentSessionQuestionId(),
+                            sessionId
+                    )
+                    .orElse(null);
+            if (parentQuestion != null
+                    && !interviewSessionQuestionRepository.existsBySessionIdAndParentSessionQuestionId(
+                            sessionId,
+                            parentQuestion.getId()
+                    )) {
+                insertGeneratedFollowupQuestion(parentQuestion, generatedFollowup);
+            }
+        }
+
+        markFollowupResolved(sessionId, pendingFollowup.answerId());
+    }
+
+    private void insertGeneratedFollowupQuestion(
+            InterviewSessionQuestion parentQuestion,
+            InterviewFollowupGenerationService.GeneratedInterviewFollowup generatedFollowup
+    ) {
+        int parentQuestionOrder = parentQuestion.getQuestionOrder();
+        interviewSessionQuestionRepository.addQuestionOrderOffsetAfter(
+                parentQuestion.getSession().getId(),
+                parentQuestionOrder,
+                QUESTION_ORDER_SHIFT_OFFSET
+        );
+        interviewSessionQuestionRepository.subtractQuestionOrderOffsetFrom(
+                parentQuestion.getSession().getId(),
+                parentQuestionOrder + QUESTION_ORDER_SHIFT_OFFSET + 1,
+                QUESTION_ORDER_SHIFT_OFFSET - 1
+        );
+
+        interviewSessionQuestionRepository.save(
+                InterviewSessionQuestion.builder()
+                        .session(parentQuestion.getSession())
+                        .sourceQuestion(null)
+                        .parentSessionQuestion(parentQuestion)
+                        .questionOrder(parentQuestionOrder + 1)
+                        .questionType(generatedFollowup.questionType())
+                        .difficultyLevel(generatedFollowup.difficultyLevel())
+                        .questionText(generatedFollowup.questionText())
+                        .build()
+        );
+    }
+
+    private void markFollowupResolved(long sessionId, long answerId) {
+        interviewAnswerRepository.findByIdAndSessionId(answerId, sessionId)
+                .filter(answer -> answer.getFollowupResolvedAt() == null)
+                .ifPresent(answer -> answer.markFollowupResolved(clock.instant()));
+    }
+
+    private int calculateFollowupDepth(InterviewSessionQuestion sessionQuestion) {
+        int depth = 0;
+        InterviewSessionQuestion current = sessionQuestion;
+        while (current.getParentSessionQuestion() != null) {
+            depth++;
+            current = current.getParentSessionQuestion();
+        }
+        return depth;
+    }
+
     private long requireQuestionSetId(Long questionSetId) {
         if (questionSetId == null) {
             throw new ServiceException(
@@ -696,6 +867,11 @@ public class InterviewSessionService {
         return transactionTemplate.execute(status -> action.get());
     }
 
+    private void executeWithoutResultInTransaction(Runnable action) {
+        TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+        transactionTemplate.executeWithoutResult(status -> action.run());
+    }
+
     private <T> T executeReadOnlyInTransaction(Supplier<T> action) {
         TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
         transactionTemplate.setReadOnly(true);
@@ -707,6 +883,14 @@ public class InterviewSessionService {
             long questionSetId,
             Instant endedAt,
             List<InterviewAnswer> answers
+    ) {
+    }
+
+    private record PendingFollowupResolution(
+            long answerId,
+            long parentSessionQuestionId,
+            boolean aiRequired,
+            InterviewFollowupGenerationService.FollowupGenerationRequest request
     ) {
     }
 }

@@ -15,6 +15,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.Check;
 
+import java.time.Instant;
+
 @Getter
 @Entity
 @Builder
@@ -52,8 +54,15 @@ public class InterviewAnswer extends CreatedAtEntity {
     @Column(name = "evaluation_rationale", columnDefinition = "text")
     private String evaluationRationale;
 
+    @Column(name = "followup_resolved_at")
+    private Instant followupResolvedAt;
+
     public void applyEvaluation(int score, String evaluationRationale) {
         this.score = score;
         this.evaluationRationale = evaluationRationale;
+    }
+
+    public void markFollowupResolved(Instant followupResolvedAt) {
+        this.followupResolvedAt = followupResolvedAt;
     }
 }
