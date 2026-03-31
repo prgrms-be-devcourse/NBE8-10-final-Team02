@@ -1,5 +1,8 @@
 package com.back.backend.domain.interview.controller;
 
+import com.back.backend.domain.ai.client.AiClientException;
+import com.back.backend.domain.ai.client.AiProvider;
+import com.back.backend.domain.ai.pipeline.AiPipeline;
 import com.back.backend.domain.application.entity.Application;
 import com.back.backend.domain.application.entity.ApplicationStatus;
 import com.back.backend.domain.interview.entity.DifficultyLevel;
@@ -15,6 +18,7 @@ import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +34,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.findSessionQuestion;
 import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.persistSessionQuestionSnapshot;
 import static org.hamcrest.Matchers.nullValue;
@@ -44,9 +50,14 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
 
     private static final Instant FIXED_NOW = Instant.parse("2026-03-25T09:00:00Z");
     private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
+    private static final String FOLLOWUP_TEMPLATE_ID = "ai.interview.followup.generate.v1";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Autowired
     private EntityManager entityManager;
+
+    @MockitoBean
+    private AiPipeline aiPipeline;
 
     @BeforeEach
     void setUpClock() {
@@ -131,6 +142,138 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
     }
 
     @Test
+    void getSessionDetail_generatesDynamicFollowupAndUsesItAsCurrentQuestion() throws Exception {
+        User user = persistUser("detail-followup@example.com", "detail-followup");
+        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
+        InterviewSessionQuestion firstQuestion = findSessionQuestion(entityManager, session, 1);
+        InterviewAnswer answer = persistAnswer(
+                session,
+                firstQuestion,
+                1,
+                false,
+                "프로젝트 요구사항과 팀의 유지보수 역량을 함께 고려해서 기술을 선택했습니다.",
+                false
+        );
+
+        given(aiPipeline.execute(eq(FOLLOWUP_TEMPLATE_ID), anyString()))
+                .willReturn(OBJECT_MAPPER.readTree("""
+                        {
+                          "followUpQuestion": {
+                            "questionType": "follow_up",
+                            "difficultyLevel": "medium",
+                            "questionText": "그 선택 기준을 조금 더 구체적으로 설명해주실 수 있나요?",
+                            "parentQuestionOrder": 1
+                          },
+                          "qualityFlags": []
+                        }
+                        """));
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
+                        .with(authenticated(user.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentQuestion.questionOrder").value(2))
+                .andExpect(jsonPath("$.data.currentQuestion.questionType").value("follow_up"))
+                .andExpect(jsonPath("$.data.currentQuestion.questionText")
+                        .value("그 선택 기준을 조금 더 구체적으로 설명해주실 수 있나요?"))
+                .andExpect(jsonPath("$.data.totalQuestionCount").value(4))
+                .andExpect(jsonPath("$.data.answeredQuestionCount").value(1))
+                .andExpect(jsonPath("$.data.remainingQuestionCount").value(3));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        InterviewAnswer refreshedAnswer = entityManager.find(InterviewAnswer.class, answer.getId());
+        assertThat(refreshedAnswer.getFollowupResolvedAt()).isNotNull();
+        assertThat(entityManager.createQuery(
+                        "select count(q) from InterviewSessionQuestion q where q.session.id = :sessionId",
+                        Long.class
+                )
+                .setParameter("sessionId", session.getId())
+                .getSingleResult()).isEqualTo(4L);
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
+                        .with(authenticated(user.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalQuestionCount").value(4))
+                .andExpect(jsonPath("$.data.currentQuestion.questionType").value("follow_up"));
+    }
+
+    @Test
+    void getSessionDetail_fallsThroughToNextBaseQuestionWhenFollowupReturnsNull() throws Exception {
+        User user = persistUser("detail-followup-null@example.com", "detail-followup-null");
+        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
+        InterviewSessionQuestion firstQuestion = findSessionQuestion(entityManager, session, 1);
+        InterviewSessionQuestion secondQuestion = findSessionQuestion(entityManager, session, 2);
+        InterviewAnswer answer = persistAnswer(
+                session,
+                firstQuestion,
+                1,
+                false,
+                "이 답변은 추상적으로만 말해서 추가 follow-up이 어려운 상황입니다.",
+                false
+        );
+
+        given(aiPipeline.execute(eq(FOLLOWUP_TEMPLATE_ID), anyString()))
+                .willReturn(OBJECT_MAPPER.readTree("""
+                        {
+                          "followUpQuestion": null,
+                          "qualityFlags": ["low_context"]
+                        }
+                        """));
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
+                        .with(authenticated(user.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentQuestion.id").value(secondQuestion.getId()))
+                .andExpect(jsonPath("$.data.currentQuestion.questionOrder").value(2))
+                .andExpect(jsonPath("$.data.totalQuestionCount").value(3))
+                .andExpect(jsonPath("$.data.answeredQuestionCount").value(1))
+                .andExpect(jsonPath("$.data.remainingQuestionCount").value(2));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        InterviewAnswer refreshedAnswer = entityManager.find(InterviewAnswer.class, answer.getId());
+        assertThat(refreshedAnswer.getFollowupResolvedAt()).isNotNull();
+    }
+
+    @Test
+    void getSessionDetail_fallsThroughToNextBaseQuestionWhenAiProviderFails() throws Exception {
+        User user = persistUser("detail-followup-ai-fail@example.com", "detail-followup-ai-fail");
+        InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
+        InterviewSessionQuestion firstQuestion = findSessionQuestion(entityManager, session, 1);
+        InterviewSessionQuestion secondQuestion = findSessionQuestion(entityManager, session, 2);
+        InterviewAnswer answer = persistAnswer(
+                session,
+                firstQuestion,
+                1,
+                false,
+                "답변은 충분히 길지만 AI provider 실패를 fallback으로 흘려보내는 케이스입니다.",
+                false
+        );
+
+        given(aiPipeline.execute(eq(FOLLOWUP_TEMPLATE_ID), anyString()))
+                .willThrow(new AiClientException(
+                        AiProvider.GEMINI,
+                        ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                        "provider timeout"
+                ));
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
+                        .with(authenticated(user.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentQuestion.id").value(secondQuestion.getId()))
+                .andExpect(jsonPath("$.data.currentQuestion.questionOrder").value(2))
+                .andExpect(jsonPath("$.data.totalQuestionCount").value(3));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        InterviewAnswer refreshedAnswer = entityManager.find(InterviewAnswer.class, answer.getId());
+        assertThat(refreshedAnswer.getFollowupResolvedAt()).isNotNull();
+    }
+
+    @Test
     void getSessionDetail_returnsNullCurrentQuestionWhenAllQuestionsAnswered() throws Exception {
         User user = persistUser("detail-complete@example.com", "detail-complete");
         InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
@@ -138,9 +281,9 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
         InterviewSessionQuestion secondQuestion = findSessionQuestion(entityManager, session, 2);
         InterviewSessionQuestion thirdQuestion = findSessionQuestion(entityManager, session, 3);
         // 마지막 질문까지 답변이 저장된 상태를 만들어 currentQuestion=null 계약을 확인한다.
-        persistAnswer(session, firstQuestion, 1, false, "첫 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.");
-        persistAnswer(session, secondQuestion, 2, false, "두 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.");
-        persistAnswer(session, thirdQuestion, 3, true, null);
+        persistAnswer(session, firstQuestion, 1, false, "첫 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.", true);
+        persistAnswer(session, secondQuestion, 2, false, "두 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.", true);
+        persistAnswer(session, thirdQuestion, 3, true, null, true);
 
         mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
                         .with(authenticated(user.getId())))
@@ -160,9 +303,9 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
         InterviewSessionQuestion firstQuestion = findSessionQuestion(entityManager, session, 1);
         InterviewSessionQuestion secondQuestion = findSessionQuestion(entityManager, session, 2);
         InterviewSessionQuestion thirdQuestion = findSessionQuestion(entityManager, session, 3);
-        persistAnswer(session, firstQuestion, 1, false, "첫 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.");
-        persistAnswer(session, secondQuestion, 2, false, "두 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.");
-        persistAnswer(session, thirdQuestion, 3, true, null);
+        persistAnswer(session, firstQuestion, 1, false, "첫 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.", true);
+        persistAnswer(session, secondQuestion, 2, false, "두 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.", true);
+        persistAnswer(session, thirdQuestion, 3, true, null, true);
 
         mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
                         .with(authenticated(user.getId())))
@@ -281,12 +424,23 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
         return session;
     }
 
-    private void persistAnswer(
+    private InterviewAnswer persistAnswer(
             InterviewSession session,
             InterviewSessionQuestion question,
             int answerOrder,
             boolean skipped,
             String answerText
+    ) {
+        return persistAnswer(session, question, answerOrder, skipped, answerText, true);
+    }
+
+    private InterviewAnswer persistAnswer(
+            InterviewSession session,
+            InterviewSessionQuestion question,
+            int answerOrder,
+            boolean skipped,
+            String answerText,
+            boolean followupResolved
     ) {
         InterviewAnswer answer = InterviewAnswer.builder()
                 .session(session)
@@ -295,7 +449,11 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 .answerText(answerText)
                 .skipped(skipped)
                 .build();
+        if (followupResolved) {
+            answer.markFollowupResolved(FIXED_NOW);
+        }
         entityManager.persist(answer);
         entityManager.flush();
+        return answer;
     }
 }
