@@ -55,8 +55,7 @@ export default function GithubConnectPage() {
     setSubmitting(true);
     setApiError(null);
     try {
-      const authorizationUrl = await getGithubLinkUrl('/portfolio/github');
-      window.location.href = authorizationUrl;
+      window.location.href = await getGithubLinkUrl('/portfolio/github');
     } catch (err) {
       const raw = err instanceof Error ? err.message : '';
       if (raw.includes('401')) {
