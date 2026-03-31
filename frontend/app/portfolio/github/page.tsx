@@ -134,7 +134,7 @@ export default function GithubConnectPage() {
         <h1 className="mb-2 text-2xl font-semibold">GitHub 연결</h1>
 
         <div className="rounded border border-green-100 bg-green-50 px-4 py-4 mb-6">
-          <p className="text-sm font-medium text-green-800 mb-1">이미 연결된 GitHub 계정이 있습니다</p>
+          <p className="text-sm font-medium text-green-800 mb-1">GitHub 계정이 연결되었습니다</p>
           <p className="text-sm text-green-700">
             <span className="font-medium">{existingConnection.githubLogin}</span> 계정이 연결되어 있습니다.
           </p>
