@@ -69,7 +69,7 @@ export default function InterviewResultReport({
   backHref,
   backLabel,
   title = '면접 결과 리포트',
-  description = '세션 종료 후 생성된 총평과 질문별 피드백을 확인합니다.',
+  description = '세션 종료 후 생성된 총평과 질문별 피드백을 확인합니다. 답변된 꼬리질문도 같은 흐름 안에 함께 표시됩니다.',
   refreshLabel = '다시 보기',
   onRefresh,
   showHeader = true,
@@ -113,10 +113,17 @@ export default function InterviewResultReport({
           </span>
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl bg-zinc-50 px-4 py-4">
             <p className="text-xs text-zinc-500">총점</p>
             <p className="mt-1 text-3xl font-semibold text-zinc-900">{result.totalScore}</p>
+          </div>
+          <div className="rounded-xl bg-zinc-50 px-4 py-4">
+            <p className="text-xs text-zinc-500">검토된 답변 수</p>
+            <p className="mt-1 text-3xl font-semibold text-zinc-900">{result.answers.length}</p>
+            <p className="mt-2 text-xs leading-5 text-zinc-500">
+              답변된 꼬리질문도 이 개수에 함께 포함됩니다.
+            </p>
           </div>
           <div className="rounded-xl bg-zinc-50 px-4 py-4">
             <p className="text-xs text-zinc-500">시작 시각</p>
@@ -155,6 +162,9 @@ export default function InterviewResultReport({
         <div className="mb-4">
           <p className="text-xs font-medium text-zinc-500">질문별 상세 피드백</p>
           <h2 className="mt-1 text-lg font-semibold text-zinc-900">질문 단위 리뷰</h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-500">
+            아래 목록은 서버가 내려준 답변 순서를 그대로 따릅니다. 답변된 꼬리질문도 일반 질문과 같은 흐름 안에 포함됩니다.
+          </p>
         </div>
 
         <div className="space-y-4">
@@ -162,11 +172,18 @@ export default function InterviewResultReport({
             <article key={answer.answerId} className="rounded-2xl border border-zinc-200 px-4 py-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-                  Q{index + 1}
+                  순서 {index + 1}
                 </span>
-                <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                  점수 {answer.score}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {answer.answerText === null && (
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">
+                      건너뜀
+                    </span>
+                  )}
+                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                    점수 {answer.score}
+                  </span>
+                </div>
               </div>
 
               <p className="mt-3 text-sm font-medium leading-6 text-zinc-900">{answer.questionText}</p>

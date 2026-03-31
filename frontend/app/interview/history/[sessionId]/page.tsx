@@ -154,7 +154,7 @@ export default function InterviewHistoryDetailPage() {
         </Link>
         <h1 className="mt-2 text-2xl font-semibold text-zinc-900">면접 히스토리 상세</h1>
         <p className="mt-2 text-sm text-zinc-500">
-          세션 기본 정보와 결과 재진입 상태를 다시 확인합니다.
+          세션 기본 정보와 결과 재진입 상태를 다시 확인합니다. 결과가 준비되면 답변된 꼬리질문도 같은 흐름 안에서 함께 확인합니다.
         </p>
       </div>
 
@@ -227,7 +227,7 @@ export default function InterviewHistoryDetailPage() {
           <p className="text-sm font-semibold text-amber-900">결과 준비 중</p>
           <p className="mt-2 text-sm leading-6 text-amber-800">{pendingMessage}</p>
           <p className="mt-2 text-sm text-amber-800">
-            v1에서는 자동 polling 없이 이 화면에서 수동으로 결과를 다시 확인합니다.
+            v1에서는 자동 polling 없이 이 화면에서 수동으로 결과를 다시 확인합니다. 결과가 준비되면 기본 질문과 답변된 꼬리질문이 같은 결과 목록에 함께 표시됩니다.
           </p>
 
           <div className="mt-5 flex flex-wrap gap-3">
