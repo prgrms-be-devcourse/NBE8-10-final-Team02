@@ -12,6 +12,7 @@ import com.back.backend.domain.interview.entity.InterviewAnswerTag;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
 import com.back.backend.domain.interview.entity.InterviewSession;
+import com.back.backend.domain.interview.entity.InterviewSessionQuestion;
 import com.back.backend.domain.interview.entity.InterviewSessionStatus;
 import com.back.backend.domain.interview.mapper.InterviewResponseMapper;
 import com.back.backend.domain.interview.repository.FeedbackTagRepository;
@@ -20,11 +21,13 @@ import com.back.backend.domain.interview.repository.InterviewAnswerTagRepository
 import com.back.backend.domain.interview.repository.InterviewQuestionRepository;
 import com.back.backend.domain.interview.repository.InterviewQuestionSetRepository;
 import com.back.backend.domain.interview.repository.InterviewSessionRepository;
+import com.back.backend.domain.interview.repository.InterviewSessionQuestionRepository;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import com.back.backend.global.response.FieldErrorDetail;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,6 +64,7 @@ public class InterviewSessionService {
     private final FeedbackTagRepository feedbackTagRepository;
     private final InterviewAnswerTagRepository interviewAnswerTagRepository;
     private final InterviewQuestionRepository interviewQuestionRepository;
+    private final InterviewSessionQuestionRepository interviewSessionQuestionRepository;
     private final InterviewSessionRepository interviewSessionRepository;
     private final InterviewResultGenerationService interviewResultGenerationService;
     private final InterviewResponseMapper interviewResponseMapper;
@@ -94,6 +98,7 @@ public class InterviewSessionService {
                         .endedAt(null)
                         .build()
         );
+        createSessionQuestionSnapshot(session);
 
         return interviewResponseMapper.toInterviewSessionResponse(session);
     }
@@ -113,12 +118,10 @@ public class InterviewSessionService {
         InterviewSession session = getOwnedSession(userId, sessionId);
         normalizeAutoPauseIfExpired(session);
 
-        long totalQuestionCount = interviewQuestionRepository.countByQuestionSetId(session.getQuestionSet().getId());
+        long totalQuestionCount = interviewSessionQuestionRepository.countBySessionId(session.getId());
         long answeredQuestionCount = interviewAnswerRepository.countBySessionId(session.getId());
         long remainingQuestionCount = Math.max(totalQuestionCount - answeredQuestionCount, 0);
-        // 복원 화면의 현재 질문은 "이미 저장된 답변 수 + 1" 순번으로 고정한다.
-        // 남은 질문이 없거나 종료 상태면 현재 질문을 노출하지 않는다.
-        InterviewQuestion currentQuestion = resolveCurrentQuestion(session, answeredQuestionCount, remainingQuestionCount);
+        InterviewSessionQuestion currentQuestion = resolveCurrentQuestion(session, answeredQuestionCount, remainingQuestionCount);
 
         return interviewResponseMapper.toInterviewSessionDetailResponse(
                 session,
@@ -140,7 +143,7 @@ public class InterviewSessionService {
         validateResultReadable(session);
 
         List<InterviewAnswer> answers = interviewAnswerRepository
-                .findAllWithQuestionBySessionIdOrderByAnswerOrderAsc(session.getId());
+                .findAllWithSessionQuestionBySessionIdOrderByAnswerOrderAsc(session.getId());
         if (answers.isEmpty()) {
             throw resultNotReady();
         }
@@ -274,7 +277,7 @@ public class InterviewSessionService {
         // 결과 생성 payload는 외부 AI 호출 전에 모두 읽어두고 트랜잭션을 닫는다.
         // 이렇게 해야 세션 종료 기록은 남기면서도 외부 API를 긴 트랜잭션 안에 두지 않는다.
         List<InterviewAnswer> answers = interviewAnswerRepository
-                .findAllWithQuestionBySessionIdOrderByAnswerOrderAsc(session.getId());
+                .findAllWithSessionQuestionBySessionIdOrderByAnswerOrderAsc(session.getId());
         return new SessionCompletionPreparation(
                 session.getId(),
                 session.getQuestionSet().getId(),
@@ -333,7 +336,7 @@ public class InterviewSessionService {
         }
 
         List<InterviewAnswer> answers = interviewAnswerRepository
-                .findAllWithQuestionBySessionIdOrderByAnswerOrderAsc(session.getId());
+                .findAllWithSessionQuestionBySessionIdOrderByAnswerOrderAsc(session.getId());
         if (answers.isEmpty()) {
             return null;
         }
@@ -463,7 +466,7 @@ public class InterviewSessionService {
         return tag;
     }
 
-    private InterviewQuestion resolveCurrentQuestion(
+    private InterviewSessionQuestion resolveCurrentQuestion(
             InterviewSession session,
             long answeredQuestionCount,
             long remainingQuestionCount
@@ -472,11 +475,12 @@ public class InterviewSessionService {
             return null;
         }
 
-        int currentQuestionOrder = Math.toIntExact(answeredQuestionCount + 1);
-        return interviewQuestionRepository.findByQuestionSetIdAndQuestionOrder(
-                session.getQuestionSet().getId(),
-                currentQuestionOrder
-        ).orElse(null);
+        return interviewSessionQuestionRepository.findAllUnansweredBySessionIdOrderByQuestionOrderAsc(
+                        session.getId(),
+                        PageRequest.of(0, 1)
+                ).stream()
+                .findFirst()
+                .orElse(null);
     }
 
     private long requireQuestionSetId(Long questionSetId) {
@@ -618,7 +622,7 @@ public class InterviewSessionService {
     }
 
     private void validateAllQuestionsAnswered(InterviewSession session) {
-        long totalQuestionCount = interviewQuestionRepository.countByQuestionSetId(session.getQuestionSet().getId());
+        long totalQuestionCount = interviewSessionQuestionRepository.countBySessionId(session.getId());
         long answeredQuestionCount = interviewAnswerRepository.countBySessionId(session.getId());
         long remainingQuestionCount = Math.max(totalQuestionCount - answeredQuestionCount, 0);
 
@@ -643,6 +647,42 @@ public class InterviewSessionService {
                     false,
                     List.of(new FieldErrorDetail("questionCount", "out_of_range"))
             );
+        }
+    }
+
+    private void createSessionQuestionSnapshot(InterviewSession session) {
+        List<InterviewQuestion> sourceQuestions = interviewQuestionRepository
+                .findAllByQuestionSetIdOrderByQuestionOrderAsc(session.getQuestionSet().getId());
+        if (sourceQuestions.isEmpty()) {
+            return;
+        }
+
+        Map<Long, InterviewSessionQuestion> sessionQuestionsBySourceId = new LinkedHashMap<>();
+        List<InterviewSessionQuestion> snapshotQuestions = sourceQuestions.stream()
+                .map(sourceQuestion -> {
+                    InterviewSessionQuestion sessionQuestion = InterviewSessionQuestion.builder()
+                            .session(session)
+                            .sourceQuestion(sourceQuestion)
+                            .questionOrder(sourceQuestion.getQuestionOrder())
+                            .questionType(sourceQuestion.getQuestionType())
+                            .difficultyLevel(sourceQuestion.getDifficultyLevel())
+                            .questionText(sourceQuestion.getQuestionText())
+                            .build();
+                    sessionQuestionsBySourceId.put(sourceQuestion.getId(), sessionQuestion);
+                    return sessionQuestion;
+                })
+                .toList();
+
+        interviewSessionQuestionRepository.saveAll(snapshotQuestions);
+
+        for (InterviewQuestion sourceQuestion : sourceQuestions) {
+            if (sourceQuestion.getParentQuestion() == null) {
+                continue;
+            }
+
+            InterviewSessionQuestion childQuestion = sessionQuestionsBySourceId.get(sourceQuestion.getId());
+            InterviewSessionQuestion parentQuestion = sessionQuestionsBySourceId.get(sourceQuestion.getParentQuestion().getId());
+            childQuestion.changeParentSessionQuestion(parentQuestion);
         }
     }
 

@@ -7,8 +7,10 @@ import com.back.backend.domain.interview.entity.DifficultyLevel;
 import com.back.backend.domain.interview.entity.FeedbackTag;
 import com.back.backend.domain.interview.entity.FeedbackTagCategory;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
-import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
+import com.back.backend.domain.interview.entity.InterviewSession;
+import com.back.backend.domain.interview.entity.InterviewSessionQuestion;
+import com.back.backend.domain.interview.entity.InterviewSessionStatus;
 import com.back.backend.domain.interview.entity.InterviewQuestionType;
 import com.back.backend.domain.interview.repository.FeedbackTagRepository;
 import com.back.backend.global.exception.ErrorCode;
@@ -213,17 +215,21 @@ class InterviewResultGenerationServiceTest {
                 .difficultyLevel(DifficultyLevel.MEDIUM)
                 .questionTypes(new String[]{"technical_stack"})
                 .build();
-        InterviewQuestion question = InterviewQuestion.builder()
+        InterviewSession session = InterviewSession.builder()
                 .questionSet(questionSet)
+                .status(InterviewSessionStatus.IN_PROGRESS)
+                .build();
+        InterviewSessionQuestion sessionQuestion = InterviewSessionQuestion.builder()
+                .session(session)
                 .questionOrder(answerOrder)
                 .questionType(InterviewQuestionType.PROJECT)
                 .difficultyLevel(DifficultyLevel.MEDIUM)
                 .questionText(questionText)
                 .build();
-        ReflectionTestUtils.setField(question, "id", (long) answerOrder);
+        ReflectionTestUtils.setField(sessionQuestion, "id", (long) answerOrder);
 
         return InterviewAnswer.builder()
-                .question(question)
+                .sessionQuestion(sessionQuestion)
                 .answerOrder(answerOrder)
                 .answerText(answerText)
                 .skipped(false)

@@ -6,6 +6,7 @@ import com.back.backend.domain.interview.entity.DifficultyLevel;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
+import com.back.backend.domain.interview.entity.InterviewSessionQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionType;
 import com.back.backend.domain.interview.entity.InterviewSession;
 import com.back.backend.domain.interview.entity.InterviewSessionStatus;
@@ -32,6 +33,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 
+import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.findSessionQuestion;
+import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.persistSessionQuestionSnapshot;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
@@ -343,10 +346,13 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         InterviewQuestion secondQuestion = persistQuestion(questionSet, 2, "두 번째 질문");
         InterviewQuestion thirdQuestion = persistQuestion(questionSet, 3, "세 번째 질문");
         InterviewSession session = persistSession(user, questionSet, InterviewSessionStatus.IN_PROGRESS);
+        InterviewSessionQuestion firstSessionQuestion = findSessionQuestion(entityManager, session, 1);
+        InterviewSessionQuestion secondSessionQuestion = findSessionQuestion(entityManager, session, 2);
+        InterviewSessionQuestion thirdSessionQuestion = findSessionQuestion(entityManager, session, 3);
         List<InterviewAnswer> answers = List.of(
-                persistAnswer(session, firstQuestion, 1, VALID_ANSWER + " 첫 번째"),
-                persistAnswer(session, secondQuestion, 2, VALID_ANSWER + " 두 번째"),
-                persistAnswer(session, thirdQuestion, 3, VALID_ANSWER + " 세 번째")
+                persistAnswer(session, firstSessionQuestion, 1, VALID_ANSWER + " 첫 번째"),
+                persistAnswer(session, secondSessionQuestion, 2, VALID_ANSWER + " 두 번째"),
+                persistAnswer(session, thirdSessionQuestion, 3, VALID_ANSWER + " 세 번째")
         );
         return new UserFixture(user, questionSet, session, answers);
     }
@@ -359,9 +365,11 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         InterviewQuestion secondQuestion = persistQuestion(questionSet, 2, "두 번째 질문");
         persistQuestion(questionSet, 3, "세 번째 질문");
         InterviewSession session = persistSession(user, questionSet, InterviewSessionStatus.IN_PROGRESS);
+        InterviewSessionQuestion firstSessionQuestion = findSessionQuestion(entityManager, session, 1);
+        InterviewSessionQuestion secondSessionQuestion = findSessionQuestion(entityManager, session, 2);
         List<InterviewAnswer> answers = List.of(
-                persistAnswer(session, firstQuestion, 1, VALID_ANSWER + " 첫 번째"),
-                persistAnswer(session, secondQuestion, 2, VALID_ANSWER + " 두 번째")
+                persistAnswer(session, firstSessionQuestion, 1, VALID_ANSWER + " 첫 번째"),
+                persistAnswer(session, secondSessionQuestion, 2, VALID_ANSWER + " 두 번째")
         );
         return new UserFixture(user, questionSet, session, answers);
     }
@@ -425,18 +433,19 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 .build();
         entityManager.persist(session);
         entityManager.flush();
+        persistSessionQuestionSnapshot(entityManager, session);
         return session;
     }
 
     private InterviewAnswer persistAnswer(
             InterviewSession session,
-            InterviewQuestion question,
+            InterviewSessionQuestion question,
             int answerOrder,
             String answerText
     ) {
         InterviewAnswer answer = InterviewAnswer.builder()
                 .session(session)
-                .question(question)
+                .sessionQuestion(question)
                 .answerOrder(answerOrder)
                 .answerText(answerText)
                 .skipped(false)

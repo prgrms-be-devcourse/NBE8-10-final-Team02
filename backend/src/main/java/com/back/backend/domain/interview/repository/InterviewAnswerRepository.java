@@ -16,9 +16,9 @@ public interface InterviewAnswerRepository extends JpaRepository<InterviewAnswer
     @Query("""
             select answer
             from InterviewAnswer answer
-            join fetch answer.question question
+            join fetch answer.sessionQuestion sessionQuestion
             where answer.session.id = :sessionId
             order by answer.answerOrder asc
             """)
-    List<InterviewAnswer> findAllWithQuestionBySessionIdOrderByAnswerOrderAsc(@Param("sessionId") Long sessionId);
+    List<InterviewAnswer> findAllWithSessionQuestionBySessionIdOrderByAnswerOrderAsc(@Param("sessionId") Long sessionId);
 }

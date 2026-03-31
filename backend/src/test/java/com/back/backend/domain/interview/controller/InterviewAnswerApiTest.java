@@ -9,6 +9,7 @@ import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
 import com.back.backend.domain.interview.entity.InterviewQuestionType;
 import com.back.backend.domain.interview.entity.InterviewSession;
+import com.back.backend.domain.interview.entity.InterviewSessionQuestion;
 import com.back.backend.domain.interview.entity.InterviewSessionStatus;
 import com.back.backend.domain.interview.repository.InterviewAnswerRepository;
 import com.back.backend.domain.user.entity.User;
@@ -31,6 +32,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 
+import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.findSessionQuestion;
+import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.persistSessionQuestionSnapshot;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.hamcrest.Matchers.nullValue;
@@ -63,9 +66,8 @@ class InterviewAnswerApiTest extends ApiTestBase {
         User user = persistUser("answer-submit@example.com", "answer-submit");
         Instant previousActivityAt = FIXED_NOW.minus(Duration.ofMinutes(5));
         InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, previousActivityAt);
-        InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
-        persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
-        persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
+        persistDefaultQuestionSnapshot(session);
+        InterviewSessionQuestion currentQuestion = findSessionQuestion(entityManager, session, 1);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/answers", session.getId())
                         .with(authenticated(user.getId()))
@@ -99,9 +101,8 @@ class InterviewAnswerApiTest extends ApiTestBase {
     void submitAnswer_returns201WhenSkippedAndStoresNullText() throws Exception {
         User user = persistUser("answer-skip@example.com", "answer-skip");
         InterviewSession session = persistInProgressSession(user);
-        InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
-        persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
-        persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
+        persistDefaultQuestionSnapshot(session);
+        InterviewSessionQuestion currentQuestion = findSessionQuestion(entityManager, session, 1);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/answers", session.getId())
                         .with(authenticated(user.getId()))
@@ -128,9 +129,8 @@ class InterviewAnswerApiTest extends ApiTestBase {
         User owner = persistUser("answer-owner@example.com", "answer-owner");
         User otherUser = persistUser("answer-other@example.com", "answer-other");
         InterviewSession session = persistInProgressSession(owner);
-        InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
-        persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
-        persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
+        persistDefaultQuestionSnapshot(session);
+        InterviewSessionQuestion currentQuestion = findSessionQuestion(entityManager, session, 1);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/answers", session.getId())
                         .with(authenticated(otherUser.getId()))
@@ -149,13 +149,23 @@ class InterviewAnswerApiTest extends ApiTestBase {
     void submitAnswer_returns404WhenQuestionDoesNotBelongToSession() throws Exception {
         User user = persistUser("answer-question-missing@example.com", "answer-question-missing");
         InterviewSession session = persistInProgressSession(user);
-        persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
-        persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
-        persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
+        persistDefaultQuestionSnapshot(session);
 
         Application otherApplication = persistApplication(user, "other-application");
         InterviewQuestionSet otherQuestionSet = persistQuestionSet(user, otherApplication, 1);
-        InterviewQuestion foreignQuestion = persistQuestion(otherQuestionSet, 1, "다른 질문 세트 질문");
+        persistQuestion(otherQuestionSet, 1, "다른 질문 세트 질문");
+        InterviewSession otherSession = InterviewSession.builder()
+                .user(user)
+                .questionSet(otherQuestionSet)
+                .status(InterviewSessionStatus.IN_PROGRESS)
+                .startedAt(FIXED_NOW)
+                .lastActivityAt(FIXED_NOW)
+                .endedAt(null)
+                .build();
+        entityManager.persist(otherSession);
+        entityManager.flush();
+        persistSessionQuestionSnapshot(entityManager, otherSession);
+        InterviewSessionQuestion foreignQuestion = findSessionQuestion(entityManager, otherSession, 1);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/answers", session.getId())
                         .with(authenticated(user.getId()))
@@ -174,9 +184,8 @@ class InterviewAnswerApiTest extends ApiTestBase {
     void submitAnswer_returns400WhenAnswerIsRequired() throws Exception {
         User user = persistUser("answer-required@example.com", "answer-required");
         InterviewSession session = persistInProgressSession(user);
-        InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
-        persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
-        persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
+        persistDefaultQuestionSnapshot(session);
+        InterviewSessionQuestion currentQuestion = findSessionQuestion(entityManager, session, 1);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/answers", session.getId())
                         .with(authenticated(user.getId()))
@@ -196,9 +205,8 @@ class InterviewAnswerApiTest extends ApiTestBase {
     void submitAnswer_returns400WhenAnswerIsTooShort() throws Exception {
         User user = persistUser("answer-short@example.com", "answer-short");
         InterviewSession session = persistInProgressSession(user);
-        InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
-        persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
-        persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
+        persistDefaultQuestionSnapshot(session);
+        InterviewSessionQuestion currentQuestion = findSessionQuestion(entityManager, session, 1);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/answers", session.getId())
                         .with(authenticated(user.getId()))
@@ -218,9 +226,8 @@ class InterviewAnswerApiTest extends ApiTestBase {
     void submitAnswer_returns400WhenQuestionOrderDoesNotMatchCurrentTurn() throws Exception {
         User user = persistUser("answer-sequence@example.com", "answer-sequence");
         InterviewSession session = persistInProgressSession(user);
-        persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
-        InterviewQuestion secondQuestion = persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
-        persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
+        persistDefaultQuestionSnapshot(session);
+        InterviewSessionQuestion secondQuestion = findSessionQuestion(entityManager, session, 2);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/answers", session.getId())
                         .with(authenticated(user.getId()))
@@ -239,9 +246,8 @@ class InterviewAnswerApiTest extends ApiTestBase {
     void submitAnswer_returns409WhenSessionIsPaused() throws Exception {
         User user = persistUser("answer-paused@example.com", "answer-paused");
         InterviewSession session = persistSession(user, InterviewSessionStatus.PAUSED, FIXED_NOW);
-        InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
-        persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
-        persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
+        persistDefaultQuestionSnapshot(session);
+        InterviewSessionQuestion currentQuestion = findSessionQuestion(entityManager, session, 1);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/answers", session.getId())
                         .with(authenticated(user.getId()))
@@ -260,9 +266,8 @@ class InterviewAnswerApiTest extends ApiTestBase {
     void submitAnswer_returns409WhenSessionAlreadyCompleted() throws Exception {
         User user = persistUser("answer-completed@example.com", "answer-completed");
         InterviewSession session = persistSession(user, InterviewSessionStatus.COMPLETED, FIXED_NOW);
-        InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
-        persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
-        persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
+        persistDefaultQuestionSnapshot(session);
+        InterviewSessionQuestion currentQuestion = findSessionQuestion(entityManager, session, 1);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/answers", session.getId())
                         .with(authenticated(user.getId()))
@@ -283,9 +288,8 @@ class InterviewAnswerApiTest extends ApiTestBase {
         // 31분 전 활동 시각으로 auto-pause 경계를 넘긴 세션을 만든다.
         // 답변 제출 시 충돌 오류를 내면서도 paused 상태 보정은 저장되는지 본다.
         InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW.minus(Duration.ofMinutes(31)));
-        InterviewQuestion currentQuestion = persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
-        persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
-        persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
+        persistDefaultQuestionSnapshot(session);
+        InterviewSessionQuestion currentQuestion = findSessionQuestion(entityManager, session, 1);
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/answers", session.getId())
                         .with(authenticated(user.getId()))
@@ -365,6 +369,13 @@ class InterviewAnswerApiTest extends ApiTestBase {
         entityManager.persist(question);
         entityManager.flush();
         return question;
+    }
+
+    private void persistDefaultQuestionSnapshot(InterviewSession session) {
+        persistQuestion(session.getQuestionSet(), 1, "첫 번째 질문");
+        persistQuestion(session.getQuestionSet(), 2, "두 번째 질문");
+        persistQuestion(session.getQuestionSet(), 3, "세 번째 질문");
+        persistSessionQuestionSnapshot(entityManager, session);
     }
 
     private InterviewSession persistInProgressSession(User user) {

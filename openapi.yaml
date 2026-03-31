@@ -447,6 +447,7 @@ components:
         id:
           type: integer
           format: int64
+          description: 세션 질문 id. 질문 세트 원본 질문 id가 아니라 현재 세션 스냅샷 기준 식별자
         questionOrder:
           type: integer
         questionType:
@@ -592,6 +593,7 @@ components:
         questionId:
           type: integer
           format: int64
+          description: 세션 질문 id
         questionText:
           type: string
         answerText:
@@ -930,6 +932,7 @@ components:
         questionId:
           type: integer
           format: int64
+          description: 저장된 세션 질문 id
         answerOrder:
           type: integer
         isSkipped:
@@ -3133,6 +3136,7 @@ paths:
                       retryable: false
                     meta: *id001
       description: 세션 복원 화면이 한 번의 조회로 그려질 수 있도록 현재 질문, 진행률, 남은 질문 수, resume 가능 여부, 마지막 활동 시각을 함께 반환한다.
+        currentQuestion.id는 세션 질문 id이며, 현재 질문은 답변이 없는 세션 질문 중 가장 작은 questionOrder로 계산한다.
         v1 자동 일시정지는 이 조회 요청 진입 시점에도 `lastActivityAt` 기준으로 평가하며, 30분 초과 상태의 `in_progress`
         세션은 `paused`로 정규화한다.
   /interview/sessions/{sessionId}/pause:
@@ -3317,6 +3321,7 @@ paths:
                 questionId:
                   type: integer
                   format: int64
+                  description: 세션 상세의 currentQuestion.id와 같은 세션 질문 id
                 answerOrder:
                   type: integer
                 answerText:
@@ -3330,7 +3335,7 @@ paths:
               - questionId
               - answerOrder
               - isSkipped
-              description: isSkipped=false인 경우 answerText는 최소 50자 이상이어야 하며, questionId와 answerOrder는 현재 순번과 일치해야 한다.
+              description: isSkipped=false인 경우 answerText는 최소 50자 이상이어야 하며, questionId는 현재 세션 질문 id와 일치해야 하고 answerOrder는 다음 제출 순번과 일치해야 한다.
       responses:
         '201':
           description: 답변 저장
@@ -3428,9 +3433,10 @@ paths:
                       message: 이미 종료된 면접 세션입니다.
                       retryable: false
                     meta: *id001
-      description: 세션 답변을 저장한다. 일반 답변은 `in_progress` 상태에서만 허용한다. questionId와 answerOrder는 현재 순번과
-        일치해야 한다. 세션 또는 질문이 현재 사용자 범위에서 없으면 404를 반환한다. v1 자동 일시정지는 답변 제출 요청 진입
-        시점에도 `lastActivityAt` 기준으로 평가하며, 30분 초과 상태의 세션은 `paused`로 정규화한 뒤 답변 제출을 막는다.
+      description: 세션 답변을 저장한다. 일반 답변은 `in_progress` 상태에서만 허용한다. questionId는 세션 질문 id이며,
+        현재 질문과 일치해야 한다. answerOrder는 다음 제출 순번과 일치해야 한다. 세션 또는 질문이 현재 사용자 범위에서
+        없으면 404를 반환한다. v1 자동 일시정지는 답변 제출 요청 진입 시점에도 `lastActivityAt` 기준으로 평가하며,
+        30분 초과 상태의 세션은 `paused`로 정규화한 뒤 답변 제출을 막는다.
   /interview/sessions/{sessionId}/complete:
     post:
       tags:
@@ -3608,4 +3614,5 @@ paths:
                       startedAt: '2026-03-17T10:35:00Z'
                       endedAt: '2026-03-17T10:40:00Z'
                     meta: *id001
-      description: 세션 결과와 피드백 리포트를 조회한다. 완료 직후에는 결과 생성 지연이 있을 수 있다.
+      description: 세션 결과와 피드백 리포트를 조회한다. answers[].questionId는 세션 질문 id를 사용한다.
+        완료 직후에는 결과 생성 지연이 있을 수 있다.
