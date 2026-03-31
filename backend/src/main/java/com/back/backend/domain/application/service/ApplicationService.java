@@ -155,9 +155,11 @@ public class ApplicationService {
         validateOwnedSourceCount(repositoryIds, repositories.size(), ErrorCode.GITHUB_REPOSITORY_NOT_FOUND, "선택한 repository를 찾을 수 없습니다.");
         validateOwnedSourceCount(documentIds, documents.size(), ErrorCode.DOCUMENT_NOT_FOUND, "선택한 문서를 찾을 수 없습니다.");
 
-        // source 저장은 부분 수정이 아니라 전체 교체로 다룬다.
+        // source 저장은 부분 수정이 아니라 전체 교체로 다루며, 같은 키 재삽입 전에 삭제를 먼저 반영한다.
         applicationSourceRepositoryBindingRepository.deleteByApplicationId(applicationId);
         applicationSourceDocumentBindingRepository.deleteByApplicationId(applicationId);
+        applicationSourceRepositoryBindingRepository.flush();
+        applicationSourceDocumentBindingRepository.flush();
 
         applicationSourceRepositoryBindingRepository.saveAll(
                 repositories.stream()
@@ -195,8 +197,9 @@ public class ApplicationService {
         List<SaveApplicationQuestionsRequest.QuestionItem> questionItems = request.questionsOrEmpty();
 
         validateQuestions(questionItems);
-        // 문항 저장도 화면 기준 현재 목록 전체를 덮어쓰는 방식으로 맞춘다.
+        // 문항 저장도 화면 기준 현재 목록 전체를 덮어쓰는 방식으로 맞추고, 기존 순번 삭제를 먼저 반영한다.
         applicationQuestionRepository.deleteByApplicationId(applicationId);
+        applicationQuestionRepository.flush();
 
         List<ApplicationQuestion> questions = questionItems.stream()
                 .map(questionItem -> ApplicationQuestion.builder()
