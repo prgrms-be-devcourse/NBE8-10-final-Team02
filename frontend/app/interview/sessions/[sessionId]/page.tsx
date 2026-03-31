@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   completeSession,
   getSessionDetail,
@@ -54,6 +54,7 @@ const MAX_ANSWER_LENGTH = 1000;
 const AUTO_PAUSE_THRESHOLD_MINUTES = 30;
 const AUTO_PAUSE_THRESHOLD_MS = AUTO_PAUSE_THRESHOLD_MINUTES * 60 * 1000;
 const CHAT_STORAGE_PREFIX = 'interview-session-chat';
+const DRAFT_STORAGE_PREFIX = 'interview-session-draft';
 
 type ChatMessageRole = 'question' | 'answer' | 'system';
 type ChatMessageTone = 'default' | 'success' | 'warning';
@@ -73,6 +74,12 @@ interface ChatMessage {
   createdAt: string;
 }
 
+interface StoredDraft {
+  questionId: number;
+  text: string;
+  savedAt: string;
+}
+
 function formatDateTime(value: string | null) {
   if (!value) {
     return '기록 없음';
@@ -81,6 +88,17 @@ function formatDateTime(value: string | null) {
   return new Intl.DateTimeFormat('ko-KR', {
     dateStyle: 'short',
     timeStyle: 'short',
+  }).format(new Date(value));
+}
+
+function formatTime(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(new Date(value));
 }
 
@@ -150,6 +168,10 @@ function getChatStorageKey(sessionId: number) {
   return `${CHAT_STORAGE_PREFIX}:${sessionId}`;
 }
 
+function getDraftStorageKey(sessionId: number) {
+  return `${DRAFT_STORAGE_PREFIX}:${sessionId}`;
+}
+
 function readStoredMessages(sessionId: number): ChatMessage[] {
   if (typeof window === 'undefined' || !Number.isFinite(sessionId)) {
     return [];
@@ -176,6 +198,47 @@ function writeStoredMessages(sessionId: number, messages: ChatMessage[]) {
   window.sessionStorage.setItem(getChatStorageKey(sessionId), JSON.stringify(messages));
 }
 
+function readStoredDraft(sessionId: number): StoredDraft | null {
+  if (typeof window === 'undefined' || !Number.isFinite(sessionId)) {
+    return null;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(getDraftStorageKey(sessionId));
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      typeof parsed.questionId !== 'number' ||
+      typeof parsed.text !== 'string' ||
+      typeof parsed.savedAt !== 'string'
+    ) {
+      return null;
+    }
+
+    return parsed as StoredDraft;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredDraft(sessionId: number, draft: StoredDraft | null) {
+  if (typeof window === 'undefined' || !Number.isFinite(sessionId)) {
+    return;
+  }
+
+  if (!draft) {
+    window.sessionStorage.removeItem(getDraftStorageKey(sessionId));
+    return;
+  }
+
+  window.sessionStorage.setItem(getDraftStorageKey(sessionId), JSON.stringify(draft));
+}
+
 function syncMessagesWithCurrentQuestion(
   previousMessages: ChatMessage[],
   session: InterviewSessionDetail,
@@ -199,18 +262,21 @@ export default function InterviewSessionPage() {
   const params = useParams();
   const router = useRouter();
   const sessionId = Number(params.sessionId);
+  const skipNextDraftPersistRef = useRef(false);
 
   const [session, setSession] = useState<InterviewSessionDetail | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredMessages(sessionId));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [answerText, setAnswerText] = useState('');
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submittingMode, setSubmittingMode] = useState<'answer' | 'skip' | null>(null);
   const [transitionError, setTransitionError] = useState<string | null>(null);
   const [transitionMode, setTransitionMode] = useState<'pause' | 'resume' | null>(null);
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [completingSession, setCompletingSession] = useState(false);
+  const currentQuestionId = session?.currentQuestion?.id ?? null;
 
   useEffect(() => {
     setMessages(readStoredMessages(sessionId));
@@ -219,6 +285,59 @@ export default function InterviewSessionPage() {
   useEffect(() => {
     writeStoredMessages(sessionId, messages);
   }, [messages, sessionId]);
+
+  useEffect(() => {
+    if (!Number.isFinite(sessionId)) {
+      return;
+    }
+
+    skipNextDraftPersistRef.current = true;
+
+    if (!currentQuestionId) {
+      writeStoredDraft(sessionId, null);
+      setAnswerText('');
+      setDraftSavedAt(null);
+      return;
+    }
+
+    const storedDraft = readStoredDraft(sessionId);
+    if (!storedDraft || storedDraft.questionId !== currentQuestionId) {
+      if (storedDraft) {
+        writeStoredDraft(sessionId, null);
+      }
+      setAnswerText('');
+      setDraftSavedAt(null);
+      return;
+    }
+
+    setAnswerText(storedDraft.text);
+    setDraftSavedAt(storedDraft.savedAt);
+  }, [currentQuestionId, sessionId]);
+
+  useEffect(() => {
+    if (!Number.isFinite(sessionId) || !currentQuestionId) {
+      return;
+    }
+
+    if (skipNextDraftPersistRef.current) {
+      skipNextDraftPersistRef.current = false;
+      return;
+    }
+
+    if (answerText.length === 0) {
+      writeStoredDraft(sessionId, null);
+      setDraftSavedAt(null);
+      return;
+    }
+
+    const savedAt = new Date().toISOString();
+    writeStoredDraft(sessionId, {
+      questionId: currentQuestionId,
+      text: answerText,
+      savedAt,
+    });
+    setDraftSavedAt(savedAt);
+  }, [answerText, currentQuestionId, sessionId]);
 
   const loadSession = useCallback(async (options?: {
     resetAnswerText?: boolean;
@@ -435,6 +554,14 @@ export default function InterviewSessionPage() {
   const answerLength = answerText.trim().length;
   const actionBusy = submittingMode !== null || transitionMode !== null || completingSession;
   const autoPauseLikely = session ? isAutoPauseLikely(session) : false;
+  const draftStatusText =
+    !session?.currentQuestion
+      ? '현재 질문 없음'
+      : answerText.length === 0
+        ? '입력 대기'
+        : draftSavedAt
+          ? `브라우저 임시 저장됨 · ${formatTime(draftSavedAt)}`
+          : '브라우저 임시 저장 중';
   const canSubmitAnswer =
     session?.status === 'in_progress' &&
     !!session.currentQuestion &&
@@ -632,6 +759,9 @@ export default function InterviewSessionPage() {
                 <p className="text-sm font-semibold text-zinc-900">답변 입력</p>
                 <p className="mt-1 text-xs text-zinc-500">
                   일반 답변은 {MIN_ANSWER_LENGTH}자 이상 {MAX_ANSWER_LENGTH}자 이하로 입력합니다.
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  자동 저장 상태: {draftStatusText}
                 </p>
               </div>
               <span

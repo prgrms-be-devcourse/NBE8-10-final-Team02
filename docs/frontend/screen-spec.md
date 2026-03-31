@@ -619,6 +619,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 새로고침/브라우저 이탈 후 30분 이내 복원 안내
 - 30분 이상 미입력 시 자동 일시정지
 - 완료된 세션에는 추가 입력 불가
+- `자동 저장 상태`는 서버 draft API가 아니라 브라우저 임시 저장 기준으로만 표기한다.
 - 다음 질문은 프론트 로컬 순번 계산이 아니라 `GET /interview/sessions/{sessionId}`의 `currentQuestion`만 기준으로 갱신한다.
 - 답변 제출 후 채팅 transcript는 `POST /answers -> GET /interview/sessions/{sessionId}` 재조회 결과를 기준으로 다음 질문을 이어 붙인다.
 
