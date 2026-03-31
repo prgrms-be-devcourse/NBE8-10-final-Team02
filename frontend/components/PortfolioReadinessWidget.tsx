@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { getPortfolioReadiness } from '@/api/portfolio';
+import { getPortfolioReadiness, UnauthenticatedError } from '@/api/portfolio';
 import type {
   PortfolioConnectionStatus,
   PortfolioMissingItem,
@@ -48,6 +48,7 @@ export default function PortfolioReadinessWidget() {
   const [dashboard, setDashboard] = useState<PortfolioReadinessDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [unauthenticated, setUnauthenticated] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
@@ -59,7 +60,11 @@ export default function PortfolioReadinessWidget() {
         const data = await getPortfolioReadiness();
         setDashboard(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : '준비 현황을 불러오지 못했습니다.');
+        if (err instanceof UnauthenticatedError) {
+          setUnauthenticated(true);
+        } else {
+          setError(err instanceof Error ? err.message : '준비 현황을 불러오지 못했습니다.');
+        }
       } finally {
         setLoading(false);
       }
@@ -73,6 +78,20 @@ export default function PortfolioReadinessWidget() {
       <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
         <p className="text-xs font-medium text-zinc-500">준비 현황</p>
         <p className="mt-3 text-sm text-zinc-400">불러오는 중...</p>
+      </div>
+    );
+  }
+
+  if (unauthenticated) {
+    return (
+      <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <p className="mt-2 text-sm text-zinc-600">서비스를 이용하려면 로그인이 필요합니다.</p>
+        <a
+          href="/login"
+          className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white"
+        >
+          로그인하기
+        </a>
       </div>
     );
   }
