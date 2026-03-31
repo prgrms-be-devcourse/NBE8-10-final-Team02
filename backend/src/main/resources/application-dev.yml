@@ -47,8 +47,8 @@ analysis:
 
 logging:
   level:
-    root: info
-    com.back.backend: info
+    root: debug
+    com.back.backend: debug
 
 # 개발 환경 JWT 설정
 security:
@@ -58,3 +58,7 @@ security:
     refresh-ttl-seconds: 86400 # 24시간
   cookie:
     secure: false # HTTP 환경에서 쿠키 전송 가능
+
+knowledge:
+  github:
+    token: ${KNOWLEDGE_GITHUB_TOKEN}

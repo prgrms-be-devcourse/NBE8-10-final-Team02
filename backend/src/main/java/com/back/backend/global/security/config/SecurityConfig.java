@@ -12,8 +12,11 @@ import com.back.backend.global.security.oauth2.CustomOAuth2LoginSuccessHandler;
 import com.back.backend.global.security.oauth2.CustomOAuth2UserService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authorization.AuthorityAuthorizationManager;
+import org.springframework.security.authorization.AuthorizationManagers;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.web.access.expression.WebExpressionAuthorizationManager;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
@@ -93,6 +96,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/oauth2/github/link-url").authenticated() // 연동 URL 생성은 로그인 필요 (permitAll 와일드카드보다 먼저 선언)
                         .requestMatchers("/auth/oauth2/**", "/api/v1/auth/oauth2/**").permitAll()
                         .requestMatchers("/api/v1/auth/logout").permitAll() // 만료된 토큰으로도 로그아웃 가능
+                        .requestMatchers("/api/v1/knowledge/sync")
+                            .access(new WebExpressionAuthorizationManager(
+                                "hasIpAddress('127.0.0.1') or hasIpAddress('::1')"))
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )
