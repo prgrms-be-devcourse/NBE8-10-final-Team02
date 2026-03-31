@@ -19,7 +19,7 @@ variable "app_image" {
 variable "ssh_public_key_path" {
   description = "EC2에 등록할 SSH 공개키 경로"
   type        = string
-  default     = "~/.ssh/id_rsa.pub"
+  default     = "~/.ssh/my-key.pub"
 }
 
 variable "db_password" {

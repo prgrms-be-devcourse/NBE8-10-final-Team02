@@ -39,7 +39,7 @@ data "aws_ami" "al2023" {
 # ── SSH 키 페어 ────────────────────────────────────────────────────────────
 resource "aws_key_pair" "load_test" {
   key_name   = "devcos-team2-load-test-key"
-  public_key = file(var.ssh_public_key_path)
+  public_key = file(pathexpand(var.ssh_public_key_path))
 }
 
 # ── Security Group ─────────────────────────────────────────────────────────
