@@ -25,7 +25,6 @@ function formatPushedAt(iso: string | null | undefined): string | null {
   const hr   = Math.floor(diff / 3_600_000);
   const day  = Math.floor(diff / 86_400_000);
   const mon  = Math.floor(day / 30);
-  const yr   = Math.floor(day / 365);
   if (min < 60)  return `${min}분 전`;
   if (hr  < 24)  return `${hr}시간 전`;
   if (day < 30)  return `${day}일 전`;
@@ -61,7 +60,7 @@ export default function RepositoriesPage() {
       <div className="mb-6 flex rounded border border-zinc-200">
         <button
           onClick={() => setActiveTab('owned')}
-          className={`flex-1 py-2 text-sm font-medium transition-colors ${
+          className={`flex-1 py-2 text-sm font-medium transition-colors cursor-pointer ${
             activeTab === 'owned'
               ? 'bg-zinc-900 text-white'
               : 'bg-white text-zinc-600 hover:bg-zinc-50'
@@ -71,7 +70,7 @@ export default function RepositoriesPage() {
         </button>
         <button
           onClick={() => setActiveTab('contributed')}
-          className={`flex-1 py-2 text-sm font-medium transition-colors ${
+          className={`flex-1 py-2 text-sm font-medium transition-colors cursor-pointer ${
             activeTab === 'contributed'
               ? 'bg-zinc-900 text-white'
               : 'bg-white text-zinc-600 hover:bg-zinc-50'
@@ -115,6 +114,7 @@ function OwnedTab() {
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [autoRefreshDone, setAutoRefreshDone] = useState(false);
 
   function applyStatusesFromRepos(data: GithubRepository[]) {
     const statuses: Record<number, RepoSyncStatus> = {};
@@ -146,6 +146,15 @@ function OwnedTab() {
   }, []);
 
   useEffect(() => { init(); }, [init]);
+
+  // 최초 로드 후 repo가 없으면 GitHub에서 자동으로 가져오기 (1회만)
+  useEffect(() => {
+    if (!loading && !loadError && repos.length === 0 && !autoRefreshDone && !refreshing) {
+      setAutoRefreshDone(true);
+      handleRefresh();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, repos.length, loadError]);
 
   // 페이지 이동 (selectedIds는 그대로 유지)
   async function loadPage(page: number) {
@@ -220,7 +229,8 @@ function OwnedTab() {
     if (togglingId !== null) return;
     const prevIds = new Set(selectedIds);
     const newIds = new Set(selectedIds);
-    newIds.has(repoId) ? newIds.delete(repoId) : newIds.add(repoId);
+    const wasSelected = newIds.has(repoId);
+    wasSelected ? newIds.delete(repoId) : newIds.add(repoId);
 
     setSelectedIds(newIds);
     setTogglingId(repoId);
@@ -228,6 +238,17 @@ function OwnedTab() {
     try {
       await saveRepositorySelection(Array.from(newIds));
       await refreshRepos();
+      // 새로 선택한 경우 자동으로 동기화 → 분석 시작
+      if (!wasSelected) {
+        const repo = repos.find((r) => r.id === repoId);
+        if (repo) {
+          if (!repo.hasCommits) {
+            handleSyncCommits(repoId, true);
+          } else if (!repo.analysisStatus || repo.analysisStatus.status === 'FAILED') {
+            handleAnalyze(repoId);
+          }
+        }
+      }
     } catch (err) {
       setSelectedIds(prevIds);
       setToggleError(err instanceof Error ? err.message : '저장 중 오류가 발생했습니다.');
@@ -236,12 +257,13 @@ function OwnedTab() {
     }
   }
 
-  async function handleSyncCommits(repoId: number) {
+  async function handleSyncCommits(repoId: number, autoAnalyze = false) {
     setSyncingIds((prev) => new Set(prev).add(repoId));
     setSyncErrors((prev) => { const n = { ...prev }; delete n[repoId]; return n; });
     try {
       await syncCommits(repoId);
       setRepos((prev) => prev.map((r) => r.id === repoId ? { ...r, hasCommits: true } : r));
+      if (autoAnalyze) handleAnalyze(repoId);
     } catch (err) {
       setSyncErrors((prev) => ({ ...prev, [repoId]: err instanceof Error ? err.message : '동기화 오류' }));
     } finally {
@@ -267,7 +289,7 @@ function OwnedTab() {
   if (loadError) return (
     <div>
       <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div>
-      <button onClick={init} className="mt-4 text-sm underline text-zinc-500">다시 시도</button>
+      <button onClick={init} className="mt-4 text-sm underline text-zinc-500 cursor-pointer">다시 시도</button>
     </div>
   );
 
@@ -281,7 +303,7 @@ function OwnedTab() {
         <button
           onClick={handleRefresh}
           disabled={refreshing}
-          className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+          className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {refreshing ? '가져오는 중...' : 'GitHub에서 다시 가져오기'}
         </button>
@@ -306,7 +328,7 @@ function OwnedTab() {
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="text-xs text-zinc-400 underline hover:text-zinc-600 disabled:opacity-50"
+            className="text-xs text-zinc-400 underline hover:text-zinc-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {refreshing ? '가져오는 중...' : 'GitHub 동기화'}
           </button>
@@ -376,7 +398,7 @@ function OwnedTab() {
                   <button
                     onClick={() => handleSyncCommits(repo.id)}
                     disabled={isSyncing || isAnalysisActive || repo.hasCommits || !isSelected || isToggling}
-                    className="rounded border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="rounded border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {isSyncing ? '동기화 중...' : repo.hasCommits ? '동기화됨' : '커밋 동기화'}
                   </button>
@@ -385,8 +407,8 @@ function OwnedTab() {
                     disabled={!repo.hasCommits || !isSelected || isToggling}
                     className={`rounded border px-3 py-1.5 text-xs disabled:opacity-40 disabled:cursor-not-allowed ${
                       isAnalysisActive
-                        ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
-                        : 'border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                        ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100 cursor-pointer'
+                        : 'border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 cursor-pointer'
                     }`}
                   >
                     {isAnalysisActive ? '분석 취소' : '포트폴리오 분석'}
@@ -404,7 +426,7 @@ function OwnedTab() {
           <button
             onClick={() => loadPage(currentPage - 1)}
             disabled={currentPage <= 1 || loading}
-            className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             이전
           </button>
@@ -412,7 +434,7 @@ function OwnedTab() {
           <button
             onClick={() => loadPage(currentPage + 1)}
             disabled={currentPage >= pagination.totalPages || loading}
-            className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             다음
           </button>
@@ -543,7 +565,7 @@ function ContributedTab() {
   if (loadError) return (
     <div>
       <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div>
-      <button onClick={() => handleLoad(0, false)} className="mt-4 text-sm underline text-zinc-500">다시 시도</button>
+      <button onClick={() => handleLoad(0, false)} className="mt-4 text-sm underline text-zinc-500 cursor-pointer">다시 시도</button>
     </div>
   );
 
@@ -616,7 +638,7 @@ function ContributedTab() {
         <button
           onClick={() => handleLoad(yearsOffset + 1, true)}
           disabled={loadingMore}
-          className="mb-6 w-full rounded border border-zinc-300 py-2 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+          className="mb-6 w-full rounded border border-zinc-300 py-2 text-sm text-zinc-600 hover:bg-zinc-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loadingMore ? '불러오는 중...' : `이전 기여 더 불러오기 (${yearsOffset + 1}~${yearsOffset + 2}년 전)`}
         </button>
@@ -644,7 +666,7 @@ function ContributedTab() {
           <button
             type="submit"
             disabled={urlLoading || !urlInput.trim()}
-            className="rounded bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            className="rounded bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {urlLoading ? '확인 중...' : '추가'}
           </button>

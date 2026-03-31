@@ -2,7 +2,7 @@
 owner: AI 기능/생성 파이프라인
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-03-31
 linked_issue_or_pr: docs-sync-requirements-v5
 applies_to: ai-domain
 ---
@@ -34,6 +34,9 @@ applies_to: ai-domain
 - AI 재시도는 템플릿별 고정 횟수만 사용하고 fallback model 자동 전환은 기본 비활성화한다.
 - 면접 점수는 `0~100` 정수 기준으로 저장한다.
 - 약점 태그는 `feedback_tags` 마스터에서만 선택한다.
+- `ai.interview.followup.generate.v1`는 `followUpQuestion | null` 응답을 사용한다.
+- follow-up 생성은 skip, depth 초과, low_context일 때 `null`을 정상 결과로 허용한다.
+- follow-up 생성 timeout / schema 오류는 세션 진행을 막지 않고 인터뷰 도메인의 fallback 규칙으로 넘긴다.
 
 ## 주요 품질 플래그
 - `low_context`

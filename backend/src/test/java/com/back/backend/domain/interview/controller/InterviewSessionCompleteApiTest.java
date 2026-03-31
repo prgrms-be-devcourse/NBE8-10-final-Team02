@@ -6,6 +6,7 @@ import com.back.backend.domain.interview.entity.DifficultyLevel;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
 import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionSet;
+import com.back.backend.domain.interview.entity.InterviewSessionQuestion;
 import com.back.backend.domain.interview.entity.InterviewQuestionType;
 import com.back.backend.domain.interview.entity.InterviewSession;
 import com.back.backend.domain.interview.entity.InterviewSessionStatus;
@@ -32,12 +33,16 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 
+import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.findSessionQuestion;
+import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.persistSessionQuestionSnapshot;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.times;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -64,9 +69,6 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
     @MockitoBean
     private InterviewResultGenerationService interviewResultGenerationService;
-
-    @MockitoBean
-    private Clock clock;
 
     @BeforeEach
     void setUpClock() {
@@ -184,7 +186,8 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
                         .with(authenticated(fixture.user().getId())))
                 .andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.error.code").value(ErrorCode.INTERVIEW_RESULT_INCOMPLETE.name()));
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.INTERVIEW_RESULT_INCOMPLETE.name()))
+                .andExpect(jsonPath("$.error.retryable").value(true));
 
         entityManager.flush();
         entityManager.clear();
@@ -212,7 +215,8 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
                         .with(authenticated(fixture.user().getId())))
                 .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.error.code").value(ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE.name()));
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE.name()))
+                .andExpect(jsonPath("$.error.retryable").value(true));
 
         entityManager.flush();
         entityManager.clear();
@@ -222,6 +226,97 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         assertThat(refreshedSession.getEndedAt()).isEqualTo(FIXED_NOW);
         assertThat(refreshedSession.getTotalScore()).isNull();
         assertThat(refreshedSession.getSummaryFeedback()).isNull();
+    }
+
+    @Test
+    void completeSession_blocksPostRetryAndKeepsResultRecheckPathWhenGenerationFails() throws Exception {
+        UserFixture fixture = persistAnsweredSession("complete-recheck-flow");
+        InterviewSession session = fixture.session();
+
+        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList()))
+                .willThrow(new ServiceException(
+                        ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "외부 서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.",
+                        true
+                ));
+
+        mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE.name()))
+                .andExpect(jsonPath("$.error.retryable").value(true));
+
+        mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.INTERVIEW_SESSION_ALREADY_COMPLETED.name()))
+                .andExpect(jsonPath("$.error.retryable").value(false));
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}/result", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.INTERVIEW_RESULT_INCOMPLETE.name()))
+                .andExpect(jsonPath("$.error.retryable").value(true));
+
+        then(interviewResultGenerationService).should(times(1))
+                .generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList());
+    }
+
+    @Test
+    void getSessionResult_retriesGenerationAfterCooldownExpires() throws Exception {
+        UserFixture fixture = persistAnsweredSession("complete-recheck-after-cooldown");
+        InterviewSession session = fixture.session();
+
+        given(clock.instant()).willReturn(
+                FIXED_NOW,
+                FIXED_NOW,
+                FIXED_NOW.plusSeconds(31)
+        );
+        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList()))
+                .willThrow(new ServiceException(
+                        ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "외부 서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.",
+                        true
+                ))
+                .willReturn(new InterviewResultGenerationService.GeneratedInterviewResult(
+                        84,
+                        "기술 선택 근거는 좋았지만 결과 지표를 더 명확히 제시하면 좋습니다.",
+                        List.of(
+                                new InterviewResultGenerationService.GeneratedInterviewAnswerResult(
+                                        1,
+                                        80,
+                                        "핵심 설명은 있었지만 수치 근거가 더 필요합니다.",
+                                        List.of("근거 부족")
+                                ),
+                                new InterviewResultGenerationService.GeneratedInterviewAnswerResult(
+                                        2,
+                                        86,
+                                        "문제 해결 흐름은 명확하지만 사례를 더 압축하면 좋습니다.",
+                                        List.of("구체성 부족")
+                                ),
+                                new InterviewResultGenerationService.GeneratedInterviewAnswerResult(
+                                        3,
+                                        88,
+                                        "선택 이유는 잘 설명했지만 trade-off를 더 드러낼 수 있습니다.",
+                                        List.of("선택 근거 부족")
+                                )
+                        )
+                ));
+
+        mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isServiceUnavailable());
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}/result", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("feedback_completed"))
+                .andExpect(jsonPath("$.data.totalScore").value(84));
+
+        then(interviewResultGenerationService).should(times(2))
+                .generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList());
     }
 
     private RequestPostProcessor authenticated(long userId) {
@@ -251,10 +346,13 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         InterviewQuestion secondQuestion = persistQuestion(questionSet, 2, "두 번째 질문");
         InterviewQuestion thirdQuestion = persistQuestion(questionSet, 3, "세 번째 질문");
         InterviewSession session = persistSession(user, questionSet, InterviewSessionStatus.IN_PROGRESS);
+        InterviewSessionQuestion firstSessionQuestion = findSessionQuestion(entityManager, session, 1);
+        InterviewSessionQuestion secondSessionQuestion = findSessionQuestion(entityManager, session, 2);
+        InterviewSessionQuestion thirdSessionQuestion = findSessionQuestion(entityManager, session, 3);
         List<InterviewAnswer> answers = List.of(
-                persistAnswer(session, firstQuestion, 1, VALID_ANSWER + " 첫 번째"),
-                persistAnswer(session, secondQuestion, 2, VALID_ANSWER + " 두 번째"),
-                persistAnswer(session, thirdQuestion, 3, VALID_ANSWER + " 세 번째")
+                persistAnswer(session, firstSessionQuestion, 1, VALID_ANSWER + " 첫 번째"),
+                persistAnswer(session, secondSessionQuestion, 2, VALID_ANSWER + " 두 번째"),
+                persistAnswer(session, thirdSessionQuestion, 3, VALID_ANSWER + " 세 번째")
         );
         return new UserFixture(user, questionSet, session, answers);
     }
@@ -267,9 +365,11 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         InterviewQuestion secondQuestion = persistQuestion(questionSet, 2, "두 번째 질문");
         persistQuestion(questionSet, 3, "세 번째 질문");
         InterviewSession session = persistSession(user, questionSet, InterviewSessionStatus.IN_PROGRESS);
+        InterviewSessionQuestion firstSessionQuestion = findSessionQuestion(entityManager, session, 1);
+        InterviewSessionQuestion secondSessionQuestion = findSessionQuestion(entityManager, session, 2);
         List<InterviewAnswer> answers = List.of(
-                persistAnswer(session, firstQuestion, 1, VALID_ANSWER + " 첫 번째"),
-                persistAnswer(session, secondQuestion, 2, VALID_ANSWER + " 두 번째")
+                persistAnswer(session, firstSessionQuestion, 1, VALID_ANSWER + " 첫 번째"),
+                persistAnswer(session, secondSessionQuestion, 2, VALID_ANSWER + " 두 번째")
         );
         return new UserFixture(user, questionSet, session, answers);
     }
@@ -333,18 +433,19 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 .build();
         entityManager.persist(session);
         entityManager.flush();
+        persistSessionQuestionSnapshot(entityManager, session);
         return session;
     }
 
     private InterviewAnswer persistAnswer(
             InterviewSession session,
-            InterviewQuestion question,
+            InterviewSessionQuestion question,
             int answerOrder,
             String answerText
     ) {
         InterviewAnswer answer = InterviewAnswer.builder()
                 .session(session)
-                .question(question)
+                .sessionQuestion(question)
                 .answerOrder(answerOrder)
                 .answerText(answerText)
                 .skipped(false)

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
@@ -37,6 +38,7 @@ class GeminiClientTest {
 
         RestClient restClient = RestClient.builder()
             .baseUrl(properties.baseUrl())
+            .requestFactory(new SimpleClientHttpRequestFactory())  // Apache HttpClient 5 자동선택 방지
             .build();
 
         geminiClient = new GeminiClient(restClient, properties);
@@ -90,13 +92,30 @@ class GeminiClientTest {
     }
 
     @Test
-    @DisplayName("API 에러 응답(4xx/5xx) 시 AiClientException을 던진다")
-    void call_apiError() {
+    @DisplayName("429 할당량 초과 시 AiClientException을 던진다")
+    void call_rateLimitError() {
         // given
         mockWebServer.enqueue(new MockResponse()
             .setResponseCode(429)
             .addHeader("Content-Type", "application/json")
             .setBody("{\"error\":{\"message\":\"Rate limit exceeded\"}}"));
+
+        AiRequest request = new AiRequest("system", "developer", "user", 0.5, 1000);
+
+        // when & then
+        assertThatThrownBy(() -> geminiClient.call(request))
+            .isInstanceOf(AiClientException.class)
+            .hasMessageContaining("호출 횟수가 부족합니다");
+    }
+
+    @Test
+    @DisplayName("API 에러 응답(4xx/5xx) 시 AiClientException을 던진다")
+    void call_apiError() {
+        // given — 429가 아닌 일반 서버 에러
+        mockWebServer.enqueue(new MockResponse()
+            .setResponseCode(500)
+            .addHeader("Content-Type", "application/json")
+            .setBody("{\"error\":{\"message\":\"Internal server error\"}}"));
 
         AiRequest request = new AiRequest("system", "developer", "user", 0.5, 1000);
 

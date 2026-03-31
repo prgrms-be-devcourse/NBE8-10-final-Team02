@@ -2,8 +2,8 @@
 owner: 팀 전체
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-17
-linked_issue_or_pr: docs-sync-requirements-v5
+last_updated: 2026-03-26
+linked_issue_or_pr: feat/portfolio-readiness-dashboard
 applies_to: requirements-and-acceptance
 ---
 
@@ -44,6 +44,8 @@ applies_to: requirements-and-acceptance
 - 수상기록 및 기타 증빙 파일 업로드
 - PDF, DOCX, MD 텍스트 추출
 - 추출 데이터 정규화 및 DB 저장
+- 현재 계산 가능한 GitHub/문서 준비 현황 요약 조회
+- 로그인 이후 공통 화면에서 준비 현황 축약 위젯 제공
 - 포트폴리오 항목 수정 및 삭제
 
 ##### 입력
@@ -55,6 +57,7 @@ applies_to: requirements-and-acceptance
 
 - 사용자 포트폴리오 프로필
 - 저장된 repository, commit, 문서 텍스트 데이터
+- 준비 현황 위젯/대시보드용 요약 데이터
 
 ##### 제약 조건
 
@@ -65,6 +68,7 @@ applies_to: requirements-and-acceptance
 | 파일 개수 | 최대 5개 |
 | repository 우선 노출 기준 | 최근 2년 내 활동 repository를 우선 정렬하고, 필요 시 전체 목록 조회 가능 |
 | private repository 접근 | GitHub OAuth 추가 동의가 있는 경우에만 허용 |
+| 준비 현황 요약 미구현 값 | 가짜 숫자 대신 `null`과 준비 중 상태로 표시 |
 
 ##### 예외 처리
 

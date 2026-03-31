@@ -3,11 +3,11 @@ package com.back.backend.domain.interview.service;
 import com.back.backend.domain.interview.dto.request.SubmitInterviewAnswerRequest;
 import com.back.backend.domain.interview.dto.response.InterviewAnswerSubmitResponse;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
-import com.back.backend.domain.interview.entity.InterviewQuestion;
 import com.back.backend.domain.interview.entity.InterviewSession;
+import com.back.backend.domain.interview.entity.InterviewSessionQuestion;
 import com.back.backend.domain.interview.mapper.InterviewResponseMapper;
 import com.back.backend.domain.interview.repository.InterviewAnswerRepository;
-import com.back.backend.domain.interview.repository.InterviewQuestionRepository;
+import com.back.backend.domain.interview.repository.InterviewSessionQuestionRepository;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import com.back.backend.global.response.FieldErrorDetail;
@@ -25,7 +25,7 @@ import java.util.List;
 public class InterviewAnswerService {
 
     private final InterviewSessionService interviewSessionService;
-    private final InterviewQuestionRepository interviewQuestionRepository;
+    private final InterviewSessionQuestionRepository interviewSessionQuestionRepository;
     private final InterviewAnswerRepository interviewAnswerRepository;
     private final InterviewResponseMapper interviewResponseMapper;
     private final Clock clock;
@@ -47,9 +47,9 @@ public class InterviewAnswerService {
         // 이미 저장된 답변 수를 기준으로 다음 차례를 계산해 questionId와 answerOrder를 함께 검증한다.
         int expectedAnswerOrder = Math.toIntExact(interviewAnswerRepository.countBySessionId(sessionId) + 1L);
 
-        InterviewQuestion requestedQuestion = interviewQuestionRepository.findByIdAndQuestionSetId(
+        InterviewSessionQuestion requestedQuestion = interviewSessionQuestionRepository.findByIdAndSessionId(
                         questionId,
-                        session.getQuestionSet().getId()
+                        session.getId()
                 )
                 .orElseThrow(() -> new ServiceException(
                         ErrorCode.RESOURCE_NOT_FOUND,
@@ -57,10 +57,11 @@ public class InterviewAnswerService {
                         "세션 또는 질문을 찾을 수 없습니다."
                 ));
 
-        InterviewQuestion currentQuestion = interviewQuestionRepository.findByQuestionSetIdAndQuestionOrder(
-                        session.getQuestionSet().getId(),
-                        expectedAnswerOrder
-                )
+        InterviewSessionQuestion currentQuestion = interviewSessionQuestionRepository.findAllUnansweredBySessionIdOrderByQuestionOrderAsc(
+                        sessionId,
+                        org.springframework.data.domain.PageRequest.of(0, 1)
+                ).stream()
+                .findFirst()
                 .orElseThrow(() -> new ServiceException(
                         ErrorCode.REQUEST_VALIDATION_FAILED,
                         HttpStatus.BAD_REQUEST,
@@ -89,7 +90,7 @@ public class InterviewAnswerService {
         InterviewAnswer savedAnswer = interviewAnswerRepository.save(
                 InterviewAnswer.builder()
                         .session(session)
-                        .question(requestedQuestion)
+                        .sessionQuestion(requestedQuestion)
                         .answerOrder(expectedAnswerOrder)
                         .answerText(normalizedAnswerText)
                         .skipped(request.isSkipped())

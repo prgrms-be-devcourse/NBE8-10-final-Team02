@@ -7,9 +7,10 @@ interface DocumentListProps {
   documents: Document[];
   onDelete: (id: number) => void;
   onReupload: (id: number, file: File, type: DocumentType) => void;
+  onViewDetails?: (doc: Document) => void;
 }
 
-export default function DocumentList({ documents, onDelete, onReupload }: DocumentListProps) {
+export default function DocumentList({ documents, onDelete, onReupload, onViewDetails }: DocumentListProps) {
   if (documents.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-zinc-400">
@@ -26,6 +27,7 @@ export default function DocumentList({ documents, onDelete, onReupload }: Docume
           doc={doc}
           onDelete={onDelete}
           onReupload={onReupload}
+          onViewDetails={onViewDetails}
         />
       ))}
     </ul>

@@ -9,6 +9,7 @@ import com.back.backend.global.jpa.converter.StringCodeEnum;
  */
 public enum AiProvider implements StringCodeEnum {
     GEMINI("gemini"),
+    GROQ("groq"),
     OPENAI("openai"),
     CLAUDE("claude");
 

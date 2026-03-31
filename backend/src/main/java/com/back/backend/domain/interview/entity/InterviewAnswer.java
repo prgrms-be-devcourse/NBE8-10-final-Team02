@@ -15,6 +15,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.Check;
 
+import java.time.Instant;
+
 @Getter
 @Entity
 @Builder
@@ -22,7 +24,7 @@ import org.hibernate.annotations.Check;
 @Table(
         name = "interview_answers",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_interview_answers_session_question", columnNames = {"session_id", "question_id"})
+                @UniqueConstraint(name = "uk_interview_answers_session_question", columnNames = {"session_id", "session_question_id"})
         }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -34,8 +36,8 @@ public class InterviewAnswer extends CreatedAtEntity {
     private InterviewSession session;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "question_id", nullable = false)
-    private InterviewQuestion question;
+    @JoinColumn(name = "session_question_id", nullable = false)
+    private InterviewSessionQuestion sessionQuestion;
 
     @Column(name = "answer_order", nullable = false)
     private Integer answerOrder;
@@ -52,8 +54,15 @@ public class InterviewAnswer extends CreatedAtEntity {
     @Column(name = "evaluation_rationale", columnDefinition = "text")
     private String evaluationRationale;
 
+    @Column(name = "followup_resolved_at")
+    private Instant followupResolvedAt;
+
     public void applyEvaluation(int score, String evaluationRationale) {
         this.score = score;
         this.evaluationRationale = evaluationRationale;
+    }
+
+    public void markFollowupResolved(Instant followupResolvedAt) {
+        this.followupResolvedAt = followupResolvedAt;
     }
 }

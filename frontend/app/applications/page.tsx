@@ -214,6 +214,14 @@ export default function ApplicationsPage() {
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
+                  {app.status === 'ready' && (
+                    <button
+                      onClick={() => router.push(`/applications/${app.id}/question-sets/new`)}
+                      className="rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700"
+                    >
+                      질문 생성
+                    </button>
+                  )}
                   <button
                     onClick={() => router.push(`/applications/${app.id}/generate`)}
                     className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white"

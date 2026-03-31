@@ -1,3 +1,6 @@
+# Load test 로컬 설정
+load-test/k6/.env
+
 # IDEs
 .idea/
 .vscode/
@@ -23,6 +26,7 @@ Thumbs.db
 *.tfstate
 *.tfstate.backup
 .terraform.lock.hcl
+*.tfvars
 
 # Docker / Persistence Data
 # MinIO나 DB 데이터가 로컬에 저장될 경우를 대비
@@ -50,3 +54,5 @@ docker/prometheus-prod.yml
 # Personal design docs (work-in-progress; not for team canonical)
 docs/personal-design/
 .claude
+
+uploads

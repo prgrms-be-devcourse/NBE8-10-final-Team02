@@ -1,11 +1,19 @@
 package com.back.backend.support;
 
+import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.time.Clock;
+
+import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 
 /**
@@ -18,7 +26,7 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
  * <p>HTTP 계층(인증, 응답 형식, 상태 코드)을 검증하는 테스트.
  * 비즈니스 로직은 {@code @MockitoBean}으로 대체하고 HTTP 레이어에만 집중합니다.
  *
- * <h2>사용 예시</h2>
+ * <h2>Mock 위주 (HTTP 레이어만 검증)</h2>
  * <pre>{@code
  * class UserApiTest extends ApiTestBase {
  *
@@ -29,20 +37,39 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
  *     @Test
  *     void getMe_returns401WhenUnauthenticated() throws Exception {
  *         mockMvc.perform(get("/api/v1/users/me"))
- *                .andExpect(status().isUnauthorized())
- *                .andExpect(jsonPath("$.success").value(false))
- *                .andExpect(jsonPath("$.error.code").value("AUTH_REQUIRED"));
+ *                .andExpect(status().isUnauthorized());
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>TestFixtures + WireMock (실제 DB + 외부 API stub)</h2>
+ * <pre>{@code
+ * @Transactional  // 테스트 종료 시 자동 롤백
+ * class GithubApiTest extends ApiTestBase {
+ *
+ *     @Autowired TestFixtures fixtures;
+ *     private User user;
+ *     private GithubRepository repo;
+ *
+ *     @BeforeEach
+ *     void setUp() {
+ *         user = fixtures.createUser("test@test.com", "Test User");
+ *         GithubConnection conn = fixtures.createConnection(user);
+ *         repo = fixtures.createRepo(conn, "my-project", true);
+ *         fixtures.createUserCommit(repo, "feat: add feature");
  *     }
  *
  *     @Test
- *     @WithMockUser  // 인증된 사용자 시뮬레이션
- *     void getMe_returns200WhenAuthenticated() throws Exception {
- *         given(userService.getMe(any())).willReturn(new UserResponse(...));
+ *     void getRepositories_returnsOk() throws Exception {
+ *         // 외부 GitHub API 호출이 있다면 WireMock으로 stub
+ *         wireMock.stubFor(get(urlPathMatching("/user/repos"))
+ *                 .willReturn(aResponse().withStatus(200)
+ *                         .withHeader("Content-Type", "application/json")
+ *                         .withBodyFile("github/repos.json")));  // src/test/resources/__files/
  *
- *         mockMvc.perform(get("/api/v1/users/me"))
- *                .andExpect(status().isOk())
- *                .andExpect(jsonPath("$.success").value(true))
- *                .andExpect(jsonPath("$.data.email").value("test@test.com"));
+ *         mockMvc.perform(get("/api/v1/github/repositories")
+ *                         .header("Authorization", "Bearer " + jwtFor(user)))
+ *                 .andExpect(status().isOk());
  *     }
  * }
  * }</pre>
@@ -75,6 +102,9 @@ public abstract class ApiTestBase {
 
     protected MockMvc mockMvc;
 
+    @MockitoBean
+    protected Clock clock;
+
     // SecurityConfig에 STATELESS 세션이 설정돼 있어 @AutoConfigureMockMvc만으로는
     // @WithMockUser가 동작하지 않음. springSecurity()를 명시적으로 적용해야
     // SecurityContextHolderFilter가 테스트용 인증 컨텍스트를 덮어쓰지 않음.
@@ -84,4 +114,5 @@ public abstract class ApiTestBase {
                 .apply(springSecurity())
                 .build();
     }
+
 }

@@ -33,16 +33,16 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class DocumentService {
 
-    /** 허용되는 최대 파일 크기 (10MB). */
-    public static final long MAX_FILE_SIZE_BYTES = 10L * 1024 * 1024;
+    /** 허용되는 최대 파일 크기 (50MB). */
+    public static final long MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024;
 
     /** 사용자 1명이 보유할 수 있는 최대 문서 수. */
     public static final int MAX_DOCUMENT_COUNT = 5;
 
-    /** 업로드 허용 MIME type 목록: PDF, DOCX, Markdown.
+    /** 업로드 허용 MIME type 목록: PDF, DOCX, Markdown, Text.
      * Markdown은 OS/브라우저마다 MIME type이 달라 여러 값을 허용한다.
      * (text/markdown: RFC 7763 표준, text/x-markdown: 구형 클라이언트,
-     *  text/plain / application/octet-stream: Windows 등에서 미등록 MIME type) */
+     *  text/plain: TXT 파일, application/octet-stream: Windows 등에서 미등록 MIME type) */
     static final Set<String> ALLOWED_MIME_TYPES = Set.of(
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -53,7 +53,7 @@ public class DocumentService {
     );
 
     /** 업로드 허용 파일 확장자 목록. MIME type과 함께 이중 검증한다. */
-    static final Set<String> ALLOWED_EXTENSIONS = Set.of(".pdf", ".docx", ".md");
+    static final Set<String> ALLOWED_EXTENSIONS = Set.of(".pdf", ".docx", ".md", ".txt");
 
     private final DocumentRepository documentRepository;
     private final DocumentStorageService documentStorageService;
@@ -101,7 +101,7 @@ public class DocumentService {
             throw new ServiceException(
                 ErrorCode.DOCUMENT_FILE_TOO_LARGE,
                 HttpStatus.UNPROCESSABLE_CONTENT,
-                "파일 크기는 10MB를 초과할 수 없습니다."
+                "파일 크기는 50MB를 초과할 수 없습니다."
             );
         }
         if (documentRepository.countByUserId(userId) >= MAX_DOCUMENT_COUNT) {
@@ -194,5 +194,19 @@ public class DocumentService {
         documentRepository.delete(document);
         // DB 삭제 후 물리 파일도 삭제 (실패 시 로그만 남기고 예외를 던지지 않음)
         documentStorageService.delete(document.getStoragePath());
+    }
+
+    // 추출된 텍스트를 업데이트한다. 사용자만 자신의 문서를 수정할 수 있다.
+    @Transactional
+    public DocumentResponse updateExtractedText(Long userId, Long documentId, String extractedText) {
+        Document document = documentRepository.findByIdAndUserId(documentId, userId)
+            .orElseThrow(() -> new ServiceException(
+                ErrorCode.DOCUMENT_NOT_FOUND,
+                HttpStatus.NOT_FOUND,
+                "문서를 찾을 수 없습니다."
+            ));
+        document.setExtractedText(extractedText);
+        Document updated = documentRepository.save(document);
+        return DocumentResponse.from(updated);
     }
 }

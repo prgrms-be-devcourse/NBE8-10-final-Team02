@@ -55,6 +55,7 @@ app:
 
 ai:
   provider: gemini
+  fallback-provider: groq  # Gemini 할당량 초과 시 Groq로 자동 전환
   gemini:
     api-key: ${GEMINI_API_KEY}
     base-url: https://generativelanguage.googleapis.com/v1beta
@@ -64,7 +65,15 @@ ai:
       read: 60s
     retry:
       max-attempts: 1
-
+  groq:
+    api-key: ${GROQ_API_KEY}
+    base-url: https://api.groq.com/openai/v1
+    model: llama-3.3-70b-versatile
+    timeout:
+      connect: 5s
+      read: 60s
+    retry:
+      max-attempts: 1
 
 analysis:
   # OCI 파일시스템의 repo clone 베이스 경로 (/data/repos/{userId}/{repoId}/)
@@ -83,3 +92,7 @@ security:
     secure: false # 개발 환경 기본값, HTTPS 환경에서는 true로 설정
   oauth2:
     frontend-redirect-url: http://localhost:3000
+
+knowledge:
+  github:
+    token: ${KNOWLEDGE_GITHUB_TOKEN}

@@ -130,6 +130,27 @@ class ApplicationApiTest extends ApiTestBase {
     }
 
     @Test
+    void listApplications_refreshesReadyStatusWhenStoredValueIsStale() throws Exception {
+        User user = persistUser("stale-list@example.com", "stale-list");
+        Application application = persistApplication(user, "stale-application", ApplicationStatus.DRAFT);
+        GithubRepository repository = persistGithubRepository(user, "team/stale-project");
+
+        bindRepositorySource(application, repository);
+        persistAnsweredQuestion(application, 1, "지원 동기", "포트폴리오 기반으로 작성된 자소서 초안");
+
+        mockMvc.perform(get("/api/v1/applications")
+                        .with(authenticated(user.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].status").value("ready"));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        Application refreshed = entityManager.find(Application.class, application.getId());
+        assertThat(refreshed.getStatus()).isEqualTo(ApplicationStatus.READY);
+    }
+
+    @Test
     void updateApplication_returns409WhenReadyRequirementsNotMet() throws Exception {
         User user = persistUser("update@example.com", "updater");
         Application application = persistApplication(user, "draft-application", ApplicationStatus.DRAFT);

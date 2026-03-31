@@ -24,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.Locale;
 
+import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.findSessionQuestion;
+import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.persistSessionQuestionSnapshot;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -162,11 +164,12 @@ class PersistenceSchemaTest {
         InterviewQuestionSet questionSet = persistQuestionSet(user, application, 1, DifficultyLevel.EASY, new String[]{"project"});
         InterviewQuestion question = persistQuestion(questionSet, 1);
         InterviewSession session = persistSession(user, questionSet);
+        InterviewSessionQuestion sessionQuestion = findSessionQuestion(entityManager, session, 1);
 
         assertThatThrownBy(() -> {
             entityManager.persist(InterviewAnswer.builder()
                     .session(session)
-                    .question(question)
+                    .sessionQuestion(sessionQuestion)
                     .answerOrder(1)
                     .answerText(null)
                     .skipped(false)
@@ -183,9 +186,10 @@ class PersistenceSchemaTest {
         InterviewQuestionSet questionSet = persistQuestionSet(user, application, 1, DifficultyLevel.EASY, new String[]{"project"});
         InterviewQuestion question = persistQuestion(questionSet, 1);
         InterviewSession session = persistSession(user, questionSet);
+        InterviewSessionQuestion sessionQuestion = findSessionQuestion(entityManager, session, 1);
         InterviewAnswer answer = InterviewAnswer.builder()
                 .session(session)
-                .question(question)
+                .sessionQuestion(sessionQuestion)
                 .answerOrder(1)
                 .answerText("충분히 긴 답변입니다.")
                 .skipped(false)
@@ -208,6 +212,7 @@ class PersistenceSchemaTest {
         entityManager.remove(managedSession);
         entityManager.flush();
 
+        assertThat(countRows("interview_session_questions", "session_id", session.getId())).isZero();
         assertThat(countRows("interview_answers", "session_id", session.getId())).isZero();
         assertThat(countRows("interview_answer_tags", "answer_id", answer.getId())).isZero();
     }
@@ -304,6 +309,8 @@ class PersistenceSchemaTest {
                 .startedAt(NOW)
                 .build();
         entityManager.persist(session);
+        entityManager.flush();
+        persistSessionQuestionSnapshot(entityManager, session);
         return session;
     }
 
