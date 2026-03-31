@@ -2,17 +2,19 @@
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
-import { getGithubConnection } from '@/api/github';
-import type { GithubConnection } from '@/types/github';
+import { getPortfolioReadiness, UnauthenticatedError } from '@/api/portfolio';
 
 export default function PortfolioPage() {
-  const [connection, setConnection] = useState<GithubConnection | null>(null);
+  const [githubConnected, setGithubConnected] = useState(false);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    getGithubConnection()
-      .then(setConnection)
-      .catch(() => setConnection(null))
+    getPortfolioReadiness()
+      .then((data) => setGithubConnected(data.github.connectionStatus === 'connected'))
+      .catch((err) => {
+        if (err instanceof UnauthenticatedError) return;
+        // 다른 오류는 미연결로 처리
+      })
       .finally(() => setChecked(true));
   }, []);
 
@@ -33,16 +35,14 @@ export default function PortfolioPage() {
               <p className="mt-0.5 text-xs text-zinc-500">
                 GitHub 계정을 연결해 활동 내역을 가져옵니다.
               </p>
-              {checked && connection && (
-                <p className="mt-1.5 text-xs font-medium text-green-600">
-                  ✓ @{connection.githubLogin} 연결됨
-                </p>
+              {checked && githubConnected && (
+                <p className="mt-1.5 text-xs font-medium text-green-600">✓ 연결됨</p>
               )}
             </div>
             <div className="shrink-0 flex flex-col items-end gap-1.5">
               {!checked ? (
                 <span className="text-xs text-zinc-400">확인 중...</span>
-              ) : connection ? (
+              ) : githubConnected ? (
                 <Link
                   href="/portfolio/github"
                   className="rounded border border-zinc-300 px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
