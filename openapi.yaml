@@ -3649,6 +3649,7 @@ paths:
                     meta: *id001
       description: 세션을 종료하고 피드백 결과 생성을 시작한다. 피드백이 즉시 생성되면 feedback_completed 상태로 응답할
         수 있다. `complete`는 `in_progress`, `paused` 상태에서만 허용하며, 미답변 질문이 남아 있으면 400을 반환한다.
+        답변된 dynamic follow-up도 일반 세션 질문과 동일하게 미답변 검증과 결과 생성 입력에 포함한다.
   /interview/sessions/{sessionId}/result:
     get:
       tags:
@@ -3705,4 +3706,5 @@ paths:
                       endedAt: '2026-03-17T10:40:00Z'
                     meta: *id001
       description: 세션 결과와 피드백 리포트를 조회한다. answers[].questionId는 세션 질문 id를 사용한다.
-        완료 직후에는 결과 생성 지연이 있을 수 있다.
+        답변된 dynamic follow-up도 answers[]에 일반 질문과 동일하게 포함한다. 완료 직후에는 결과 생성 지연이
+        있을 수 있다.
