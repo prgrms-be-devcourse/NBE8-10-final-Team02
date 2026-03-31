@@ -34,7 +34,7 @@ services:
       -c work_mem=4MB
     environment:
       POSTGRES_USER: user
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: $${DB_PASSWORD}
       POSTGRES_DB: appdb
     volumes:
       - lt-db-data:/var/lib/postgresql/data
@@ -57,7 +57,7 @@ services:
     container_name: lt-redis
     command: >
       redis-server
-      --requirepass ${REDIS_PASSWORD}
+      --requirepass $${REDIS_PASSWORD}
       --maxmemory 100mb
       --maxmemory-policy volatile-lru
     networks:
@@ -67,14 +67,14 @@ services:
         limits:
           memory: 128M
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "$${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
 
   app:
-    image: ${APP_IMAGE}
+    image: $${APP_IMAGE}
     container_name: lt-app
     ports:
       - "8080:8080"
@@ -84,26 +84,26 @@ services:
       # DB
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/appdb
       SPRING_DATASOURCE_USERNAME: user
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_DATASOURCE_PASSWORD: $${DB_PASSWORD}
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 10
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_JPA_SHOW_SQL: "false"
       # Redis
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
-      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SPRING_DATA_REDIS_PASSWORD: $${REDIS_PASSWORD}
       # JWT
-      SECURITY_JWT_SECRET: ${JWT_SECRET}
+      SECURITY_JWT_SECRET: $${JWT_SECRET}
       SECURITY_JWT_ACCESS_TTL_SECONDS: 900
       SECURITY_JWT_REFRESH_TTL_SECONDS: 86400
       SECURITY_COOKIE_SECURE: "false"
       # 부하테스트 스텁 모드 키 (빈 문자열이면 기능 비활성화)
-      APP_LOAD_TEST_KEY: ${LOAD_TEST_KEY}
+      APP_LOAD_TEST_KEY: $${LOAD_TEST_KEY}
       # AI - 스텁 모드 전환 전까지는 실제 키 없이 실패 허용
       GEMINI_API_KEY: "load-test-placeholder"
       AI_PROVIDER: gemini
       # GitHub 레포 분석 기능 (미테스트 시 빈 문자열)
-      KNOWLEDGE_GITHUB_TOKEN: ${KNOWLEDGE_GITHUB_TOKEN}
+      KNOWLEDGE_GITHUB_TOKEN: $${KNOWLEDGE_GITHUB_TOKEN}
     networks:
       - lt-net
     deploy:
@@ -148,10 +148,10 @@ docker compose --env-file .env up -d
 echo "=== 헬스체크 대기 (최대 120초) ==="
 for i in $(seq 1 24); do
   if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
-    echo "앱 기동 완료 (${i}번째 시도)"
+    echo "앱 기동 완료 ($${i}번째 시도)"
     break
   fi
-  echo "대기 중... (${i}/24)"
+  echo "대기 중... ($${i}/24)"
   sleep 5
 done
 
