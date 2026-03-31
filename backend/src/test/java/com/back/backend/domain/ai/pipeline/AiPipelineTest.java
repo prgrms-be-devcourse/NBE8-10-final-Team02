@@ -16,6 +16,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -54,7 +55,7 @@ class AiPipelineTest {
         );
     }
 
-    // ── #38: 성공 흐름 테스트 ──────────────────────────────────────
+    // ─ 성공 흐름 테스트 ─
 
     @Test
     @DisplayName("정상 응답이 오면 검증 통과 후 JsonNode를 반환한다")
@@ -80,7 +81,7 @@ class AiPipelineTest {
         assertThat(result).isNotNull();
     }
 
-    // ── #39: 재시도/실패 케이스 테스트 ────────────────────────────────
+    // ─ 재시도/실패 케이스 테스트 ─
 
     @Test
     @DisplayName("1회 파싱 실패 후 재시도 성공")
@@ -124,8 +125,10 @@ class AiPipelineTest {
     }
 
     @Test
-    @DisplayName("AiClientException은 재시도 없이 즉시 전파된다")
-    void execute_aiClientException_propagatesImmediately() {
+    @DisplayName("AiClientException 발생 시 fallback 미설정이면 즉시 전파된다")
+    void execute_aiClientException_noFallback_propagatesImmediately() {
+        // fallback 미설정 (getFallback → empty)
+        when(router.getFallback()).thenReturn(Optional.empty());
         when(mockAiClient.call(any())).thenThrow(
             new AiClientException(AiProvider.GEMINI,
                 ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "AI 호출 실패")
@@ -137,7 +140,84 @@ class AiPipelineTest {
         verify(mockAiClient, times(1)).call(any());
     }
 
-    /** 테스트용 AiResponse 생성 헬퍼 — TokenUsage는 고정값 사용 */
+    // ─ fallback 전환 테스트 ─
+
+    @Test
+    @DisplayName("기본 provider 실패 시 fallback provider로 전환하여 성공한다")
+    void execute_fallbackOnAiClientException() {
+        // 기본 provider(Gemini) 실패, fallback provider(Groq) 성공
+        AiClient fallbackClient = mock(AiClient.class);
+        when(fallbackClient.getProvider()).thenReturn(AiProvider.GROQ);
+        when(fallbackClient.call(any())).thenReturn(response("{}"));
+
+        when(router.getFallback()).thenReturn(Optional.of(fallbackClient));
+        when(mockAiClient.call(any())).thenThrow(
+            new AiClientException(AiProvider.GEMINI,
+                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "Gemini 429 할당량 초과")
+        );
+        when(mockValidator.validate(any())).thenReturn(ValidationResult.success());
+
+        JsonNode result = pipeline.execute("ai.portfolio.summary.v1", "{}");
+
+        // 기본 1회 호출 후 fallback 1회 호출
+        assertThat(result).isNotNull();
+        verify(mockAiClient, times(1)).call(any());       // Gemini 1회 시도 → 실패
+        verify(fallbackClient, times(1)).call(any());     // Groq 1회 시도 → 성공
+    }
+
+    @Test
+    @DisplayName("기본 provider 실패 후 fallback provider도 실패하면 예외를 전파한다")
+    void execute_fallbackAlsoFails() {
+        // 기본, fallback 모두 실패
+        AiClient fallbackClient = mock(AiClient.class);
+        when(fallbackClient.getProvider()).thenReturn(AiProvider.GROQ);
+        when(fallbackClient.call(any())).thenThrow(
+            new AiClientException(AiProvider.GROQ,
+                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "Groq도 실패")
+        );
+
+        when(router.getFallback()).thenReturn(Optional.of(fallbackClient));
+        when(mockAiClient.call(any())).thenThrow(
+            new AiClientException(AiProvider.GEMINI,
+                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "Gemini 실패")
+        );
+
+        // fallback의 AiClientException이 전파됨
+        assertThatThrownBy(() -> pipeline.execute("ai.portfolio.summary.v1", "{}"))
+            .isInstanceOf(AiClientException.class)
+            .hasMessageContaining("Groq");
+
+        verify(mockAiClient, times(1)).call(any());
+        verify(fallbackClient, times(1)).call(any());
+    }
+
+    @Test
+    @DisplayName("fallback provider에서도 파싱/검증 재시도가 동작한다")
+    void execute_fallbackRetryOnParseFailure() {
+        // Gemini 실패 → Groq에서 1회 파싱 실패 후 2회째 성공
+        AiClient fallbackClient = mock(AiClient.class);
+        when(fallbackClient.getProvider()).thenReturn(AiProvider.GROQ);
+        when(fallbackClient.call(any()))
+            .thenReturn(response("invalid json"))   // 1회차: 파싱 실패
+            .thenReturn(response("{}"));             // 2회차: 성공
+
+        when(router.getFallback()).thenReturn(Optional.of(fallbackClient));
+        when(mockAiClient.call(any())).thenThrow(
+            new AiClientException(AiProvider.GEMINI,
+                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "Gemini 실패")
+        );
+        when(mockValidator.validate(any())).thenReturn(ValidationResult.success());
+
+        JsonNode result = pipeline.execute("ai.portfolio.summary.v1", "{}");
+
+        // fallback에서도 재시도가 정상 동작
+        assertThat(result).isNotNull();
+        verify(fallbackClient, times(2)).call(any());
+    }
+
+    /**
+     * 테스트용 AiResponse 생성 헬퍼 — TokenUsage는 고정값 사용
+     */
     private AiResponse response(String content) {
         return new AiResponse(content, new AiResponse.TokenUsage(100, 200, 300));
     }
