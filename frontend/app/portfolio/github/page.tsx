@@ -147,12 +147,14 @@ export default function GithubConnectPage() {
           >
             repository 선택하기 →
           </button>
-          <button
-            onClick={() => { setExistingConnection(null); setForceReconnect(true); }}
-            className="text-sm text-zinc-500 underline"
-          >
-            다른 GitHub 계정으로 변경하기
-          </button>
+          {!providers.includes('github') && (
+            <button
+              onClick={() => { setExistingConnection(null); setForceReconnect(true); }}
+              className="text-sm text-zinc-500 underline"
+            >
+              다른 GitHub 계정으로 변경하기
+            </button>
+          )}
         </div>
       </main>
     );

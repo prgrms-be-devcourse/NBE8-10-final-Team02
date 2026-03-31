@@ -114,6 +114,7 @@ function OwnedTab() {
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [autoRefreshDone, setAutoRefreshDone] = useState(false);
 
   function applyStatusesFromRepos(data: GithubRepository[]) {
     const statuses: Record<number, RepoSyncStatus> = {};
@@ -145,6 +146,15 @@ function OwnedTab() {
   }, []);
 
   useEffect(() => { init(); }, [init]);
+
+  // 최초 로드 후 repo가 없으면 GitHub에서 자동으로 가져오기 (1회만)
+  useEffect(() => {
+    if (!loading && !loadError && repos.length === 0 && !autoRefreshDone && !refreshing) {
+      setAutoRefreshDone(true);
+      handleRefresh();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, repos.length, loadError]);
 
   // 페이지 이동 (selectedIds는 그대로 유지)
   async function loadPage(page: number) {
