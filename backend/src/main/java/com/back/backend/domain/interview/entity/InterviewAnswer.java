@@ -22,7 +22,7 @@ import org.hibernate.annotations.Check;
 @Table(
         name = "interview_answers",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_interview_answers_session_question", columnNames = {"session_id", "question_id"})
+                @UniqueConstraint(name = "uk_interview_answers_session_question", columnNames = {"session_id", "session_question_id"})
         }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -34,8 +34,8 @@ public class InterviewAnswer extends CreatedAtEntity {
     private InterviewSession session;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "question_id", nullable = false)
-    private InterviewQuestion question;
+    @JoinColumn(name = "session_question_id", nullable = false)
+    private InterviewSessionQuestion sessionQuestion;
 
     @Column(name = "answer_order", nullable = false)
     private Integer answerOrder;

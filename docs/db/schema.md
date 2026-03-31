@@ -2,7 +2,7 @@
 owner: 플랫폼/공통 기반 + 인프라/배포/관측성
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-25
+last_updated: 2026-03-31
 linked_issue_or_pr: docs-sync-requirements-v5
 applies_to: storage-schema
 ---
@@ -274,12 +274,34 @@ applies_to: storage-schema
 - `total_score`는 0~100 범위를 권장한다.
 - `last_activity_at`는 세션 생성, 답변 제출 성공, 재개 성공 시점에 갱신한다.
 
-## 3.14 interview_answers
+## 3.14 interview_session_questions
 
 필수 컬럼
 - `id`
 - `session_id`
-- `question_id`
+- `question_order`
+- `question_type`
+- `difficulty_level`
+- `question_text`
+- `created_at`
+
+선택 컬럼
+- `source_question_id`
+- `parent_session_question_id`
+
+비고
+- 세션 시작 시 `interview_questions`를 이 테이블로 복사해 세션 전용 질문 스냅샷을 만든다.
+- dynamic follow-up은 질문 세트 원본이 아니라 이 테이블에만 추가한다.
+- `(session_id, question_order)`는 유일해야 한다.
+- 정적 질문이면 `source_question_id`를 채우고, dynamic follow-up이면 `null`을 허용한다.
+- dynamic follow-up은 `parent_session_question_id`로 부모 세션 질문을 표현한다.
+
+## 3.15 interview_answers
+
+필수 컬럼
+- `id`
+- `session_id`
+- `session_question_id`
 - `answer_order`
 - `is_skipped`
 - `created_at`
@@ -290,10 +312,11 @@ applies_to: storage-schema
 - `evaluation_rationale`
 
 비고
-- `(session_id, question_id)`는 유일해야 한다.
+- `(session_id, session_question_id)`는 유일해야 한다.
+- API의 `questionId`는 세션 질문 id와 매핑한다.
 - `is_skipped = false`이면 `answer_text`가 있어야 한다.
 
-## 3.15 feedback_tags
+## 3.16 feedback_tags
 
 필수 컬럼
 - `id`
@@ -308,7 +331,7 @@ applies_to: storage-schema
 - `tag_name`은 유일해야 한다.
 - 태그는 seed 데이터 기반 고정 마스터로 운영하고, 런타임 자유 태그는 허용하지 않는다.
 
-## 3.16 interview_answer_tags
+## 3.17 interview_answer_tags
 
 필수 컬럼
 - `id`
@@ -319,7 +342,7 @@ applies_to: storage-schema
 비고
 - `(answer_id, tag_id)`는 유일해야 한다.
 
-## 3.17 knowledge_items
+## 3.18 knowledge_items
 
 필수 컬럼
 - `id`
@@ -336,7 +359,7 @@ applies_to: storage-schema
 - `content_hash`가 동일하면 재동기화 시 skip한다.
 - 유저 소유 데이터가 아니므로 `user_id` 컬럼이 없다.
 
-## 3.18 knowledge_tags
+## 3.19 knowledge_tags
 
 필수 컬럼
 - `id`
@@ -348,7 +371,7 @@ applies_to: storage-schema
 - 런타임 자유 태그 허용: 파서가 추출한 키워드 기반으로 동적 생성된다.
   (`feedback_tags`와 달리 마스터 고정이 아님)
 
-## 3.19 knowledge_item_tags
+## 3.20 knowledge_item_tags
 
 필수 컬럼
 - `knowledge_item_id` — FK → knowledge_items(id)
@@ -379,7 +402,7 @@ applies_to: storage-schema
 
 - `users` 삭제 시 하위 데이터는 전체 삭제한다.
 - `applications` 삭제 시 자소서 문항, 선택 소스 연결, 질문 세트는 함께 삭제한다.
-- `interview_sessions` 삭제 시 답변과 답변 태그는 함께 삭제한다.
+- `interview_sessions` 삭제 시 세션 질문, 답변과 답변 태그는 함께 삭제한다.
 - `documents`, `github_repositories`, `feedback_tags`는 참조 중이면 삭제를 막는 방향을 기본값으로 둔다.
 - `knowledge_items` 삭제 시 `knowledge_item_tags`는 함께 삭제한다 (CASCADE). `knowledge_tags`는 남긴다.
 
@@ -395,7 +418,8 @@ applies_to: storage-schema
 - `application_source_documents(application_id, document_id)`
 - `application_questions(application_id, question_order)`
 - `interview_questions(question_set_id, question_order)`
-- `interview_answers(session_id, question_id)`
+- `interview_session_questions(session_id, question_order)`
+- `interview_answers(session_id, session_question_id)`
 - `interview_answer_tags(answer_id, tag_id)`
 
 조회 최적화용 index
@@ -422,6 +446,7 @@ applies_to: storage-schema
 - 질문별 점수와 세션 총점은 0~100 정수로 저장한다.
 - `feedback_tags`는 seed 데이터 기반 고정 마스터 테이블로 운영한다.
 - `interview_sessions.last_activity_at`는 자동 일시정지 판단과 세션 복원 화면 기준 시각으로 사용한다.
+- 세션 진행과 결과 기록에서 쓰는 질문 식별자는 질문 세트 원본이 아니라 `interview_session_questions`의 세션 질문 id를 기준으로 한다.
 
 ## 8. 후속 고도화 항목
 

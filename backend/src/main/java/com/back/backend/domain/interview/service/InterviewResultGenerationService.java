@@ -82,10 +82,10 @@ public class InterviewResultGenerationService {
                 "answers", answers.stream()
                         .map(answer -> Map.of(
                                 "questionOrder", answer.getAnswerOrder(),
-                                "questionId", answer.getQuestion().getId(),
-                                "questionType", answer.getQuestion().getQuestionType().getValue(),
-                                "difficultyLevel", answer.getQuestion().getDifficultyLevel().getValue(),
-                                "questionText", answer.getQuestion().getQuestionText(),
+                                "questionId", answer.getSessionQuestion().getId(),
+                                "questionType", answer.getSessionQuestion().getQuestionType().getValue(),
+                                "difficultyLevel", answer.getSessionQuestion().getDifficultyLevel().getValue(),
+                                "questionText", answer.getSessionQuestion().getQuestionText(),
                                 "answerText", answer.getAnswerText(),
                                 "isSkipped", answer.isSkipped()
                         ))
