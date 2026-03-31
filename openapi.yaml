@@ -3137,6 +3137,8 @@ paths:
                     meta: *id001
       description: 세션 복원 화면이 한 번의 조회로 그려질 수 있도록 현재 질문, 진행률, 남은 질문 수, resume 가능 여부, 마지막 활동 시각을 함께 반환한다.
         currentQuestion.id는 세션 질문 id이며, 현재 질문은 답변이 없는 세션 질문 중 가장 작은 questionOrder로 계산한다.
+        답변 저장 직후 재조회에서는 pending dynamic follow-up 생성 대상이 있으면 best-effort로 1회 생성 시도를 먼저 수행할 수 있다.
+        follow-up이 생성되지 않거나 생성에 실패해도 세션은 멈추지 않고 다음 기본 질문을 currentQuestion으로 반환한다.
         v1 자동 일시정지는 이 조회 요청 진입 시점에도 `lastActivityAt` 기준으로 평가하며, 30분 초과 상태의 `in_progress`
         세션은 `paused`로 정규화한다.
   /interview/sessions/{sessionId}/pause:
@@ -3435,7 +3437,9 @@ paths:
                     meta: *id001
       description: 세션 답변을 저장한다. 일반 답변은 `in_progress` 상태에서만 허용한다. questionId는 세션 질문 id이며,
         현재 질문과 일치해야 한다. answerOrder는 다음 제출 순번과 일치해야 한다. 세션 또는 질문이 현재 사용자 범위에서
-        없으면 404를 반환한다. v1 자동 일시정지는 답변 제출 요청 진입 시점에도 `lastActivityAt` 기준으로 평가하며,
+        없으면 404를 반환한다. 이 endpoint는 답변 저장까지만 담당하며 dynamic follow-up 생성 여부는 직접 응답하지 않는다.
+        클라이언트는 저장 성공 후 `GET /interview/sessions/{sessionId}`를 재조회해 다음 질문을 확인한다.
+        v1 자동 일시정지는 답변 제출 요청 진입 시점에도 `lastActivityAt` 기준으로 평가하며,
         30분 초과 상태의 세션은 `paused`로 정규화한 뒤 답변 제출을 막는다.
   /interview/sessions/{sessionId}/complete:
     post:

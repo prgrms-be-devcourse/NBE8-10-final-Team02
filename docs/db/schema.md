@@ -310,11 +310,13 @@ applies_to: storage-schema
 - `answer_text`
 - `score`
 - `evaluation_rationale`
+- `followup_resolved_at`
 
 비고
 - `(session_id, session_question_id)`는 유일해야 한다.
 - API의 `questionId`는 세션 질문 id와 매핑한다.
 - `is_skipped = false`이면 `answer_text`가 있어야 한다.
+- `followup_resolved_at`은 dynamic follow-up 생성이 성공, null, fallback으로 최종 처리된 시각을 기록한다.
 
 ## 3.16 feedback_tags
 

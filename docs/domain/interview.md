@@ -25,6 +25,11 @@ applies_to: interview-domain
 - 질문 세트와 실제 세션은 분리한다.
 - 세션 시작 시 질문 세트 질문을 세션 전용 질문 스냅샷으로 복사한다.
 - dynamic follow-up은 질문 세트 원본이 아니라 세션 전용 질문에만 추가한다.
+- 일반 답변 저장과 dynamic follow-up 생성은 같은 요청으로 묶지 않는다.
+- v1 dynamic follow-up 생성 시도는 답변 저장 직후의 세션 상세 재조회 경로에서 best-effort로 1회 수행한다.
+- 같은 부모 답변에 대한 dynamic follow-up 생성 결과는 최대 1개만 확정한다.
+- 부모 세션 질문에 child 세션 질문이 이미 있으면 추가 dynamic follow-up을 생성하지 않고 처리 완료로 본다.
+- 답변별 follow-up 생성 처리 완료 여부는 `interview_answers.followup_resolved_at`로 기록한다.
 - 질문 생성은 1회 최대 20개까지 허용한다.
 - 질문 세트 편집은 세션 시작 전까지만 허용한다.
 - 세션이 한 번이라도 시작된 질문 세트에 대한 편집 요청은 `INTERVIEW_QUESTION_SET_NOT_EDITABLE`로 거절한다.
@@ -42,6 +47,7 @@ applies_to: interview-domain
 - 답변 제출 요청의 `questionId`는 세션 질문 id이며, `answerOrder`는 다음 제출 순번이어야 한다.
 - 답변 제출 요청의 `questionId`, `answerOrder`가 현재 세션 질문과 다음 제출 순번에 맞지 않으면 `REQUEST_VALIDATION_FAILED`로 거절한다.
 - `in_progress` 상태의 세션만 일반 답변 제출을 허용한다.
+- 답변 제출 API는 답변 저장까지만 담당하고, follow-up 생성 성공/실패 여부를 직접 응답하지 않는다.
 - 명시적 `pause`는 `in_progress` 상태에서만 허용한다.
 - `paused` 상태는 재개 후 `in_progress`로 전환한 뒤 답변을 제출한다.
 - 명시적 `resume`은 `paused` 상태에서만 허용한다.
@@ -58,6 +64,8 @@ applies_to: interview-domain
 - v1의 결과 재시도는 `POST /interview/sessions/{sessionId}/complete` 재전송이 아니라 `GET /interview/sessions/{sessionId}/result` 재확인 흐름으로 처리한다.
 - 전용 결과 재생성 endpoint는 이 단계에서 열지 않고 별도 이슈로 분리한다.
 - 현재 질문은 `answerCount + 1` 고정 순번이 아니라, 답변이 없는 세션 질문 중 가장 작은 `question_order`로 계산한다.
+- 세션 상세 재조회 시점에 직전 답변 기준 pending follow-up 생성 대상이 있으면 AI 생성을 먼저 시도한 뒤 현재 질문을 계산한다.
+- follow-up AI가 `null`, timeout, schema 오류를 반환해도 세션은 멈추지 않고 다음 기본 질문으로 진행한다.
 - 세션 상세 조회는 복원 화면과 히스토리 상세의 기본 정보 영역 기준으로 `currentQuestion`, 진행률 계산용 count, `resumeAvailable`, `lastActivityAt`를 함께 반환한다.
 - 세션 상세의 `currentQuestion.id`, 답변 제출의 `questionId`, 결과 응답의 `answers[].questionId`는 모두 세션 질문 id를 사용한다.
 - 히스토리 상세 v1은 전용 backend endpoint를 추가하지 않고 `GET /interview/sessions/{sessionId}`와 `GET /interview/sessions/{sessionId}/result`를 함께 재사용한다.
