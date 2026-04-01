@@ -40,9 +40,6 @@ class AiStatusServiceCacheTest extends ApiTestBase {
     private AiClientRouter router;
 
     @MockitoBean
-    private AiClient defaultClient;
-
-    @MockitoBean
     private AiProviderUsageRepository repository;
 
     @Autowired
@@ -57,6 +54,8 @@ class AiStatusServiceCacheTest extends ApiTestBase {
         cacheManager.getCache("aiStatus").clear();
 
         // router: gemini를 default로, fallback 없음
+        // AiClient는 Spring bean이 2개(geminiClient, groqClient)라 @MockitoBean 불가 → 로컬 mock 사용
+        AiClient defaultClient = mock(AiClient.class);
         when(defaultClient.getProvider()).thenReturn(AiProvider.GEMINI);
         when(router.getDefault()).thenReturn(defaultClient);
         when(router.getFallback()).thenReturn(Optional.empty());

@@ -59,15 +59,15 @@ class AiStatusServiceTest {
         // Gemini: RPM=10, RPD=250, TPM=250000, TPD=없음
         when(geminiLimit.getRpm()).thenReturn(10);
         when(geminiLimit.getRpd()).thenReturn(250);
-        when(geminiLimit.getTpm()).thenReturn(250000L);
+        when(geminiLimit.getTpm()).thenReturn(250000);
         when(geminiLimit.hasTpd()).thenReturn(false);
 
         // Groq: RPM=30, RPD=1000, TPM=12000, TPD=100000
         when(groqLimit.getRpm()).thenReturn(30);
         when(groqLimit.getRpd()).thenReturn(1000);
-        when(groqLimit.getTpm()).thenReturn(12000L);
+        when(groqLimit.getTpm()).thenReturn(12000);
         when(groqLimit.hasTpd()).thenReturn(true);
-        when(groqLimit.getTpd()).thenReturn(100000L);
+        when(groqLimit.getTpd()).thenReturn(100000);
 
         // router 설정
         when(defaultClient.getProvider()).thenReturn(AiProvider.GEMINI);
@@ -146,7 +146,7 @@ class AiStatusServiceTest {
         when(store.currentTpm("gemini")).thenReturn(50000L);
         when(store.secondsUntilReset("gemini")).thenReturn(37);
 
-        when(store.currentRpm("groq")).thenReturn(5);
+        when(store.currentRpm("groq")).thenReturn(30);  // 정확히 한도, MINUTE_RATE_LIMITED
         when(store.currentTpm("groq")).thenReturn(3000L);
         when(store.secondsUntilReset("groq")).thenReturn(52);
 
