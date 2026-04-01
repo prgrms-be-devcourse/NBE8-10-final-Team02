@@ -37,12 +37,11 @@ public interface AiProviderUsageRepository extends JpaRepository<AiProviderUsage
     @Query(value = """
             INSERT INTO ai_provider_usage (provider, usage_date, request_count, prompt_tokens, completion_tokens, total_tokens, rate_limit_hits)
             VALUES (:provider, :date, 1, :promptTokens, :completionTokens, :totalTokens, 0)
-            ON DUPLICATE KEY UPDATE
-                request_count     = request_count + 1,
-                prompt_tokens     = prompt_tokens + VALUES(prompt_tokens),
-                completion_tokens = completion_tokens + VALUES(completion_tokens),
-                total_tokens      = total_tokens + VALUES(total_tokens),
-                updated_at        = NOW()
+            ON CONFLICT (provider, usage_date) DO UPDATE SET
+                request_count     = ai_provider_usage.request_count + 1,
+                prompt_tokens     = ai_provider_usage.prompt_tokens + EXCLUDED.prompt_tokens,
+                completion_tokens = ai_provider_usage.completion_tokens + EXCLUDED.completion_tokens,
+                total_tokens      = ai_provider_usage.total_tokens + EXCLUDED.total_tokens
             """, nativeQuery = true)
     void upsertSuccess(
             @Param("provider") String provider,
@@ -64,9 +63,8 @@ public interface AiProviderUsageRepository extends JpaRepository<AiProviderUsage
     @Query(value = """
             INSERT INTO ai_provider_usage (provider, usage_date, request_count, prompt_tokens, completion_tokens, total_tokens, rate_limit_hits)
             VALUES (:provider, :date, 0, 0, 0, 0, 1)
-            ON DUPLICATE KEY UPDATE
-                rate_limit_hits = rate_limit_hits + 1,
-                updated_at      = NOW()
+            ON CONFLICT (provider, usage_date) DO UPDATE SET
+                rate_limit_hits = ai_provider_usage.rate_limit_hits + 1
             """, nativeQuery = true)
     void upsertRateLimitHit(
             @Param("provider") String provider,

@@ -136,7 +136,7 @@ public class AiStatusService {
             .filter(ps -> "minute_rate_limited".equals(ps.status()))
             .mapToInt(ps -> ps.minuteUsage().resetInSeconds())
             .min()
-            .orElse(null);
+            .orElse(-1); //todo: 임시로 orElseNull대신 넣음
     }
 
     /**
