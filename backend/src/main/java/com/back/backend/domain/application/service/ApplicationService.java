@@ -29,7 +29,9 @@ import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import com.back.backend.global.jpa.converter.StringCodeEnum;
 import com.back.backend.global.response.FieldErrorDetail;
+import com.back.backend.domain.activity.event.ApplicationReadyEvent;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +55,7 @@ public class ApplicationService {
     private final UserRepository userRepository;
     private final ApplicationResponseMapper applicationResponseMapper;
     private final ApplicationStatusService applicationStatusService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public ApplicationResponse createApplication(long userId, CreateApplicationRequest request) {
@@ -124,6 +127,11 @@ public class ApplicationService {
             }
 
             application.changeStatus(requestedStatus);
+
+            if (requestedStatus == ApplicationStatus.READY) {
+                eventPublisher.publishEvent(
+                        new ApplicationReadyEvent(application.getUser().getId(), application.getId()));
+            }
         }
 
         return applicationResponseMapper.toApplicationResponse(application);
