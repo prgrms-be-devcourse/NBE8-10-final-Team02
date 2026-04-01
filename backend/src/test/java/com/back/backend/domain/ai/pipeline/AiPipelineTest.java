@@ -3,6 +3,7 @@ package com.back.backend.domain.ai.pipeline;
 import com.back.backend.domain.ai.client.*;
 import com.back.backend.domain.ai.template.PromptLoader;
 import com.back.backend.domain.ai.template.PromptTemplateRegistry;
+import com.back.backend.domain.ai.usage.AiUsageRecorder;
 import com.back.backend.domain.ai.validation.AiResponseValidator;
 import com.back.backend.domain.ai.validation.JsonSchemaValidator;
 import com.back.backend.domain.ai.validation.ValidationRegistry;
@@ -29,7 +30,9 @@ class AiPipelineTest {
     private AiClient mockAiClient;
     private AiResponseValidator mockValidator;
     private ValidationRegistry validationRegistry;
+    private AiUsageRecorder usageRecorder;
     private AiPipeline pipeline;
+
 
     /**
      * AiClient, ValidationRegistry는 mock으로 격리하여 AI 호출/검증 결과를 제어
@@ -42,6 +45,7 @@ class AiPipelineTest {
         mockAiClient = mock(AiClient.class);
         mockValidator = mock(AiResponseValidator.class);
         validationRegistry = mock(ValidationRegistry.class);
+        usageRecorder = mock(AiUsageRecorder.class);
 
         when(router.getDefault()).thenReturn(mockAiClient);
         when(validationRegistry.get(anyString())).thenReturn(mockValidator);
@@ -51,7 +55,8 @@ class AiPipelineTest {
             PromptTemplateRegistry.createDefault(),
             validationRegistry,
             new PromptLoader(),
-            new JsonSchemaValidator(new ObjectMapper())
+            new JsonSchemaValidator(new ObjectMapper()),
+            usageRecorder
         );
     }
 

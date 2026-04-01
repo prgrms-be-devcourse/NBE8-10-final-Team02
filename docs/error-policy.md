@@ -130,6 +130,7 @@ applies_to: error-classification-and-response
 - `error.message`: 사용자에게 직접 노출 가능한 메시지
 - `error.fieldErrors`: validation 실패 상세 목록, 없으면 생략 가능
 - `error.retryable`: 사용자가 재시도해도 되는지 여부
+- `error.retryAfterSeconds`: 재시도 가능한 경우 권장 대기 시간(초). 없으면 생략. rate limit 초과 시 사용.
 - `meta.requestId`: 로그 추적용 요청 식별자
 - `meta.timestamp`: 서버 응답 시각
 
@@ -404,11 +405,16 @@ applies_to: error-classification-and-response
 - JSON/형식 불일치
 - 질문 수 불일치
 - 품질 부족으로 후처리 실패
+- AI provider 분당 요청 한도(RPM/TPM) 초과
+- AI provider 일간 요청 한도(RPD/TPD) 소진
 
 정책
 - 비정상 AI 응답을 정상 결과로 저장하지 않는다.
 - 사용자에게는 생성 실패 또는 일시 오류 메시지를 제공한다.
 - 내부 로그에는 모델명, 버전, 소요 시간, 실패 유형을 남긴다.
+- 분당 한도 초과(RPM/TPM)는 `EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE`로 반환하고 `retryable=true`, `retryAfterSeconds`를 포함한다.
+- 일간 한도 소진(RPD/TPD)은 `AI_DAILY_LIMIT_EXCEEDED`로 반환하고 `retryable=false`, `retryAfterSeconds`(내일까지 남은 초)를 포함한다.
+- `retryAfterSeconds`는 provider의 `Retry-After` 응답 헤더 값을 우선 사용하고, 없으면 서버에서 추정한다.
 
 ## 13. 재시도 및 멱등성 정책
 

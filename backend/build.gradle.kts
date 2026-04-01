@@ -64,7 +64,7 @@ dependencies {
   testImplementation("org.wiremock:wiremock-standalone:3.12.1")
 
   // API Docs
-  implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.4.0")
+  implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.1")
 
   // Monitoring
   implementation("org.springframework.boot:spring-boot-starter-actuator")
