@@ -3,6 +3,7 @@ package com.back.backend.domain.ai.usage;
 import com.back.backend.domain.ai.client.AiClient;
 import com.back.backend.domain.ai.client.AiClientRouter;
 import com.back.backend.domain.ai.usage.dto.*;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.*;
@@ -37,9 +38,11 @@ public class AiStatusService {
 
     /**
      * 설정된 default + fallback provider에 대한 가용성 상태를 조회하여 반환
+     * 60초 로컬 캐시 적용 (TTL: 60s)
      *
      * @return AI 서비스 전체 가용성 및 각 provider 상태
      */
+    @Cacheable(cacheNames = "aiStatus")
     public AiStatusResponse getStatus() {
         // default + fallback provider 목록 구성 (중복 제거)
         List<AiClient> clients = new ArrayList<>();
@@ -101,13 +104,23 @@ public class AiStatusService {
         // UTC 자정 시간 계산 (일간 리셋 시각)
         String resetsAt = todayUtcMidnightIso();
 
-        MinuteUsage minuteUsage = new MinuteUsage(currentRpm, limits.getRpm(), resetInSeconds);
-        DailyUsage dailyUsage = new DailyUsage(daily.getRequestCount(), limits.getRpd(), resetsAt);
+        // 사용률 퍼센트 계산 (0-100, 반올림)
+        int minutePercentage = (int) Math.round((currentRpm * 100.0) / limits.getRpm());
+        int dailyPercentage = (int) Math.round((daily.getRequestCount() * 100.0) / limits.getRpd());
+        int minuteTokenPercentage = (int) Math.round((currentTpm * 100.0) / limits.getTpm());
+        Integer dailyTokenPercentage = limits.hasTpd()
+            ? (int) Math.round((daily.getTotalTokens() * 100.0) / limits.getTpd())
+            : null;
+
+        MinuteUsage minuteUsage = new MinuteUsage(currentRpm, limits.getRpm(), minutePercentage, resetInSeconds);
+        DailyUsage dailyUsage = new DailyUsage(daily.getRequestCount(), limits.getRpd(), dailyPercentage, resetsAt);
         TokenUsageStat tokenUsage = new TokenUsageStat(
             currentTpm,
             limits.getTpm(),
+            minuteTokenPercentage,
             daily.getTotalTokens(),
-            limits.hasTpd() ? limits.getTpd().longValue() : null
+            limits.hasTpd() ? limits.getTpd().longValue() : null,
+            dailyTokenPercentage
         );
 
         return ProviderStatus.of(code, availability, minuteUsage, dailyUsage, tokenUsage);
@@ -135,8 +148,9 @@ public class AiStatusService {
         return providers.stream()
             .filter(ps -> "minute_rate_limited".equals(ps.status()))
             .mapToInt(ps -> ps.minuteUsage().resetInSeconds())
-            .min()
-            .orElse(-1); //todo: 임시로 orElseNull대신 넣음
+            .boxed()
+            .min(Integer::compareTo)
+            .orElse(null);
     }
 
     /**
