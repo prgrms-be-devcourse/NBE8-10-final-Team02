@@ -149,7 +149,7 @@ public class DocumentService {
 
         // 트랜잭션 커밋 후 DocumentExtractionService가 이 이벤트를 수신해 비동기로 텍스트 추출을 시작한다
         eventPublisher.publishEvent(
-            new DocumentUploadedEvent(saved.getId(), saved.getStoragePath(), saved.getMimeType()));
+            new DocumentUploadedEvent(saved.getId(), saved.getStoragePath(), saved.getMimeType(), saved.getUser().getId()));
 
         return DocumentResponse.from(saved);
     }

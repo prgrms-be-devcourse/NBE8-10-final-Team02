@@ -39,4 +39,15 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    @Bean("activityTaskExecutor")
+    public Executor activityTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(2);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("activity-");
+        executor.initialize();
+        return executor;
+    }
 }

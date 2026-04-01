@@ -26,7 +26,9 @@ import com.back.backend.domain.interview.repository.InterviewSessionQuestionRepo
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import com.back.backend.global.response.FieldErrorDetail;
+import com.back.backend.domain.activity.event.InterviewSessionCompletedEvent;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -74,6 +76,7 @@ public class InterviewSessionService {
     private final InterviewResponseMapper interviewResponseMapper;
     private final Clock clock;
     private final PlatformTransactionManager transactionManager;
+    private final ApplicationEventPublisher eventPublisher;
     private final Set<Long> followupGenerationInFlight = ConcurrentHashMap.newKeySet();
     private final Set<Long> resultGenerationInFlight = ConcurrentHashMap.newKeySet();
     private final Map<Long, Instant> deferredResultRetryAt = new ConcurrentHashMap<>();
@@ -440,6 +443,9 @@ public class InterviewSessionService {
         if (!answerTags.isEmpty()) {
             interviewAnswerTagRepository.saveAll(answerTags);
         }
+
+        eventPublisher.publishEvent(
+                new InterviewSessionCompletedEvent(session.getUser().getId(), session.getId()));
     }
 
     private Map<String, FeedbackTag> loadTagsByName(
