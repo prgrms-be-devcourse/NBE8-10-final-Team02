@@ -1,24 +1,29 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { getStreak, getHeatmap } from '@/api/activity';
-import type { StreakInfo, ActivityEntry } from '@/types/activity';
+import { getStreak, getHeatmap, getStats } from '@/api/activity';
+import type { StreakInfo, ActivityEntry, ActivityStats } from '@/types/activity';
 import StreakBadge from '@/components/activity/StreakBadge';
 import ActivityHeatmap from '@/components/activity/ActivityHeatmap';
+import ScoreTrendChart from '@/components/activity/ScoreTrendChart';
+import WeakTagsChart from '@/components/activity/WeakTagsChart';
 
 export default function ActivityPage() {
   const [streak, setStreak] = useState<StreakInfo | null>(null);
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
+  const [stats, setStats] = useState<ActivityStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [streakData, heatmapData] = await Promise.all([
+    const [streakData, heatmapData, statsData] = await Promise.all([
       getStreak(),
       getHeatmap(180),
+      getStats(),
     ]);
     setStreak(streakData);
     setEntries(heatmapData);
+    setStats(statsData);
     setLoading(false);
   }, []);
 
@@ -63,6 +68,18 @@ export default function ActivityPage() {
       <div className="mt-8 rounded-xl border border-zinc-200 bg-white p-5">
         <h2 className="mb-4 text-sm font-medium text-zinc-700">활동 히트맵</h2>
         <ActivityHeatmap entries={entries} days={180} />
+      </div>
+
+      {/* Score Trend */}
+      <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-5">
+        <h2 className="mb-4 text-sm font-medium text-zinc-700">면접 점수 추이</h2>
+        <ScoreTrendChart entries={stats?.scoreTrend ?? []} />
+      </div>
+
+      {/* Weak Areas */}
+      <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-5">
+        <h2 className="mb-4 text-sm font-medium text-zinc-700">취약 영역 분석</h2>
+        <WeakTagsChart entries={stats?.weakAreas ?? []} />
       </div>
     </main>
   );

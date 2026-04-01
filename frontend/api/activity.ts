@@ -1,4 +1,4 @@
-import type { ActivityEntry, StreakInfo } from '@/types/activity';
+import type { ActivityEntry, ActivityStats, StreakInfo } from '@/types/activity';
 
 const apiBase = () => process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
 
@@ -27,5 +27,19 @@ export async function getHeatmap(days = 180): Promise<ActivityEntry[]> {
     return body.data as ActivityEntry[];
   } catch {
     return [];
+  }
+}
+
+export async function getStats(): Promise<ActivityStats> {
+  try {
+    const res = await fetch(`${apiBase()}/api/v1/activity/stats`, {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (!res.ok) return { scoreTrend: [], weakAreas: [] };
+    const body = await res.json();
+    return body.data as ActivityStats;
+  } catch {
+    return { scoreTrend: [], weakAreas: [] };
   }
 }
