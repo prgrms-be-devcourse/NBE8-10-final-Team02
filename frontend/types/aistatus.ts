@@ -1,9 +1,34 @@
+export type AiProviderStatus = 'available' | 'minute_rate_limited' | 'daily_exhausted';
 
-export type AiProviderStatus = 'AVAILABLE' | 'MINUTE_RATE_LIMITED' | 'DAILY_EXHAUSTED';
+export interface MinuteUsage {
+  used: number;
+  limit: number;
+  percentage: number;
+  resetInSeconds: number;
+}
+
+export interface DailyUsage {
+  used: number;
+  limit: number;
+  percentage: number;
+  resetsAt: string;
+}
+
+export interface TokenUsageStat {
+  minuteUsed: number;
+  minuteLimit: number;
+  minutePercentage: number;
+  dailyUsed: number;
+  dailyLimit: number | null;
+  dailyPercentage: number | null;
+}
 
 export interface ProviderStatus {
-  provider: string; // 예: 'Google Gemini', 'OpenAI' 등
+  name: string;
   status: AiProviderStatus;
+  minuteUsage: MinuteUsage;
+  dailyUsage: DailyUsage;
+  tokenUsage: TokenUsageStat;
 }
 
 export interface AiStatusResponse {
@@ -12,5 +37,3 @@ export interface AiStatusResponse {
   message?: string;
   providers: ProviderStatus[];
 }
-
-
