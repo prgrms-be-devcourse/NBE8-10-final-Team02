@@ -1,6 +1,7 @@
 package com.back.backend.domain.activity.controller;
 
 import com.back.backend.domain.activity.dto.ActivityEntryDto;
+import com.back.backend.domain.activity.dto.ActivityStatsResponse;
 import com.back.backend.domain.activity.dto.StreakResponse;
 import com.back.backend.domain.activity.service.ActivityQueryService;
 import com.back.backend.global.response.ApiResponse;
@@ -34,5 +35,10 @@ public class ActivityController {
             days = 180;
         }
         return ApiResponse.success(activityQueryService.getHeatmap(userId, days));
+    }
+
+    @GetMapping("/stats")
+    public ApiResponse<ActivityStatsResponse> getStats(@AuthenticationPrincipal Long userId) {
+        return ApiResponse.success(activityQueryService.getStats(userId));
     }
 }
