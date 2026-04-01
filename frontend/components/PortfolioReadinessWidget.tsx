@@ -2,18 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 
 // --- API & Types Imports ---
 import { getPortfolioReadiness, UnauthenticatedError } from '@/api/portfolio';
-import { getAiStatus } from '@/api/aistatus';
+import { useAiStatus } from '@/hooks/useAiStatus';
 import type {
   PortfolioConnectionStatus,
   PortfolioMissingItem,
   PortfolioNextRecommendedAction,
   PortfolioReadinessDashboard,
 } from '@/types/portfolio';
-import type { AiProviderStatus, AiStatusResponse } from '@/types/aistatus';
+import type { AiProviderStatus } from '@/types/aistatus';
 
 // ==========================================
 // 1. Constants & Helpers
@@ -39,21 +39,40 @@ const nextActionConfig: Record<PortfolioNextRecommendedAction, { href: string; l
 };
 
 const aiStatusColors: Record<AiProviderStatus, string> = {
-  AVAILABLE: 'bg-emerald-500',
-  MINUTE_RATE_LIMITED: 'bg-amber-500',
-  DAILY_EXHAUSTED: 'bg-red-500',
+  available: 'bg-emerald-500',
+  minute_rate_limited: 'bg-amber-500',
+  daily_exhausted: 'bg-red-500',
 };
 
 const aiStatusLabels: Record<AiProviderStatus, string> = {
-  AVAILABLE: '정상',
-  MINUTE_RATE_LIMITED: '일시 제한',
-  DAILY_EXHAUSTED: '일일 한도 초과',
+  available: '정상',
+  minute_rate_limited: '일시 제한',
+  daily_exhausted: '일일 한도 초과',
+};
+
+const progressTrackColor: Record<AiProviderStatus, string> = {
+  available: 'bg-emerald-500',
+  minute_rate_limited: 'bg-amber-500',
+  daily_exhausted: 'bg-red-500',
 };
 
 function formatMissingItems(items: PortfolioMissingItem[]) {
   if (items.length === 0) return '필수 부족 항목 없음';
   if (items.length === 1) return `${missingItemLabel[items[0]]} 필요`;
   return `${missingItemLabel[items[0]]} 외 ${items.length - 1}개`;
+}
+
+/** 사용률 progress bar */
+function UsageBar({ percentage, status }: { percentage: number; status: AiProviderStatus }) {
+  const clamped = Math.min(100, Math.max(0, percentage));
+  return (
+    <div className="mt-1 h-1 w-full rounded-full bg-zinc-200">
+      <div
+        className={`h-1 rounded-full transition-all ${progressTrackColor[status]}`}
+        style={{ width: `${clamped}%` }}
+      />
+    </div>
+  );
 }
 
 // ==========================================
@@ -69,12 +88,10 @@ export default function PortfolioReadinessWidget() {
   const [unauthenticated, setUnauthenticated] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
 
-  // AI Status States
-  const [aiStatus, setAiStatus] = useState<AiStatusResponse | null>(null);
-  const [loadingAi, setLoadingAi] = useState(true);
-  const [errorAi, setErrorAi] = useState<string | null>(null);
+  // AI Status (폴링 + 카운트다운)
+  const { aiStatus, loading: loadingAi, error: errorAi, countdown } = useAiStatus();
 
-  // --- Data Fetching Logic ---
+  // --- Portfolio Data Fetching ---
   useEffect(() => {
     async function loadPortfolio() {
       setLoadingPortfolio(true);
@@ -95,26 +112,7 @@ export default function PortfolioReadinessWidget() {
     void loadPortfolio();
   }, [pathname, reloadToken]);
 
-  const fetchAiStatus = useCallback(async () => {
-    try {
-      setErrorAi(null);
-      const data = await getAiStatus();
-      setAiStatus(data);
-    } catch (err) {
-      setErrorAi(err instanceof Error ? err.message : 'AI 상태를 불러오지 못했습니다.');
-    } finally {
-      setLoadingAi(false);
-    }
-  }, []);
-
-  // 10초 간격 AI Status Polling
-  useEffect(() => {
-    fetchAiStatus();
-    const intervalId = setInterval(fetchAiStatus, 10000);
-    return () => clearInterval(intervalId);
-  }, [fetchAiStatus, reloadToken]);
-
-  // --- Render: Loading & Auth States (Mainly for Portfolio) ---
+  // --- Render: Loading & Auth States ---
   if (loadingPortfolio) {
     return (
       <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -154,7 +152,7 @@ export default function PortfolioReadinessWidget() {
 
   const nextAction = nextActionConfig[dashboard.readiness.nextRecommendedAction];
 
-  // --- Render: Main Widget (Portfolio + AI Status Combined) ---
+  // --- Render: Main Widget ---
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       {/* 1. 포트폴리오 현황 섹션 */}
@@ -207,51 +205,74 @@ export default function PortfolioReadinessWidget() {
           {!loadingAi && !errorAi && aiStatus && (
             <span className="relative flex h-2 w-2">
               {aiStatus.available && (
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               )}
-              <span className={`relative inline-flex h-2 w-2 rounded-full ${aiStatus.available ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+              <span className={`relative inline-flex h-2 w-2 rounded-full ${aiStatus.available ? 'bg-emerald-500' : 'bg-amber-500'}`} />
             </span>
           )}
         </div>
 
         {loadingAi && <p className="mt-1 text-sm text-zinc-400">상태 확인 중...</p>}
-
         {errorAi && <p className="mt-1 text-sm text-red-500">{errorAi}</p>}
 
         {!loadingAi && !errorAi && aiStatus && (
-          <div className="mt-2">
-            {!aiStatus.available && aiStatus.message && (
-              <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2">
-                <p className="text-xs font-medium text-amber-800">{aiStatus.message}</p>
-                {aiStatus.estimatedWaitSeconds && (
-                  <p className="mt-0.5 text-[11px] text-amber-700">
-                    예상 대기 시간: <strong className="font-bold">{aiStatus.estimatedWaitSeconds}초</strong>
+          <div className="mt-2 flex flex-col gap-2">
+            {/* 비가용 알림 배너 */}
+            {!aiStatus.available && (
+              <div className={`rounded-lg px-3 py-2 text-xs ${
+                aiStatus.providers.every((p) => p.status === 'daily_exhausted')
+                  ? 'bg-red-50 text-red-800'
+                  : 'bg-amber-50 text-amber-800'
+              }`}>
+                <p className="font-medium">{aiStatus.message}</p>
+                {countdown !== null && (
+                  <p className="mt-0.5 text-amber-700">
+                    약 <strong className="font-bold">{countdown}초</strong> 후 자동 재확인
                   </p>
                 )}
               </div>
             )}
-            <dl className="grid grid-cols-2 gap-2 text-xs">
-              {aiStatus.providers?.map((provider, index) => (
-                <div key={index} className="flex items-center justify-between rounded-lg bg-zinc-50 px-2 py-1.5">
-                  <dt className="text-zinc-500 truncate mr-2">{provider.provider}</dt>
-                  <dd className="flex items-center gap-1.5 font-medium text-zinc-900 whitespace-nowrap">
+
+            {/* Provider별 상태 카드 */}
+            {aiStatus.providers.map((provider) => (
+              <div key={provider.name} className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-700">{provider.name}</span>
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-zinc-900">
                     <span className={`h-1.5 w-1.5 rounded-full ${aiStatusColors[provider.status]}`} />
                     {aiStatusLabels[provider.status]}
-                  </dd>
+                  </span>
                 </div>
-              ))}
-            </dl>
+
+                {/* 분당 요청 사용률 */}
+                <div className="mt-2">
+                  <div className="flex justify-between text-[10px] text-zinc-400">
+                    <span>분당 요청</span>
+                    <span>{provider.minuteUsage.used}/{provider.minuteUsage.limit} ({provider.minuteUsage.percentage}%)</span>
+                  </div>
+                  <UsageBar percentage={provider.minuteUsage.percentage} status={provider.status} />
+                </div>
+
+                {/* 일간 요청 사용률 */}
+                <div className="mt-1.5">
+                  <div className="flex justify-between text-[10px] text-zinc-400">
+                    <span>일간 요청</span>
+                    <span>{provider.dailyUsage.used}/{provider.dailyUsage.limit} ({provider.dailyUsage.percentage}%)</span>
+                  </div>
+                  <UsageBar percentage={provider.dailyUsage.percentage} status={provider.status} />
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
 
       {/* 3. 하단 액션 버튼 */}
-      {/* AI가 비가용 상태일 때 버튼을 비활성화하려면 아래 disable 조건을 활용하세요. 현재는 디자인만 유지했습니다. */}
       <Link
         href={nextAction.href}
         className={`mt-5 inline-flex w-full items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium text-white transition-colors
           ${aiStatus && !aiStatus.available && nextAction.href === '/applications'
-          ? 'bg-zinc-400 pointer-events-none' // AI 지원이 필수인 액션일 경우 비활성화 예시
+          ? 'pointer-events-none bg-zinc-400'
           : 'bg-zinc-900 hover:bg-zinc-800'}`}
       >
         {aiStatus && !aiStatus.available && nextAction.href === '/applications'
