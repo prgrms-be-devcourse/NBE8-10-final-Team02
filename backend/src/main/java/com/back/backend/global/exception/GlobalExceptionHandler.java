@@ -26,12 +26,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ServiceException.class)
     public ResponseEntity<ApiErrorResponse> handleServiceException(ServiceException exception) {
+        // retryAfterSeconds를 추출하여 rate limit 응답에 대기 시간 포함
         return errorResponse(
                 exception.getStatus(),
                 exception.getErrorCode(),
                 exception.getMessage(),
                 exception.isRetryable(),
                 exception.getFieldErrors(),
+                exception.getRetryAfterSeconds(),
                 exception
         );
     }
@@ -80,6 +82,7 @@ public class GlobalExceptionHandler {
                 "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
                 false,
                 null,
+                null,
                 exception
         );
     }
@@ -91,16 +94,22 @@ public class GlobalExceptionHandler {
                 "요청 값을 다시 확인해주세요.",
                 false,
                 fieldErrors,
+                null,
                 null
         );
     }
 
+    /**
+     * 공통 오류 응답 생성 메서드
+     * retryAfterSeconds: rate limit 시 클라이언트에 전달할 재시도 대기 초 (null이면 직렬화 제외)
+     */
     private ResponseEntity<ApiErrorResponse> errorResponse(
             HttpStatus status,
             ErrorCode errorCode,
             String message,
             boolean retryable,
             List<FieldErrorDetail> fieldErrors,
+            Integer retryAfterSeconds,
             Exception exception
     ) {
         if (status.is5xxServerError()) {
@@ -111,7 +120,7 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(status)
-                .body(ApiErrorResponse.of(errorCode, message, retryable, fieldErrors));
+                .body(ApiErrorResponse.of(errorCode, message, retryable, fieldErrors, retryAfterSeconds));
     }
 
     private List<FieldErrorDetail> extractFieldErrors(BindException exception) {

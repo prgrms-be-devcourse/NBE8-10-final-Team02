@@ -96,6 +96,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/oauth2/github/link-url").authenticated() // 연동 URL 생성은 로그인 필요 (permitAll 와일드카드보다 먼저 선언)
                         .requestMatchers("/auth/oauth2/**", "/api/v1/auth/oauth2/**").permitAll()
                         .requestMatchers("/api/v1/auth/logout").permitAll() // 만료된 토큰으로도 로그아웃 가능
+                        .requestMatchers("/api/v1/ai/status").permitAll() // AI 가용성 상태 조회는 인증 불필요
                         .requestMatchers("/api/v1/knowledge/sync")
                             .access(new WebExpressionAuthorizationManager(
                                 "hasIpAddress('127.0.0.1') or hasIpAddress('::1')"))
