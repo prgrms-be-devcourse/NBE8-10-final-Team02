@@ -4,17 +4,15 @@ import com.back.backend.domain.ai.client.AiClient;
 import com.back.backend.domain.ai.client.AiClientRouter;
 import com.back.backend.domain.ai.client.AiProvider;
 import com.back.backend.domain.ai.usage.dto.AiStatusResponse;
+import com.back.backend.support.ApiTestBase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.MockBean;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.EnableCaching;
-import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -24,126 +22,103 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 /**
- * AiStatusService 캐싱 기능 테스트
- * - 60초 캐시 TTL 검증
- * - 동일 요청에 대한 DB 조회 회수 감소 확인
+ * AiStatusService 캐싱 기능 통합 테스트
+ * - Caffeine 캐시 동작 검증 (캐시 히트 시 repository 미호출)
+ * - 테스트 간 캐시 격리: @BeforeEach에서 캐시 명시적 초기화
+ *
+ * AiClientRouter, AiProviderUsageRepository를 @MockitoBean으로 대체
+ * → 실제 DB/외부 API 호출 없이 캐시 동작만 순수 검증
  */
-@SpringBootTest
-@ActiveProfiles("test")
-@DisplayName("AI 상태 조회 캐싱")
-class AiStatusServiceCacheTest {
+// 이 테스트는 Spring 컨텍스트의 CacheManager(Caffeine)와 @MockitoBean repository를 공유한다.
+// 병렬 실행 시 cacheManager.clear()와 reset(repository)가 다른 테스트 메서드 실행 중에
+// 끼어들어 검증 결과를 오염시킬 수 있으므로 반드시 같은 스레드에서 순차 실행해야 한다.
+@Execution(ExecutionMode.SAME_THREAD)
+@DisplayName("AiStatusService 캐싱")
+class AiStatusServiceCacheTest extends ApiTestBase {
 
-    @Configuration
-    @EnableCaching
-    public static class CacheTestConfig {
-        @Bean
-        public CacheManager cacheManager() {
-            return new ConcurrentMapCacheManager("aiStatus");
-        }
-    }
-
-    @MockBean
+    @MockitoBean
     private AiClientRouter router;
-    @MockBean
-    private AiUsageStore store;
-    @MockBean
-    private AiProviderUsageRepository repository;
-    @MockBean
-    private AiRateLimitProperties rateLimitProps;
-    @MockBean
-    private AiClient defaultClient;
-    @MockBean
-    private AiClient fallbackClient;
 
-    private AiStatusService service;
-    private AiRateLimitProperties.ProviderLimit geminiLimit;
+    @MockitoBean
+    private AiClient defaultClient;
+
+    @MockitoBean
+    private AiProviderUsageRepository repository;
+
+    @Autowired
+    private AiStatusService aiStatusService;
+
+    @Autowired
+    private CacheManager cacheManager;
 
     @BeforeEach
-    void setUp() {
-        service = new AiStatusService(router, store, repository, rateLimitProps);
+    void setUpMocks() {
+        // 테스트 간 캐시 격리
+        cacheManager.getCache("aiStatus").clear();
 
-        // 기본 설정
-        geminiLimit = mock(AiRateLimitProperties.ProviderLimit.class);
-        when(geminiLimit.getRpm()).thenReturn(10);
-        when(geminiLimit.getRpd()).thenReturn(250);
-        when(geminiLimit.getTpm()).thenReturn(250000L);
-        when(geminiLimit.hasTpd()).thenReturn(false);
-
+        // router: gemini를 default로, fallback 없음
         when(defaultClient.getProvider()).thenReturn(AiProvider.GEMINI);
         when(router.getDefault()).thenReturn(defaultClient);
         when(router.getFallback()).thenReturn(Optional.empty());
 
-        when(rateLimitProps.getFor("gemini")).thenReturn(geminiLimit);
-
-        // store 기본값
-        when(store.currentRpm("gemini")).thenReturn(3);
-        when(store.currentTpm("gemini")).thenReturn(50000L);
-        when(store.secondsUntilReset("gemini")).thenReturn(42);
-
-        // repository 기본값
-        AiProviderUsage geminiDaily = mock(AiProviderUsage.class);
-        when(geminiDaily.getRequestCount()).thenReturn(50);
-        when(geminiDaily.getTotalTokens()).thenReturn(100000L);
-        when(repository.findByProviderAndUsageDate("gemini", LocalDate.now(ZoneOffset.UTC)))
-            .thenReturn(Optional.of(geminiDaily));
+        // repository: 사용량 없음 (캐시 동작 검증에만 집중)
+        when(repository.findByProviderAndUsageDate(any(), any()))
+            .thenReturn(Optional.empty());
     }
 
     @Test
-    @DisplayName("첫 번째 호출: 캐시 미스, DB 조회 1회")
-    void testFirstCallCacheMiss() {
-        // when
-        AiStatusResponse response1 = service.getStatus();
+    @DisplayName("첫 번째 호출: DB 조회 발생")
+    void firstCall_dbQueried() {
+        AiStatusResponse response = aiStatusService.getStatus();
 
-        // then
-        assertThat(response1).isNotNull();
-        assertThat(response1.available()).isTrue();
-
-        // repository 조회가 1회 발생했는지 확인
-        verify(repository, times(1)).findByProviderAndUsageDate("gemini", LocalDate.now(ZoneOffset.UTC));
+        assertThat(response.available()).isTrue();
+        verify(repository, atLeastOnce())
+            .findByProviderAndUsageDate("gemini", LocalDate.now(ZoneOffset.UTC));
     }
 
     @Test
-    @DisplayName("두 번째 호출 (동일 요청): 캐시 히트, DB 조회 증가 없음")
-    void testSecondCallCacheHit() {
-        // when
-        AiStatusResponse response1 = service.getStatus();
-        AiStatusResponse response2 = service.getStatus();
+    @DisplayName("두 번째 호출: 캐시 히트, DB 추가 조회 없음")
+    void secondCall_cacheHit_noExtraDbQuery() {
+        aiStatusService.getStatus();
+        reset(repository);  // 첫 조회 카운트 제거
 
-        // then
-        assertThat(response1).isNotNull();
-        assertThat(response2).isNotNull();
-        // 두 응답이 동일한 데이터를 가져야 함
-        assertThat(response1.available()).isEqualTo(response2.available());
-        assertThat(response1.providers()).isEqualTo(response2.providers());
+        AiStatusResponse response = aiStatusService.getStatus();
 
-        // repository 조회는 여전히 1회만 (캐시에서 가져옴)
-        verify(repository, times(1)).findByProviderAndUsageDate("gemini", LocalDate.now(ZoneOffset.UTC));
+        assertThat(response).isNotNull();
+        verifyNoInteractions(repository);
     }
 
     @Test
-    @DisplayName("여러 번 호출: 계속 캐시에서 조회")
-    void testMultipleCallsCachedResponse() {
-        // when
+    @DisplayName("10회 연속 호출: DB 조회 1회만")
+    void multipleCallsInCache_dbQueriedOnce() {
         for (int i = 0; i < 10; i++) {
-            AiStatusResponse response = service.getStatus();
-            assertThat(response).isNotNull();
+            aiStatusService.getStatus();
         }
 
-        // then
-        // repository 조회는 여전히 1회만 (모든 요청이 캐시에서 옴)
-        verify(repository, times(1)).findByProviderAndUsageDate("gemini", LocalDate.now(ZoneOffset.UTC));
+        verify(repository, times(1))
+            .findByProviderAndUsageDate("gemini", LocalDate.now(ZoneOffset.UTC));
     }
 
     @Test
-    @DisplayName("캐시 이름 검증: 'aiStatus'")
-    void testCacheName() {
-        // when
-        AiStatusResponse response = service.getStatus();
+    @DisplayName("캐시 초기화 후 재조회: DB 재조회 발생")
+    void afterCacheClear_dbQueriedAgain() {
+        aiStatusService.getStatus();
+        verify(repository, times(1))
+            .findByProviderAndUsageDate("gemini", LocalDate.now(ZoneOffset.UTC));
 
-        // then
-        assertThat(response).isNotNull();
-        // @Cacheable(cacheNames = "aiStatus") 적용 확인
-        // (실제 캐시 이름은 Spring이 관리하므로 응답 데이터로 검증)
-        verify(repository, times(1)).findByProviderAndUsageDate("gemini", LocalDate.now(ZoneOffset.UTC));
+        cacheManager.getCache("aiStatus").clear();
+        aiStatusService.getStatus();
+
+        verify(repository, times(2))
+            .findByProviderAndUsageDate("gemini", LocalDate.now(ZoneOffset.UTC));
+    }
+
+    @Test
+    @DisplayName("캐시 격리: 이전 테스트 캐시 상태 영향 없음")
+    void cacheIsolation_noLeakBetweenTests() {
+        aiStatusService.getStatus();
+
+        verify(repository, times(1))
+            .findByProviderAndUsageDate("gemini", LocalDate.now(ZoneOffset.UTC));
     }
 }
