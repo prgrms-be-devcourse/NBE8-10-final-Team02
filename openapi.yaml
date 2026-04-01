@@ -3727,6 +3727,9 @@ paths:
                               type: integer
                             limit:
                               type: integer
+                            percentage:
+                              type: integer
+                              description: 사용률 퍼센트 (0-100)
                             resetInSeconds:
                               type: integer
                         dailyUsage:
@@ -3736,6 +3739,9 @@ paths:
                               type: integer
                             limit:
                               type: integer
+                            percentage:
+                              type: integer
+                              description: 사용률 퍼센트 (0-100)
                             resetsAt:
                               type: string
                               format: date-time
@@ -3748,6 +3754,9 @@ paths:
                             minuteLimit:
                               type: integer
                               format: int64
+                            minutePercentage:
+                              type: integer
+                              description: 분당 토큰 사용률 퍼센트 (0-100)
                             dailyUsed:
                               type: integer
                               format: int64
@@ -3755,6 +3764,10 @@ paths:
                               type: integer
                               format: int64
                               nullable: true
+                            dailyPercentage:
+                              type: integer
+                              nullable: true
+                              description: 일간 토큰 사용률 퍼센트 (0-100). dailyLimit이 null이면 null
               examples:
                 available:
                   value:
@@ -3765,31 +3778,39 @@ paths:
                       minuteUsage:
                         used: 3
                         limit: 10
+                        percentage: 30
                         resetInSeconds: 42
                       dailyUsage:
                         used: 57
                         limit: 250
+                        percentage: 23
                         resetsAt: '2026-04-02T00:00:00Z'
                       tokenUsage:
                         minuteUsed: 12000
                         minuteLimit: 250000
+                        minutePercentage: 5
                         dailyUsed: 230000
                         dailyLimit: null
+                        dailyPercentage: null
                     - name: groq
                       status: available
                       minuteUsage:
                         used: 1
                         limit: 30
+                        percentage: 3
                         resetInSeconds: 58
                       dailyUsage:
                         used: 120
                         limit: 1000
+                        percentage: 12
                         resetsAt: '2026-04-02T00:00:00Z'
                       tokenUsage:
                         minuteUsed: 3000
                         minuteLimit: 12000
+                        minutePercentage: 25
                         dailyUsed: 45000
                         dailyLimit: 100000
+                        dailyPercentage: 45
                 dailyExhausted:
                   value:
                     available: false
@@ -3801,31 +3822,39 @@ paths:
                       minuteUsage:
                         used: 0
                         limit: 10
+                        percentage: 0
                         resetInSeconds: 0
                       dailyUsage:
                         used: 250
                         limit: 250
+                        percentage: 100
                         resetsAt: '2026-04-02T00:00:00Z'
                       tokenUsage:
                         minuteUsed: 0
                         minuteLimit: 250000
+                        minutePercentage: 0
                         dailyUsed: 250000
                         dailyLimit: null
+                        dailyPercentage: null
                     - name: groq
                       status: daily_exhausted
                       minuteUsage:
                         used: 0
                         limit: 30
+                        percentage: 0
                         resetInSeconds: 0
                       dailyUsage:
                         used: 1000
                         limit: 1000
+                        percentage: 100
                         resetsAt: '2026-04-02T00:00:00Z'
                       tokenUsage:
                         minuteUsed: 0
                         minuteLimit: 12000
+                        minutePercentage: 0
                         dailyUsed: 100000
                         dailyLimit: 100000
+                        dailyPercentage: 100
         '503':
           description: AI 서비스 일간 한도 소진
           content:
