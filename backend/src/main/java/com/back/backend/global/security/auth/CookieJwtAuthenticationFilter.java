@@ -57,6 +57,7 @@ public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
                 || path.equals("/swagger-ui.html")
                 || path.startsWith("/auth/oauth2/")
                 || (path.startsWith("/api/v1/auth/oauth2/") && !path.equals("/api/v1/auth/oauth2/github/link-url"))
+                || path.equals("/api/v1/auth/logout") // 만료된 토큰으로도 로그아웃 가능
                 || path.equals("/api/v1/knowledge/sync") // localhost IP 제한은 SecurityConfig에서 처리
                 || path.startsWith("/contract-test/"); // TODO: 테스트용 경로 추후삭제필요
     }
