@@ -1,6 +1,7 @@
 package com.back.backend.domain.github.controller;
 
 import com.back.backend.domain.github.dto.request.AddContributionByUrlRequest;
+import com.back.backend.domain.github.dto.request.BatchAnalyzeRequest;
 import com.back.backend.domain.github.dto.request.GithubConnectRequest;
 import com.back.backend.domain.github.dto.request.RepositorySelectionRequest;
 import com.back.backend.domain.github.dto.request.SaveContributionRequest;
@@ -266,6 +267,27 @@ public class GithubController {
                 .map(RepoSyncStatusResponse::from)
                 .orElse(null);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(response));
+    }
+
+    /**
+     * 여러 repo를 묶어 단 1회의 AI 호출로 분석하는 배치 파이프라인을 비동기로 시작한다.
+     *
+     * <p>Gemini/Groq 무료 tier의 분당 요청 수(Rate Limit)를 절약하기 위해,
+     * 선택된 N개 repo의 데이터를 하나의 XML 페이로드로 묶어 AI를 1회만 호출한다.
+     *
+     * <p>즉시 202 Accepted 반환. 각 repo의 진행 상황은
+     * {@code GET /repositories/{repositoryId}/sync-status} 폴링으로 확인한다.
+     *
+     * @param request 분석할 repo ID 목록 ({@code repositoryIds}, 1개 이상 필수)
+     */
+    @PostMapping("/repositories/analyze-batch")
+    public ResponseEntity<ApiResponse<Void>> analyzeBatch(
+            Authentication authentication,
+            @RequestBody @Valid BatchAnalyzeRequest request
+    ) {
+        Long userId = extractUserId(authentication);
+        analysisPipelineService.triggerBatchAnalysis(userId, request.repositoryIds());
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(null));
     }
 
     /**
