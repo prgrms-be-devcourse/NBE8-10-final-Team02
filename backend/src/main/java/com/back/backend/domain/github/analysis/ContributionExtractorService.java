@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -52,7 +53,8 @@ public class ContributionExtractorService {
 
     private static final Logger log = LoggerFactory.getLogger(ContributionExtractorService.class);
 
-    private static final int MAX_DIFF_CHARS       = 40_000;
+    /** diff가 이 크기를 초과하면 raw diff 대신 CodeIndex 기반 요약으로 대체한다 (§7.7) */
+    private static final int DIFF_COMPRESSION_THRESHOLD = 10_000;
     private static final int GIT_TIMEOUT_SECONDS  = 120;
     private static final int MAX_BUCKET_COMMITS   = 2;
 
@@ -82,6 +84,10 @@ public class ContributionExtractorService {
     private static final Pattern CORE_FILE_PATTERN =
             Pattern.compile("(Service|Controller|Repository|Domain|Entity|UseCase)\\.java$",
                     Pattern.CASE_INSENSITIVE);
+
+    /** CodeIndex.methods JSON에서 signature 값을 추출하는 패턴 */
+    private static final Pattern METHOD_SIGNATURE_PATTERN =
+            Pattern.compile("\"signature\"\\s*:\\s*\"([^\"]+)\"");
 
     private final CommitClassifier classifier;
 
@@ -142,13 +148,23 @@ public class ContributionExtractorService {
                 .toList();
         log.info("After IGNORED filter: {} → {} commits", headers.size(), included.size());
 
-        // 3. CodeIndex에서 파일 → PageRank 맵 구성
+        // 3. CodeIndex에서 파일 → PageRank 맵, 파일 → CodeIndex 맵 구성
         Map<String, Double> pageRankByFile = codeEntries.stream()
                 .filter(e -> e.getPagerank() != null)
                 .collect(Collectors.toMap(
                         CodeIndex::getFilePath,
                         CodeIndex::getPagerank,
                         Math::max));
+
+        Map<String, CodeIndex> codeIndexByFile = codeEntries.stream()
+                .collect(Collectors.toMap(
+                        CodeIndex::getFilePath,
+                        e -> e,
+                        (a, b) -> {
+                            double pa = a.getPagerank() != null ? a.getPagerank() : 0.0;
+                            double pb = b.getPagerank() != null ? b.getPagerank() : 0.0;
+                            return pa >= pb ? a : b;
+                        }));
 
         // 4. 커밋 수 기준 1/3 분할 (oldest-first로 역순)
         List<CommitHeader> chronological = new ArrayList<>(included);
@@ -170,8 +186,8 @@ public class ContributionExtractorService {
 
         log.info("Selected {} commits after scoring + time distribution + diversity", selected.size());
 
-        // 6. 선택된 커밋만 diff 조회
-        return fetchDiffs(repoPath, selected);
+        // 6. 선택된 커밋만 diff 조회 (§7.7: 10KB 초과 시 CodeIndex 요약 대체)
+        return fetchDiffs(repoPath, selected, codeIndexByFile);
     }
 
     // ─────────────────────────────────────────────────
@@ -239,20 +255,30 @@ public class ContributionExtractorService {
         return headers;
     }
 
-    private List<DiffEntry> fetchDiffs(Path repoPath, List<CommitHeader> headers) {
+    private List<DiffEntry> fetchDiffs(Path repoPath, List<CommitHeader> headers,
+                                       Map<String, CodeIndex> codeIndexByFile) {
         List<DiffEntry> result = new ArrayList<>();
         for (CommitHeader h : headers) {
-            result.add(new DiffEntry(h.sha(), h.subject(), h.body(), getCommitDiff(repoPath, h.sha())));
+            String diff = getCommitDiff(repoPath, h.sha(), h.files(), codeIndexByFile);
+            result.add(new DiffEntry(h.sha(), h.subject(), h.body(), diff));
         }
         return result;
     }
 
-    private String getCommitDiff(Path repoPath, String sha) {
+    /**
+     * 커밋 diff를 가져온다.
+     *
+     * <p>§7.7: diff가 {@value #DIFF_COMPRESSION_THRESHOLD}자를 초과하면
+     * raw diff 대신 CodeIndex 기반 요약(FQN, 메서드 시그니처, PageRank)으로 대체한다.
+     * 대용량 설정 파일·Migration 덤프가 토큰 예산을 소비하는 것을 방지한다.
+     */
+    private String getCommitDiff(Path repoPath, String sha, List<String> commitFiles,
+                                  Map<String, CodeIndex> codeIndexByFile) {
         List<String> command = Arrays.asList("git", "diff", sha + "^", sha);
         try {
             String diff = runGit(command, repoPath);
-            if (diff.length() > MAX_DIFF_CHARS) {
-                return diff.substring(0, MAX_DIFF_CHARS) + "\n... [truncated]";
+            if (diff.length() > DIFF_COMPRESSION_THRESHOLD) {
+                return buildCodeIndexSummary(commitFiles, diff.length(), codeIndexByFile);
             }
             return diff;
         } catch (Exception e) {
@@ -263,6 +289,49 @@ public class ContributionExtractorService {
                 return "";
             }
         }
+    }
+
+    /**
+     * diff 대신 전달할 CodeIndex 기반 요약을 생성한다.
+     *
+     * <p>CodeIndex에 없는 파일은 경로만 표시한다.
+     */
+    private String buildCodeIndexSummary(List<String> commitFiles, int rawDiffSize,
+                                          Map<String, CodeIndex> codeIndexByFile) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[diff compressed — ").append(rawDiffSize / 1024).append("KB raw, CodeIndex summary]\n");
+
+        for (String file : commitFiles) {
+            CodeIndex ci = codeIndexByFile.get(file);
+            if (ci != null) {
+                sb.append("  ").append(ci.getFqn());
+                if (ci.getPagerank() != null) {
+                    sb.append("  pagerank=").append(String.format("%.2f", ci.getPagerank()));
+                }
+                sb.append("\n");
+                String methods = ci.getMethods();
+                if (methods != null && !methods.isBlank()) {
+                    List<String> sigs = extractMethodSignatures(methods);
+                    if (!sigs.isEmpty()) {
+                        sb.append("    methods: ").append(String.join(", ", sigs)).append("\n");
+                    }
+                }
+            } else {
+                sb.append("  ").append(file).append("\n");
+            }
+        }
+
+        return sb.toString();
+    }
+
+    /** CodeIndex.methods JSON에서 signature 필드 값 목록을 추출한다. */
+    private List<String> extractMethodSignatures(String methodsJson) {
+        List<String> sigs = new ArrayList<>();
+        Matcher m = METHOD_SIGNATURE_PATTERN.matcher(methodsJson);
+        while (m.find()) {
+            sigs.add(m.group(1));
+        }
+        return sigs;
     }
 
     private String runGit(List<String> command, Path workingDir) {
