@@ -90,15 +90,36 @@ class PortfolioSummaryValidatorTest {
         @Test
         @DisplayName("evidenceBullets가 5개를 초과하면 실패한다")
         void evidenceBullets_exceed_max() throws Exception {
-            String json = validResponse().replace(
-                "\"evidenceBullets\": [{\"fact\": \"OAuth2 로그인 구현\", \"challengeRef\": null}]",
-                "\"evidenceBullets\": [{\"fact\": \"a\", \"challengeRef\": null}," +
-                "{\"fact\": \"b\", \"challengeRef\": null}," +
-                "{\"fact\": \"c\", \"challengeRef\": null}," +
-                "{\"fact\": \"d\", \"challengeRef\": null}," +
-                "{\"fact\": \"e\", \"challengeRef\": null}," +
-                "{\"fact\": \"f\", \"challengeRef\": null}]"
-            );
+            String json = """
+            {
+              "project": {
+                "projectKey": "test-repo",
+                "projectName": "테스트 프로젝트",
+                "summary": "요약입니다.",
+                "role": "백엔드 개발",
+                "stack": ["Java 17"],
+                "signals": ["OAuth2"],
+                "strengths": ["강점"],
+                "risks": ["약점"],
+                "sourceRefs": ["repo:101"],
+                "qualityFlags": [],
+                "challenges": [
+                  { "id": "c1", "what": "문제", "how": "해결", "learning": "배움" }
+                ],
+                "techDecisions": [
+                  { "decision": "결정", "reason": "이유", "tradeOff": null }
+                ],
+                "evidenceBullets": [
+                  { "fact": "총알 1", "challengeRef": null },
+                  { "fact": "총알 2", "challengeRef": null },
+                  { "fact": "총알 3", "challengeRef": null },
+                  { "fact": "총알 4", "challengeRef": null },
+                  { "fact": "총알 5", "challengeRef": null },
+                  { "fact": "총알 6", "challengeRef": null }
+                ]
+              }
+            }
+            """;
             JsonNode node = objectMapper.readTree(json);
 
             ValidationResult result = validator.validate(node);
