@@ -116,6 +116,9 @@ class FollowupPilot40BacktestTest {
 
         assertThat(Files.exists(csvPath)).isTrue();
         assertThat(Files.exists(reportPath)).isTrue();
+        assertThat(summary.predictedDynamicCount()).isPositive();
+        assertThat(summary.predictedNoFollowUpCount()).isPositive();
+        assertThat(summary.predictedWhitelistHitCount()).isPositive();
     }
 
     private BacktestRow evaluate(PilotRow row) {
