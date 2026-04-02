@@ -28,15 +28,28 @@ public class SignalExtractor {
     }
 
     public Map<GapType, Boolean> extract(String normalizedAnswerText) {
+        Map<GapType, List<String>> matchedPatterns = extractMatchedPatterns(normalizedAnswerText);
         Map<GapType, Boolean> signals = new LinkedHashMap<>();
 
         for (GapType gapType : GapType.values()) {
-            boolean matched = compiledPatterns.getOrDefault(gapType, List.of())
-                    .stream()
-                    .anyMatch(pattern -> pattern.matcher(normalizedAnswerText).find());
-            signals.put(gapType, matched);
+            signals.put(gapType, !matchedPatterns.getOrDefault(gapType, List.of()).isEmpty());
         }
 
         return signals;
+    }
+
+    Map<GapType, List<String>> extractMatchedPatterns(String normalizedAnswerText) {
+        Map<GapType, List<String>> matchedPatterns = new LinkedHashMap<>();
+
+        for (GapType gapType : GapType.values()) {
+            List<String> matchedRegexes = compiledPatterns.getOrDefault(gapType, List.of())
+                    .stream()
+                    .filter(pattern -> pattern.matcher(normalizedAnswerText).find())
+                    .map(Pattern::pattern)
+                    .toList();
+            matchedPatterns.put(gapType, matchedRegexes);
+        }
+
+        return matchedPatterns;
     }
 }
