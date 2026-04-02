@@ -94,7 +94,8 @@ public class RepoSummaryGeneratorService {
         List<DiffEntry> diffs = contributionExtractorService.getFilteredDiffs(
                 repoCloneService.getRepoPath(user.getId(), repo.getId()),
                 authorEmail,
-                maxCommits
+                maxCommits,
+                codeEntries
         );
 
         // 3. README/docs 읽기
