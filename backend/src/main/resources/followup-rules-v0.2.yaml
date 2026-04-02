@@ -1,0 +1,99 @@
+followup:
+  version: v0.2-locked-min
+  runtime:
+    inputMode: QUESTION_TYPE_PLUS_ANSWER_TEXT
+    useQuestionTypeFallbackOnlyWhenMissing: true
+    maxCandidateQuestionTypes: 2
+    strictDynamicMode: true
+
+  questionTypeFallback:
+    PROJECT: ["프로젝트", "기여", "역할", "소개", "참여"]
+    PROBLEM: ["문제", "이슈", "장애", "원인", "해결", "트러블슈팅"]
+    TECH: ["왜", "선택", "대안", "비교", "트레이드오프", "설계"]
+    COLLABORATION: ["협업", "갈등", "조율", "의견 차이", "다른 직군", "코드 리뷰"]
+
+  signals:
+    ROLE:
+      - '(저는|제가).{0,12}(맡|담당)'
+      - '주도(했|하여|해서|했습니다)'
+    ACTION:
+      - '(설계|구현|개선|적용|도입|수정|분리)(했|하여|해서|했고|했습니다)?'
+    RESULT:
+      - '(줄었|개선되|향상되|증가했|감소했|안정화됐|빨라졌)'
+    METRIC:
+      - '\d+(\.\d+)?\s?(%|초|ms|건|배)'
+    REASON:
+      - '(판단|우선|적합|선택한 이유|선택 기준)'
+    CAUSE:
+      - '(원인|확인해 보니|분석해 보니|재현)'
+    VERIFICATION:
+      - '(테스트|검증|모니터링|배포 후|로그|지표)'
+    PREVENTION:
+      - '(재발 방지|알람|체크리스트|가드)'
+    ALTERNATIVE:
+      - '(대안|비교|검토|고려|\bvs\b)'
+    TRADEOFF:
+      - '(장단점|복잡도|비용|러닝커브|유지보수|운영 부담)'
+    ISSUE:
+      - '(갈등|충돌|의견 차이|쟁점|입장)'
+    AGREEMENT:
+      - '(합의|조율|기준|최종|우선순위)'
+    SCOPE_MIXED:
+      - '(두 가지|같이 이야기|여러 프로젝트)'
+
+  types:
+    PROJECT:
+      core: [ROLE, ACTION, RESULT]
+      extension: [REASON]
+      soft: [METRIC, REFLECTION, SCOPE_MIXED]
+      candidateMap:
+        RESULT: PROJECT_RESULT_DETAIL
+        METRIC: PROJECT_RESULT_METRIC
+        REASON: PROJECT_APPROACH_REASON
+        SCOPE_MIXED: PROJECT_SCOPE_NARROW
+      coreFallback: PROJECT_CORE_CLARIFY
+      dynamicWhitelist:
+        - missing: [REASON, RESULT]
+          require: [ROLE, ACTION]
+
+    PROBLEM:
+      core: [CAUSE, ACTION, VERIFICATION]
+      extension: [RESULT, PREVENTION]
+      soft: [METRIC, REFLECTION]
+      candidateMap:
+        CAUSE: PROBLEM_CAUSE_DETAIL
+        VERIFICATION: PROBLEM_VERIFICATION_DETAIL
+        PREVENTION: PROBLEM_PREVENTION_DETAIL
+      coreFallback: PROBLEM_CORE_CLARIFY
+      dynamicWhitelist:
+        - missing: [VERIFICATION, PREVENTION]
+          require: [CAUSE, ACTION]
+
+    TECH:
+      core: [ALTERNATIVE, REASON, TRADEOFF]
+      extension: [RESULT]
+      soft: [LIMITATION, REFLECTION]
+      candidateMap:
+        ALTERNATIVE: TECH_ALTERNATIVE_COMPARE
+        TRADEOFF: TECH_TRADEOFF_DETAIL
+        RESULT: TECH_EFFECT_AFTER_ADOPTION
+      coreFallback: TECH_CORE_CLARIFY
+      dynamicWhitelist:
+        - missing: [TRADEOFF, RESULT]
+          require: [ALTERNATIVE, REASON]
+
+    COLLABORATION:
+      core: [ISSUE, ACTION, AGREEMENT]
+      extension: [RESULT, REASON]
+      soft: [METRIC]
+      candidateMap:
+        ISSUE: COLLAB_ISSUE_DETAIL
+        AGREEMENT: COLLAB_AGREEMENT_CRITERIA
+        REASON: COLLAB_DECISION_REASON
+        RESULT: COLLAB_RESULT_IMPACT
+      coreFallback: COLLAB_CORE_CLARIFY
+      dynamicWhitelist:
+        - missing: [AGREEMENT, REASON]
+          require: [ISSUE, ACTION]
+        - missing: [AGREEMENT, RESULT]
+          require: [ISSUE, ACTION]
