@@ -9,6 +9,9 @@ import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequest
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * OAuth2 인증 요청 시 기본 동작을 커스텀하기 위한 리졸버(Resolver) 클래스입니다.
  * <p>
@@ -50,8 +53,38 @@ public class CustomOAuth2AuthorizationRequestResolver implements OAuth2Authoriza
         OAuth2State state = (linkUserId != null)
                 ? OAuth2State.ofLink(redirectUrl != null ? redirectUrl : "", linkUserId)
                 : OAuth2State.of(redirectUrl != null ? redirectUrl : "");
+
+        // 로그아웃 후 같은 브라우저에서 다른 계정으로 로그인할 때, OAuth 제공자가
+        // 이전 세션을 재사용해 자동 인증하는 문제를 방지한다.
+        // - Google: prompt=consent → 매번 계정 선택/동의 화면을 표시
+        // - Kakao: prompt=login → 매번 로그인 화면을 표시
+        // - GitHub: prompt 미지원. login="" → authorize 화면은 표시하지만
+        //           GitHub 자체 세션까지 초기화하지는 않음 (GitHub 측 제약)
+        Map<String, Object> additionalParams = new HashMap<>(req.getAdditionalParameters());
+        String registrationId = extractRegistrationId(request.getRequestURI());
+        switch (registrationId) {
+            case "kakao" -> additionalParams.put("prompt", "login");
+            case "google" -> additionalParams.put("prompt", "consent");
+            default -> { /* GitHub: prompt 파라미터 미지원 — 별도 처리 불필요 */ }
+        }
+
         return OAuth2AuthorizationRequest.from(req)
                 .state(state.encode())
+                .additionalParameters(additionalParams)
                 .build();
+    }
+
+    /**
+     * 요청 URI에서 registrationId를 추출한다.
+     * URI 패턴: /oauth2/authorization/{registrationId}
+     */
+    private String extractRegistrationId(String requestUri) {
+        if (requestUri == null) return "";
+        String prefix = "/oauth2/authorization/";
+        int idx = requestUri.indexOf(prefix);
+        if (idx < 0) return "";
+        String after = requestUri.substring(idx + prefix.length());
+        int end = after.indexOf('?');
+        return end > 0 ? after.substring(0, end) : after;
     }
 }
