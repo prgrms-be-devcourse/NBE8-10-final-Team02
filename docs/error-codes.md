@@ -73,7 +73,8 @@ applies_to: error-code-catalog
 - `RESOURCE_NOT_FOUND`
 - `REQUEST_VALIDATION_FAILED`
 - `RATE_LIMIT_EXCEEDED`
-- `EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE`
+- `EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE` — AI provider 분당 한도(RPM/TPM) 초과. retryable=true, retryAfterSeconds 포함.
+- `AI_DAILY_LIMIT_EXCEEDED` — AI provider 일간 한도(RPD/TPD) 소진. retryable=false, retryAfterSeconds(내일까지 남은 초) 포함.
 - `INTERNAL_SERVER_ERROR`
 
 ## 7. 사용 원칙

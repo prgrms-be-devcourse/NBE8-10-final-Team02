@@ -2,8 +2,11 @@ package com.back.backend.domain.ai.client.gemini;
 
 import com.back.backend.domain.ai.client.*;
 import com.back.backend.global.exception.ErrorCode;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -12,10 +15,16 @@ import org.springframework.web.client.RestClientResponseException;
  * Gemini API 구현체
  * 공통 AiRequest를 Gemini 형식으로 변환하여 호출하고
  * 응답을 공통 AiResponse로 변환하여 반환
+ *
+ * 429 처리:
+ *   - details[].metadata.quota_metric에 "daily"가 포함되면 DAILY 한도 소진
+ *   - 그 외(또는 파싱 실패)는 보수적으로 MINUTE 초과로 처리
  */
 public class GeminiClient implements AiClient {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiClient.class);
+    /** 429 응답 body 파싱 전용 ObjectMapper (스레드 안전 — 공유 가능) */
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final RestClient restClient;
     private final GeminiClientProperties properties;
@@ -60,15 +69,35 @@ public class GeminiClient implements AiClient {
                 .retrieve()
                 .body(GeminiResponse.class);
         } catch (RestClientResponseException e) {
-            // 429 할당량 초과 — 별도 로그로 명확히 표시
+            // 429 할당량 초과 — MINUTE vs DAILY 판별 후 각기 다른 ErrorCode로 throw
             if (e.getStatusCode().value() == 429) {
-                log.warn("[Gemini] API 호출 횟수 초과. 무료 티어 일일 한도에 도달했습니다. body={}", e.getResponseBodyAsString());
-                throw new AiClientException(
-                    AiProvider.GEMINI,
-                    ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
-                    "AI API 호출 횟수가 부족합니다. 잠시 후 다시 시도해주세요.",
-                    e
-                );
+                String body = e.getResponseBodyAsString();
+                RateLimitType limitType = detectRateLimitType(body);
+                int retryAfter = extractRetryAfter(e);
+
+                if (limitType == RateLimitType.DAILY) {
+                    log.warn("[Gemini] 일간 API 한도 소진 (429 DAILY). retryAfter={}s, body={}", retryAfter, body);
+                    throw new AiClientException(
+                        AiProvider.GEMINI,
+                        ErrorCode.AI_DAILY_LIMIT_EXCEEDED,
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "오늘 Gemini API 일간 한도를 모두 소진했습니다. 내일 오전 9시(KST) 이후 다시 시도해주세요.",
+                        RateLimitType.DAILY,
+                        retryAfter,
+                        e
+                    );
+                } else {
+                    log.warn("[Gemini] 분당 API 한도 초과 (429 MINUTE). retryAfter={}s, body={}", retryAfter, body);
+                    throw new AiClientException(
+                        AiProvider.GEMINI,
+                        ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                        HttpStatus.BAD_GATEWAY,
+                        "AI API 호출 횟수가 부족합니다. 잠시 후 다시 시도해주세요.",
+                        RateLimitType.MINUTE,
+                        retryAfter,
+                        e
+                    );
+                }
             }
             // 그 외 4xx/5xx 응답
             log.error("[Gemini] API 에러 응답: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString(), e);
@@ -87,6 +116,9 @@ public class GeminiClient implements AiClient {
                 "Gemini API 연결 실패: " + e.getMessage(),
                 e
             );
+        } catch (AiClientException e) {
+            // 이미 변환된 예외는 그대로 전파 (위 블록에서 throw된 경우)
+            throw e;
         } catch (Exception e) {
             // JSON 파싱 실패 등 예상 외 오류
             log.error("[Gemini] 예상 외 오류: {}", e.getMessage(), e);
@@ -97,5 +129,55 @@ public class GeminiClient implements AiClient {
                 e
             );
         }
+    }
+
+    /**
+     * Gemini 429 응답 body를 파싱하여 rate limit 종류를 판별
+     * details[].metadata.quota_metric 값에 "daily"가 포함되면 DAILY, 그 외는 MINUTE
+     * 파싱 실패 시 보수적으로 MINUTE 반환
+     *
+     * @param responseBody Gemini 429 응답 body
+     * @return DAILY 또는 MINUTE
+     */
+    private RateLimitType detectRateLimitType(String responseBody) {
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(responseBody);
+            // Gemini 오류 구조: { "error": { "details": [ { "metadata": { "quota_metric": "..." } } ] } }
+            JsonNode details = root.path("error").path("details");
+            if (details.isArray()) {
+                for (JsonNode detail : details) {
+                    String quotaMetric = detail.path("metadata").path("quota_metric").asText("");
+                    if (quotaMetric.contains("daily")) {
+                        return RateLimitType.DAILY;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // 파싱 실패 시 보수적으로 MINUTE 반환
+            log.debug("[Gemini] 429 body 파싱 실패, MINUTE으로 처리: {}", e.getMessage());
+        }
+        return RateLimitType.MINUTE;
+    }
+
+    /**
+     * Retry-After 헤더에서 재시도 대기 초를 추출
+     * 헤더가 없거나 파싱 실패 시 기본값 60초 반환
+     *
+     * @param e RestClientResponseException (429)
+     * @return 재시도 대기 초 (최소 1, 기본 60)
+     */
+    private int extractRetryAfter(RestClientResponseException e) {
+        try {
+            String retryAfterHeader = e.getResponseHeaders() != null
+                ? e.getResponseHeaders().getFirst("Retry-After")
+                : null;
+            if (retryAfterHeader != null && !retryAfterHeader.isBlank()) {
+                int parsed = Integer.parseInt(retryAfterHeader.trim());
+                return Math.max(1, parsed);
+            }
+        } catch (Exception ex) {
+            log.debug("[Gemini] Retry-After 헤더 파싱 실패: {}", ex.getMessage());
+        }
+        return 60; // 기본 대기 시간
     }
 }

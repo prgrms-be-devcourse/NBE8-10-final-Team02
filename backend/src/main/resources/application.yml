@@ -8,6 +8,8 @@ spring:
       host: localhost
       port: 6379
       timeout: 3s
+  cache:
+    type: caffeine
 
   security:
     oauth2:
@@ -56,6 +58,17 @@ app:
 ai:
   provider: gemini
   fallback-provider: groq  # Gemini 할당량 초과 시 Groq로 자동 전환
+  rate-limit:
+    gemini:
+      rpm: 10
+      rpd: 250
+      tpm: 250000
+      # tpd 미설정 → 일간 토큰 체크 비활성화
+    groq:
+      rpm: 30
+      rpd: 1000
+      tpm: 12000
+      tpd: 100000
   gemini:
     api-key: ${GEMINI_API_KEY}
     base-url: https://generativelanguage.googleapis.com/v1beta

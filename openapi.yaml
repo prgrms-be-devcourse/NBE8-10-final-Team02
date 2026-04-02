@@ -12,6 +12,7 @@ tags:
 - name: Documents
 - name: Applications
 - name: Interview
+- name: AI
 components:
   securitySchemes:
     AuthorizationHeader:
@@ -45,6 +46,10 @@ components:
               type: string
             retryable:
               type: boolean
+            retryAfterSeconds:
+              type: integer
+              nullable: true
+              description: rate limit 시 재시도까지 기다려야 하는 초. null이면 해당 없음.
             fieldErrors:
               type: array
               items:
@@ -3675,3 +3680,193 @@ paths:
       description: 세션 결과와 피드백 리포트를 조회한다. answers[].questionId는 세션 질문 id를 사용한다.
         답변된 dynamic follow-up도 answers[]에 일반 질문과 동일하게 포함한다. 완료 직후에는 결과 생성 지연이
         있을 수 있다.
+  /ai/status:
+    get:
+      tags:
+      - AI
+      summary: AI 서비스 가용성 상태 조회
+      description: >
+        인증 없이 접근 가능. 설정된 AI provider(기본 + fallback)의 가용성 상태를 반환한다.
+        available=false이면 estimatedWaitSeconds와 message가 포함된다.
+        status 값: "available" | "minute_rate_limited" | "daily_exhausted" | "unavailable"
+      security: []
+      responses:
+        '200':
+          description: AI 서비스 가용성 상태
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                    description: 하나 이상의 provider가 사용 가능한 경우 true
+                  estimatedWaitSeconds:
+                    type: integer
+                    nullable: true
+                    description: 모든 provider가 rate limited일 때 예상 대기 초 (available=true면 null)
+                  message:
+                    type: string
+                    nullable: true
+                    description: 비가용 상태일 때 사용자에게 표시할 메시지 (available=true면 null)
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: gemini
+                        status:
+                          type: string
+                          enum: [available, minute_rate_limited, daily_exhausted, unavailable]
+                        minuteUsage:
+                          type: object
+                          properties:
+                            used:
+                              type: integer
+                            limit:
+                              type: integer
+                            percentage:
+                              type: integer
+                              description: 사용률 퍼센트 (0-100)
+                            resetInSeconds:
+                              type: integer
+                        dailyUsage:
+                          type: object
+                          properties:
+                            used:
+                              type: integer
+                            limit:
+                              type: integer
+                            percentage:
+                              type: integer
+                              description: 사용률 퍼센트 (0-100)
+                            resetsAt:
+                              type: string
+                              format: date-time
+                        tokenUsage:
+                          type: object
+                          properties:
+                            minuteUsed:
+                              type: integer
+                              format: int64
+                            minuteLimit:
+                              type: integer
+                              format: int64
+                            minutePercentage:
+                              type: integer
+                              description: 분당 토큰 사용률 퍼센트 (0-100)
+                            dailyUsed:
+                              type: integer
+                              format: int64
+                            dailyLimit:
+                              type: integer
+                              format: int64
+                              nullable: true
+                            dailyPercentage:
+                              type: integer
+                              nullable: true
+                              description: 일간 토큰 사용률 퍼센트 (0-100). dailyLimit이 null이면 null
+              examples:
+                available:
+                  value:
+                    available: true
+                    providers:
+                    - name: gemini
+                      status: available
+                      minuteUsage:
+                        used: 3
+                        limit: 10
+                        percentage: 30
+                        resetInSeconds: 42
+                      dailyUsage:
+                        used: 57
+                        limit: 250
+                        percentage: 23
+                        resetsAt: '2026-04-02T00:00:00Z'
+                      tokenUsage:
+                        minuteUsed: 12000
+                        minuteLimit: 250000
+                        minutePercentage: 5
+                        dailyUsed: 230000
+                        dailyLimit: null
+                        dailyPercentage: null
+                    - name: groq
+                      status: available
+                      minuteUsage:
+                        used: 1
+                        limit: 30
+                        percentage: 3
+                        resetInSeconds: 58
+                      dailyUsage:
+                        used: 120
+                        limit: 1000
+                        percentage: 12
+                        resetsAt: '2026-04-02T00:00:00Z'
+                      tokenUsage:
+                        minuteUsed: 3000
+                        minuteLimit: 12000
+                        minutePercentage: 25
+                        dailyUsed: 45000
+                        dailyLimit: 100000
+                        dailyPercentage: 45
+                dailyExhausted:
+                  value:
+                    available: false
+                    estimatedWaitSeconds: 32400
+                    message: 오늘의 AI 서비스 사용량이 모두 소진되었습니다. 내일 오전 9시 이후 다시 시도해주세요.
+                    providers:
+                    - name: gemini
+                      status: daily_exhausted
+                      minuteUsage:
+                        used: 0
+                        limit: 10
+                        percentage: 0
+                        resetInSeconds: 0
+                      dailyUsage:
+                        used: 250
+                        limit: 250
+                        percentage: 100
+                        resetsAt: '2026-04-02T00:00:00Z'
+                      tokenUsage:
+                        minuteUsed: 0
+                        minuteLimit: 250000
+                        minutePercentage: 0
+                        dailyUsed: 250000
+                        dailyLimit: null
+                        dailyPercentage: null
+                    - name: groq
+                      status: daily_exhausted
+                      minuteUsage:
+                        used: 0
+                        limit: 30
+                        percentage: 0
+                        resetInSeconds: 0
+                      dailyUsage:
+                        used: 1000
+                        limit: 1000
+                        percentage: 100
+                        resetsAt: '2026-04-02T00:00:00Z'
+                      tokenUsage:
+                        minuteUsed: 0
+                        minuteLimit: 12000
+                        minutePercentage: 0
+                        dailyUsed: 100000
+                        dailyLimit: 100000
+                        dailyPercentage: 100
+        '503':
+          description: AI 서비스 일간 한도 소진
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                dailyLimitExceeded:
+                  value:
+                    success: false
+                    error:
+                      code: AI_DAILY_LIMIT_EXCEEDED
+                      message: 오늘 Gemini API 일간 한도를 모두 소진했습니다. 내일 오전 9시(KST) 이후 다시 시도해주세요.
+                      retryable: false
+                      retryAfterSeconds: 32400
