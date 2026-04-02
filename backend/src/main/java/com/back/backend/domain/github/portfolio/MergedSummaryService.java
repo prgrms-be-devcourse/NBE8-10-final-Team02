@@ -19,7 +19,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -121,11 +120,19 @@ public class MergedSummaryService {
     // ─────────────────────────────────────────────────
 
     /**
-     * 여러 RepoSummary의 projects를 하나로 합치고 globalStrengths/leanSummary를 파생한다.
+     * 여러 RepoSummary의 project를 하나로 합치고 globalStrengths/globalRisks/leanSummary를 파생한다.
+     *
+     * 각 RepoSummary.data 구조 (portfolio-summary.schema.json):
+     *   project.stack     → leanSummary.stack 소스
+     *   project.strengths → globalStrengths union
+     *   project.risks     → globalRisks union
+     *   project.signals   → leanSummary highlights + hooks
      */
     private String aggregate(List<RepoSummary> summaries) {
         ArrayNode allProjects = objectMapper.createArrayNode();
         Set<String> globalStrengths = new LinkedHashSet<>();
+        Set<String> globalRisks = new LinkedHashSet<>();
+        Set<String> stackUnion = new LinkedHashSet<>();
         List<String> leanProjectLines = new ArrayList<>();
         List<String> leanHighlights = new ArrayList<>();
         List<String> leanHooks = new ArrayList<>();
@@ -134,38 +141,51 @@ public class MergedSummaryService {
             try {
                 JsonNode data = objectMapper.readTree(summary.getData());
 
-                // projects 배열 수집
-                JsonNode projects = data.get("projects");
-                if (projects != null && projects.isArray()) {
-                    projects.forEach(project -> {
-                        allProjects.add(project);
-
-                        // lean_summary 재료 수집
-                        String projectSummary = textOf(project, "summary");
-                        String projectName = textOf(project, "projectName");
-                        if (!projectSummary.isEmpty()) {
-                            leanProjectLines.add(projectName + ": " + projectSummary);
-                        }
-
-                        JsonNode signals = project.get("signals");
-                        if (signals != null && signals.isArray()) {
-                            int count = 0;
-                            for (JsonNode signal : signals) {
-                                String s = signal.asText();
-                                leanHooks.add(s);
-                                if (count < 2 && leanHighlights.size() < MAX_LEAN_HIGHLIGHTS) {
-                                    leanHighlights.add(s);
-                                    count++;
-                                }
-                            }
-                        }
-                    });
+                // 단일 project 객체 수집
+                JsonNode project = data.get("project");
+                if (project == null || !project.isObject()) {
+                    log.warn("No 'project' field in RepoSummary for repoId={}",
+                            summary.getGithubRepository().getId());
+                    continue;
                 }
 
-                // globalStrengths 수집 (각 repo의 globalStrengths를 합산)
-                JsonNode strengths = data.get("globalStrengths");
+                allProjects.add(project);
+
+                // lean_summary 재료 수집
+                String projectSummary = textOf(project, "summary");
+                String projectName = textOf(project, "projectName");
+                if (!projectSummary.isEmpty()) {
+                    leanProjectLines.add(projectName + ": " + projectSummary);
+                }
+
+                JsonNode signals = project.get("signals");
+                if (signals != null && signals.isArray()) {
+                    int count = 0;
+                    for (JsonNode signal : signals) {
+                        String s = signal.asText();
+                        leanHooks.add(s);
+                        if (count < 2 && leanHighlights.size() < MAX_LEAN_HIGHLIGHTS) {
+                            leanHighlights.add(s);
+                            count++;
+                        }
+                    }
+                }
+
+                // stack union → leanSummary.stack
+                JsonNode stack = project.get("stack");
+                if (stack != null && stack.isArray()) {
+                    stack.forEach(s -> stackUnion.add(s.asText()));
+                }
+
+                // strengths/risks → globalStrengths/globalRisks
+                JsonNode strengths = project.get("strengths");
                 if (strengths != null && strengths.isArray()) {
                     strengths.forEach(s -> globalStrengths.add(s.asText()));
+                }
+
+                JsonNode risks = project.get("risks");
+                if (risks != null && risks.isArray()) {
+                    risks.forEach(r -> globalRisks.add(r.asText()));
                 }
 
             } catch (JsonProcessingException e) {
@@ -178,13 +198,13 @@ public class MergedSummaryService {
         ObjectNode result = objectMapper.createObjectNode();
         result.set("projects", allProjects);
         result.set("globalStrengths", toArrayNode(new ArrayList<>(globalStrengths)));
-        result.set("globalRisks", objectMapper.createArrayNode());
+        result.set("globalRisks", toArrayNode(new ArrayList<>(globalRisks)));
         result.set("qualityFlags", objectMapper.createArrayNode());
 
         // leanSummary 파생
         ObjectNode leanSummary = objectMapper.createObjectNode();
         leanSummary.put("stack", String.join(" / ",
-                new ArrayList<>(globalStrengths).stream().limit(MAX_LEAN_STACK_ITEMS).toList()));
+                new ArrayList<>(stackUnion).stream().limit(MAX_LEAN_STACK_ITEMS).toList()));
         leanSummary.set("projects", toArrayNode(leanProjectLines));
         leanSummary.set("highlights", toArrayNode(leanHighlights));
         leanSummary.set("hooks", toArrayNode(leanHooks.stream().distinct().limit(10).toList()));
