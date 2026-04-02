@@ -16,8 +16,8 @@ spring:
   flyway:
     enabled: true
 
-  # 팀에서 Redis 사용보류로 결정했으나, Redis 설정을 추가한 브랜치가 머지될 경우
-  # PlaceholderResolutionException 방지용 더미값
+  # CI(GitHub Actions)에서는 test.yml의 services.redis가 localhost:6379로 Redis를 실행함.
+  # 로컬에서는 Docker로 띄운 Redis가 동일 포트에서 실행 중이어야 함.
   data:
     redis:
       host: localhost
