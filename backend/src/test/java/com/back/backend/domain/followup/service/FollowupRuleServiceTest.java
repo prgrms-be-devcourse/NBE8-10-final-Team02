@@ -55,6 +55,49 @@ class FollowupRuleServiceTest {
     }
 
     @Test
+    void analyze_returnsUseDynamicForProjectWhenProjectOwnershipPhraseShowsRole() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.PROJECT,
+                "사내 정산 리포트 자동화 프로젝트를 맡은 적이 있습니다. "
+                        + "이전에는 운영팀이 월말마다 SQL 결과를 손으로 정리해서 리포트를 만들었고, "
+                        + "저는 백엔드에서 데이터 추출 배치와 리포트 생성 API를 설계했습니다. "
+                        + "특히 컬럼 정의가 자주 바뀌어서 템플릿 엔진을 붙이고, 배치 실행 이력도 남기도록 만들었습니다. "
+                        + "다만 당시에는 일정상 우선 자동 생성까지 열어두는 데 집중했고, "
+                        + "어떤 범위까지 자동화할지나 운영팀 업무가 실제로 얼마나 줄었는지는 뒤에서 충분히 정리하지 못했습니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.ROLE, true);
+        assertThat(response.signals()).containsEntry(GapType.ACTION, true);
+        assertThat(response.signals()).containsEntry(GapType.RESULT, false);
+        assertThat(response.signals()).containsEntry(GapType.REASON, false);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(response.primaryGap()).isEqualTo(GapType.RESULT);
+        assertThat(response.secondaryGap()).isEqualTo(GapType.REASON);
+        assertThat(response.candidateQuestionTypes()).isEmpty();
+    }
+
+    @Test
+    void analyze_keepsProjectAsCandidateWhenAssignmentIsGenericTaskScope() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.PROJECT,
+                "사내 재고 관리 시스템을 만드는 프로젝트가 있었는데, 기존 엑셀 작업을 옮겨오는 성격이라 요구사항이 자주 바뀌었습니다. "
+                        + "저는 백엔드 쪽 기본 CRUD와 배치 작업을 맡아 필요한 기능을 우선 붙였습니다. "
+                        + "일정은 맞췄지만 어떤 기준으로 우선순위를 잡았는지나 결과가 얼마나 안정화됐는지는 "
+                        + "지금 설명하면 조금 일반론적으로 들릴 수 있습니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.ROLE, false);
+        assertThat(response.signals()).containsEntry(GapType.ACTION, true);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(response.primaryGap()).isEqualTo(GapType.ROLE);
+        assertThat(response.secondaryGap()).isEqualTo(GapType.RESULT);
+        assertThat(response.candidateQuestionTypes()).containsExactly(
+                CandidateQuestionType.PROJECT_CORE_CLARIFY,
+                CandidateQuestionType.PROJECT_RESULT_DETAIL
+        );
+    }
+
+    @Test
     void analyze_returnsUseCandidateWhenProjectScopeIsMixed() {
         FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
                 QuestionType.PROJECT,
