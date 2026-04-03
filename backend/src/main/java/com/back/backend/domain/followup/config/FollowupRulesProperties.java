@@ -3,14 +3,12 @@ package com.back.backend.domain.followup.config;
 import com.back.backend.domain.followup.model.CandidateQuestionType;
 import com.back.backend.domain.followup.model.GapType;
 import com.back.backend.domain.followup.model.QuestionType;
-import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-@ConfigurationProperties(prefix = "followup")
 public class FollowupRulesProperties {
 
     private String version;

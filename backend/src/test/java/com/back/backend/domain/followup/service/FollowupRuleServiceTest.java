@@ -1,5 +1,6 @@
 package com.back.backend.domain.followup.service;
 
+import com.back.backend.domain.followup.config.FollowupRulesConfig;
 import com.back.backend.domain.followup.config.FollowupRulesProperties;
 import com.back.backend.domain.followup.dto.request.FollowupAnalyzeRequest;
 import com.back.backend.domain.followup.dto.response.FollowupAnalyzeResponse;
@@ -9,17 +10,7 @@ import com.back.backend.domain.followup.model.GapType;
 import com.back.backend.domain.followup.model.QuestionType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.context.properties.bind.Bindable;
-import org.springframework.boot.context.properties.bind.Binder;
-import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
-import org.springframework.boot.env.YamlPropertySourceLoader;
-import org.springframework.core.env.MutablePropertySources;
-import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.ClassPathResource;
-
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -316,20 +307,6 @@ class FollowupRuleServiceTest {
     }
 
     private FollowupRulesProperties loadProperties() {
-        try {
-            YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
-            List<PropertySource<?>> propertySources = loader.load(
-                    "followup-rules",
-                    new ClassPathResource("followup-rules-v0.2.yaml")
-            );
-            MutablePropertySources mutablePropertySources = new MutablePropertySources();
-            propertySources.forEach(mutablePropertySources::addLast);
-
-            return new Binder(ConfigurationPropertySources.from(mutablePropertySources))
-                    .bind("followup", Bindable.of(FollowupRulesProperties.class))
-                    .orElseThrow(() -> new IllegalStateException("followup rules binding failed"));
-        } catch (IOException exception) {
-            throw new UncheckedIOException(exception);
-        }
+        return FollowupRulesConfig.loadRules(new ClassPathResource("followup-rules-v0.2.yaml"));
     }
 }
