@@ -39,6 +39,10 @@ follow_up:
 - medium: 경력 2~3년 수준. 실무 적용 경험, 기술 선택 이유, 기본 trade-off 설명 요구.
 - hard: 시니어 수준. 설계 판단, 대안 비교, 장애 대응, 팀 리딩 경험 등 심화 질문.
 
+knowledgeTagNames 규칙:
+- 각 질문에 대해 knowledgeTagMaster에 있는 태그 중 질문과 관련된 태그를 최대 3개 선택한다.
+- 관련 태그가 없으면 빈 배열 []로 반환한다.
+
 금지:
 - 자소서 문항 복사형 질문
 - 거의 같은 의미의 질문 중복
@@ -55,7 +59,9 @@ follow_up:
       "questionText": "생성된 면접 질문",
       "sourceApplicationQuestionOrder": null,
       "parentQuestionOrder": null,
-      "usedEvidenceKeys": []
+      "usedEvidenceKeys": [],
+      "knowledgeTagNames": []
+
     }
   ],
   "qualityFlags": []
