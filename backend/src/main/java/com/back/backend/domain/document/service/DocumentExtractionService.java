@@ -35,6 +35,7 @@ public class DocumentExtractionService {
     private static final Logger log = LoggerFactory.getLogger(DocumentExtractionService.class);
 
     private final DocumentTextExtractor textExtractor;
+    private final TextSanitizationService textSanitizationService;
     private final PiiMaskingService piiMaskingService;
     private final SecretMaskingService secretMaskingService;
     private final DocumentRepository documentRepository;
@@ -43,12 +44,14 @@ public class DocumentExtractionService {
 
     public DocumentExtractionService(
             DocumentTextExtractor textExtractor,
+            TextSanitizationService textSanitizationService,
             PiiMaskingService piiMaskingService,
             SecretMaskingService secretMaskingService,
             DocumentRepository documentRepository,
             Clock clock,
             @Qualifier("documentTaskExecutor") Executor documentTaskExecutor) {
         this.textExtractor = textExtractor;
+        this.textSanitizationService = textSanitizationService;
         this.piiMaskingService = piiMaskingService;
         this.secretMaskingService = secretMaskingService;
         this.documentRepository = documentRepository;
@@ -79,25 +82,29 @@ public class DocumentExtractionService {
             try {
                 String rawText = textExtractor.extract(event.storagePath(), event.mimeType());
 
-                // 1) PII 마스킹: 실패 시 원문 유지 (추출 자체는 성공이므로 FAILED 처리하지 않음)
-                String afterPii;
+                // 0) 텍스트 정제: \r\n, zero-width 문자 등 OCR 아티팩트 제거
+                String sanitized = textSanitizationService.sanitize(rawText);
+
+                // 1) 시크릿 마스킹 먼저: PII 패턴이 토큰 일부를 먼저 치환하면 Gitleaks가 못 잡음
+                //    예) PiiMasking의 PASSPORT 패턴이 github_pat 토큰 내 알파벳+숫자 구간을 ****로 치환
+                //    → Gitleaks가 github_pat_****_sdfsdf 를 유효한 PAT으로 인식 불가
+                String afterSecret;
                 try {
-                    afterPii = piiMaskingService.mask(rawText);
-                } catch (Exception maskEx) {
-                    log.warn("PII masking failed for document id={}, saving raw text: {}",
-                        event.documentId(), maskEx.getMessage());
-                    afterPii = rawText;
+                    afterSecret = secretMaskingService.mask(sanitized);
+                } catch (Exception secretEx) {
+                    log.warn("Secret masking failed for document id={}, using sanitized text: {}",
+                        event.documentId(), secretEx.getMessage());
+                    afterSecret = sanitized;
                 }
 
-                // 2) 시크릿 마스킹: API Key, DB Password 등 탐지 후 [REDACTED] 치환
-                // 실패 시 PII 마스킹된 텍스트 그대로 사용 (분석은 계속 진행)
+                // 2) PII 마스킹: 시크릿이 이미 [REDACTED]로 치환된 텍스트에 적용
                 String textToSave;
                 try {
-                    textToSave = secretMaskingService.mask(afterPii);
-                } catch (Exception secretEx) {
-                    log.warn("Secret masking failed for document id={}, using PII-masked text: {}",
-                        event.documentId(), secretEx.getMessage());
-                    textToSave = afterPii;
+                    textToSave = piiMaskingService.mask(afterSecret);
+                } catch (Exception maskEx) {
+                    log.warn("PII masking failed for document id={}, using secret-masked text: {}",
+                        event.documentId(), maskEx.getMessage());
+                    textToSave = afterSecret;
                 }
 
                 doc.markExtracted(textToSave, clock.instant());

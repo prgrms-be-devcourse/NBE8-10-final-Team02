@@ -131,6 +131,45 @@ public class GitleaksService {
         }
     }
 
+    /**
+     * 텍스트에서 시크릿을 탐지하고 실제 매칭된 값 목록을 반환한다 — 텍스트 마스킹 전용.
+     *
+     * <p><b>반환된 값은 절대 로그에 남겨서는 안 된다.</b>
+     * 호출자는 반환값을 텍스트 치환({@code text.replace(secret, "[REDACTED]")})에만 사용해야 한다.</p>
+     *
+     * @param text 스캔할 텍스트
+     * @return 발견된 시크릿 값 목록 (빈 리스트 = 발견 없음 또는 스캔 실패)
+     */
+    public List<String> scanTextForMasking(String text) {
+        if (!enabled || text == null || text.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        Path tmpDir = null;
+        try {
+            tmpDir = Files.createTempDirectory("gitleaks-doc-");
+            Path tmpFile = tmpDir.resolve("content.txt");
+            Files.writeString(tmpFile, text);
+            final Path scanDir = tmpDir;
+            return executor.submit(() -> executeSecretExtraction(scanDir))
+                    .get(timeoutSeconds + 5L, TimeUnit.SECONDS);
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            log.warn("Gitleaks masking scan queue full, skipping.");
+            return Collections.emptyList();
+        } catch (java.util.concurrent.TimeoutException e) {
+            log.warn("Gitleaks masking scan timed out.");
+            return Collections.emptyList();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Collections.emptyList();
+        } catch (Exception e) {
+            log.warn("Gitleaks masking scan failed: {}", e.getMessage());
+            return Collections.emptyList();
+        } finally {
+            deleteTmpDir(tmpDir);
+        }
+    }
+
     // ─────────────────────────────────────────────────
     // 내부 스캔 실행
     // ─────────────────────────────────────────────────
@@ -266,6 +305,75 @@ public class GitleaksService {
         return new GitleaksScanResult(true, findings);
     }
 
+    /**
+     * 텍스트 마스킹 전용 스캔 — 실제 시크릿 값(Secret 필드)을 추출한다.
+     * 반환된 값은 절대 로그에 남기지 않는다.
+     */
+    private List<String> executeSecretExtraction(Path targetDir) {
+        Path reportFile = null;
+        try {
+            reportFile = Files.createTempFile("gitleaks-mask-", ".json");
+
+            List<String> cmd = buildCommand(targetDir, reportFile, true); // --no-git
+            ProcessBuilder pb = new ProcessBuilder(cmd)
+                    .directory(targetDir.toFile())
+                    .redirectErrorStream(true);
+
+            Process process = pb.start();
+            drainOutput(process);
+
+            boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                log.warn("Gitleaks masking scan timed out ({}s)", timeoutSeconds);
+                return Collections.emptyList();
+            }
+
+            int exitCode = process.exitValue();
+            if (exitCode == 0) return Collections.emptyList(); // 시크릿 없음
+            if (exitCode != 1) {
+                log.warn("Gitleaks masking scan exited with error code {}", exitCode);
+                return Collections.emptyList();
+            }
+
+            // exit code 1 = 시크릿 발견 → Secret 필드만 추출
+            if (!Files.exists(reportFile) || Files.size(reportFile) == 0) {
+                return Collections.emptyList();
+            }
+
+            List<GitleaksRawFindingWithSecret> raw = objectMapper.readValue(
+                    reportFile.toFile(),
+                    new TypeReference<>() {}
+            );
+
+            // Secret 값만 수집 — 로그에 남기지 않음
+            List<String> secrets = raw.stream()
+                    .map(GitleaksRawFindingWithSecret::secret)
+                    .filter(s -> s != null && !s.isBlank())
+                    .distinct()
+                    .toList();
+
+            // 개수와 룰 ID만 로그 (실제 값 로그 금지)
+            List<String> ruleIds = raw.stream()
+                    .map(GitleaksRawFindingWithSecret::ruleId)
+                    .distinct()
+                    .toList();
+            log.warn("Gitleaks masking: {} unique secret value(s) found for redaction. ruleIds={}",
+                    secrets.size(), ruleIds);
+
+            return secrets;
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Collections.emptyList();
+        } catch (IOException e) {
+            log.warn("Gitleaks masking IO error: {}", e.getMessage());
+            return Collections.emptyList();
+        } finally {
+            deleteTmpFile(reportFile);
+        }
+    }
+
     // ─────────────────────────────────────────────────
     // 임시 파일 정리
     // ─────────────────────────────────────────────────
@@ -324,5 +432,15 @@ public class GitleaksService {
             @JsonProperty("RuleID")      String ruleId,
             @JsonProperty("Description") String description
             // "Secret", "Match" 필드는 의도적으로 제외 — 시크릿 값 로깅 방지
+    ) {}
+
+    /**
+     * gitleaks JSON 리포트 역직렬화용 내부 DTO — 텍스트 마스킹 전용.
+     * Secret 필드를 읽지만 절대 로그에 남기지 않으며 마스킹 치환에만 사용한다.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record GitleaksRawFindingWithSecret(
+            @JsonProperty("RuleID") String ruleId,
+            @JsonProperty("Secret") String secret  // 마스킹 치환 전용 — 로그 금지
     ) {}
 }
