@@ -128,6 +128,130 @@ class FollowupRuleServiceTest {
     }
 
     @Test
+    void analyze_returnsUseDynamicForProblemWhenOnlyVerificationAndPreventionAreMissing() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.PROBLEM,
+                "주문 중복 생성 이슈가 있었는데, 재현해 보니 카프카 컨슈머 재시도와 멱등키 처리 시점이 어긋나면서 "
+                        + "같은 주문이 두 번 저장되는 경우였습니다. 저는 재현용 테스트 데이터를 따로 만들고, "
+                        + "멱등 체크를 DB 쓰기 이후가 아니라 직전 단계로 당기는 방식으로 수정했습니다. "
+                        + "원인과 수정 방향은 비교적 명확했는데, 당시에는 긴급 대응이어서 어떤 검증 기준으로 배포를 승인했는지와 "
+                        + "이후 재발 방지까지는 충분히 정리하지 못했습니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.CAUSE, true);
+        assertThat(response.signals()).containsEntry(GapType.ACTION, true);
+        assertThat(response.signals()).containsEntry(GapType.RESULT, true);
+        assertThat(response.signals()).containsEntry(GapType.VERIFICATION, false);
+        assertThat(response.signals()).containsEntry(GapType.PREVENTION, false);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(response.primaryGap()).isEqualTo(GapType.VERIFICATION);
+        assertThat(response.secondaryGap()).isEqualTo(GapType.PREVENTION);
+        assertThat(response.orderedMissingGaps()).containsExactly(
+                GapType.VERIFICATION,
+                GapType.PREVENTION,
+                GapType.METRIC
+        );
+        assertThat(response.candidateQuestionTypes()).isEmpty();
+    }
+
+    @Test
+    void analyze_returnsUseDynamicForProblemWhenCauseAndFixAreClearButVerificationAndPreventionAreMissing() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.PROBLEM,
+                "추천 배치 서버 메모리가 계속 올라가서 결국 OOM으로 죽는 문제가 있었습니다. "
+                        + "heap dump를 떠 보니 대용량 상품 객체가 변환 과정에서 중복으로 잡혀 있었고, "
+                        + "저는 스트림 체인을 끊고 chunk 단위 처리로 바꿨습니다. "
+                        + "원인은 꽤 명확하게 찾았고 수정도 바로 적용했는데, 배포 후 어떤 기준으로 충분히 해결됐다고 판단했는지와 "
+                        + "이후 비슷한 실수를 막기 위한 장치까지는 설명이 더 필요한 답변이라고 생각합니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.CAUSE, true);
+        assertThat(response.signals()).containsEntry(GapType.ACTION, true);
+        assertThat(response.signals()).containsEntry(GapType.RESULT, true);
+        assertThat(response.signals()).containsEntry(GapType.VERIFICATION, false);
+        assertThat(response.signals()).containsEntry(GapType.PREVENTION, false);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(response.primaryGap()).isEqualTo(GapType.VERIFICATION);
+        assertThat(response.secondaryGap()).isEqualTo(GapType.PREVENTION);
+        assertThat(response.orderedMissingGaps()).containsExactly(
+                GapType.VERIFICATION,
+                GapType.PREVENTION,
+                GapType.METRIC
+        );
+        assertThat(response.candidateQuestionTypes()).isEmpty();
+    }
+
+    @Test
+    void analyze_returnsUseDynamicForProblemWhenInvestigationAndActionAreSpecificButVerificationAndPreventionAreMissing() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.PROBLEM,
+                "검색 응답이 특정 키워드에서만 급격히 느려지는 문제가 있었습니다. 단순 인덱스 이슈인 줄 알았는데, "
+                        + "제가 실제 실행 계획과 검색어 패턴을 같이 보니 n-gram 인덱스와 정렬 조건이 충돌하는 케이스였습니다. "
+                        + "그래서 인기 검색어는 별도 prefix 인덱스로 우회하고, 정렬 기준도 일부 조정했습니다. "
+                        + "체감 성능은 좋아졌고 문의도 줄었지만, 정확히 어떤 기준으로 검색 품질 저하를 감수했는지와 "
+                        + "장기적으로 재발을 막기 위한 운영 장치까지는 한 번 더 설명해야 할 것 같습니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.CAUSE, true);
+        assertThat(response.signals()).containsEntry(GapType.ACTION, true);
+        assertThat(response.signals()).containsEntry(GapType.RESULT, true);
+        assertThat(response.signals()).containsEntry(GapType.VERIFICATION, false);
+        assertThat(response.signals()).containsEntry(GapType.PREVENTION, false);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(response.primaryGap()).isEqualTo(GapType.VERIFICATION);
+        assertThat(response.secondaryGap()).isEqualTo(GapType.PREVENTION);
+        assertThat(response.orderedMissingGaps()).containsExactly(
+                GapType.VERIFICATION,
+                GapType.PREVENTION,
+                GapType.METRIC
+        );
+        assertThat(response.candidateQuestionTypes()).isEmpty();
+    }
+
+    @Test
+    void analyze_keepsProblemAsCandidateWhenCauseAndVerificationAreOnlyMentionedAsMissing() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.PROBLEM,
+                "배포 직후 로그인 오류가 난 적이 있는데, 우선 롤백하고 설정값을 다시 확인해서 빠르게 복구한 경험이 있습니다. "
+                        + "저는 배포 담당자와 같이 로그를 보면서 문제 지점을 찾았고, 실제로는 환경 변수 차이 쪽이었던 걸로 기억합니다. "
+                        + "다만 정확히 어떤 원인 구조였는지, 수정 후 어떻게 검증했는지는 자세히 말하면 더 확인이 필요한 답변입니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.CAUSE, false);
+        assertThat(response.signals()).containsEntry(GapType.VERIFICATION, false);
+        assertThat(response.signals()).containsEntry(GapType.PREVENTION, false);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(response.primaryGap()).isEqualTo(GapType.CAUSE);
+        assertThat(response.secondaryGap()).isEqualTo(GapType.VERIFICATION);
+        assertThat(response.candidateQuestionTypes()).containsExactly(
+                CandidateQuestionType.PROBLEM_CAUSE_DETAIL,
+                CandidateQuestionType.PROBLEM_VERIFICATION_DETAIL
+        );
+    }
+
+    @Test
+    void analyze_keepsProblemAsCandidateWhenMitigationExistsButRootCauseAndVerificationStayUnclear() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.PROBLEM,
+                "외부 배송사 API가 불안정해서 송장 발급이 종종 실패한 적이 있습니다. "
+                        + "그때는 일단 재시도 로직을 넣고 수동 처리 절차를 같이 운영했습니다. "
+                        + "사용자는 크게 문제를 못 느끼게 막았지만, 근본 원인이 우리 쪽인지 외부 쪽인지 "
+                        + "명확히 분리해서 검증한 사례라고 보긴 어렵습니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.CAUSE, false);
+        assertThat(response.signals()).containsEntry(GapType.RESULT, false);
+        assertThat(response.signals()).containsEntry(GapType.VERIFICATION, false);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(response.primaryGap()).isEqualTo(GapType.CAUSE);
+        assertThat(response.secondaryGap()).isEqualTo(GapType.VERIFICATION);
+        assertThat(response.candidateQuestionTypes()).containsExactly(
+                CandidateQuestionType.PROBLEM_CAUSE_DETAIL,
+                CandidateQuestionType.PROBLEM_VERIFICATION_DETAIL
+        );
+    }
+
+    @Test
     void analyze_returnsUseDynamicForTechWhenInsteadChoiceAndReasonArePresent() {
         FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
                 QuestionType.TECH,

@@ -114,11 +114,51 @@ class FollowupPilot40BacktestTest {
         writeCsv(backtestRows, csvPath);
         writeReport(summary, backtestRows, reportPath, workbookPath);
 
+        BacktestRow ps02 = requireRow(backtestRows, "PS02");
+        BacktestRow ps06 = requireRow(backtestRows, "PS06");
+        BacktestRow ps09 = requireRow(backtestRows, "PS09");
+        BacktestRow ps03 = requireRow(backtestRows, "PS03");
+        BacktestRow ps04 = requireRow(backtestRows, "PS04");
+        BacktestRow ps08 = requireRow(backtestRows, "PS08");
+        BacktestRow ps10 = requireRow(backtestRows, "PS10");
+
         assertThat(Files.exists(csvPath)).isTrue();
         assertThat(Files.exists(reportPath)).isTrue();
         assertThat(summary.predictedDynamicCount()).isPositive();
         assertThat(summary.predictedNoFollowUpCount()).isPositive();
         assertThat(summary.predictedWhitelistHitCount()).isPositive();
+        assertThat(summary.finalActionAccuracy()).isGreaterThanOrEqualTo(0.600);
+        assertThat(summary.useDynamicPrecision()).isGreaterThanOrEqualTo(0.750);
+        assertThat(summary.noFollowUpPrecision()).isGreaterThanOrEqualTo(1.000);
+        assertThat(summary.dynamicRate()).isGreaterThanOrEqualTo(0.200);
+        assertThat(summary.whitelistPairHitRate()).isGreaterThanOrEqualTo(0.225);
+
+        assertThat(ps02.predictedFinalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(ps02.predictedWhitelistHit()).isTrue();
+        assertThat(ps02.predictedPrimaryGap()).isEqualTo(GapType.VERIFICATION);
+        assertThat(ps02.predictedSecondaryGap()).isEqualTo(GapType.PREVENTION);
+
+        assertThat(ps06.predictedFinalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(ps06.predictedWhitelistHit()).isTrue();
+        assertThat(ps06.predictedPrimaryGap()).isEqualTo(GapType.VERIFICATION);
+        assertThat(ps06.predictedSecondaryGap()).isEqualTo(GapType.PREVENTION);
+
+        assertThat(ps09.predictedFinalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(ps09.predictedWhitelistHit()).isTrue();
+        assertThat(ps09.predictedPrimaryGap()).isEqualTo(GapType.VERIFICATION);
+        assertThat(ps09.predictedSecondaryGap()).isEqualTo(GapType.PREVENTION);
+
+        assertThat(ps03.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(ps04.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(ps08.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(ps10.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+    }
+
+    private BacktestRow requireRow(List<BacktestRow> rows, String sampleId) {
+        return rows.stream()
+                .filter(row -> row.sampleId().equals(sampleId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("pilot row not found: " + sampleId));
     }
 
     private BacktestRow evaluate(PilotRow row) {
