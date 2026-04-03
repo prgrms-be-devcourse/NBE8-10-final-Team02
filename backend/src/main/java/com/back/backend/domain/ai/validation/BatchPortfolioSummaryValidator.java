@@ -40,8 +40,13 @@ public class BatchPortfolioSummaryValidator implements AiResponseValidator {
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
 
-        // 1. 응답이 배열인지 확인
-        if (!responseNode.isArray()) {
+        // 1. 응답 타입 확인 — 단일 객체는 경고 후 1-element 배열처럼 검증
+        final JsonNode nodeToValidate;
+        if (responseNode.isObject()) {
+            warnings.add("AI가 배열 대신 단일 객체로 응답했습니다. 1개 repo 배열로 간주하여 검증합니다.");
+            nodeToValidate = responseNode; // 단일 객체를 배열 원소처럼 직접 검증
+            return validateSingleElement(nodeToValidate, warnings);
+        } else if (!responseNode.isArray()) {
             return ValidationResult.failure(
                     List.of("배치 응답은 JSON 배열이어야 합니다. 실제 타입: " + responseNode.getNodeType()));
         }
@@ -85,6 +90,34 @@ public class BatchPortfolioSummaryValidator implements AiResponseValidator {
             // 7. project 필수 필드 검증
             validateProjectFields(project, repoId, errors, warnings);
         }
+
+        if (!errors.isEmpty()) {
+            return ValidationResult.failure(errors);
+        }
+        if (!warnings.isEmpty()) {
+            return ValidationResult.successWithWarnings(warnings);
+        }
+        return ValidationResult.success();
+    }
+
+    /**
+     * 단일 객체 응답(배열 없이 온 경우)을 배열 원소처럼 검증한다.
+     */
+    private ValidationResult validateSingleElement(JsonNode element, List<String> warnings) {
+        List<String> errors = new ArrayList<>();
+
+        JsonNode repoIdNode = element.get("repoId");
+        if (repoIdNode == null || repoIdNode.asText().isBlank()) {
+            return ValidationResult.failure(List.of("단일 객체 응답에 repoId 필드가 없거나 비어있습니다."));
+        }
+        String repoId = repoIdNode.asText();
+
+        JsonNode project = element.get("project");
+        if (project == null || !project.isObject()) {
+            return ValidationResult.failure(List.of("단일 객체 응답 (repoId=" + repoId + ") project 필드가 없거나 객체가 아닙니다."));
+        }
+
+        validateProjectFields(project, repoId, errors, warnings);
 
         if (!errors.isEmpty()) {
             return ValidationResult.failure(errors);
