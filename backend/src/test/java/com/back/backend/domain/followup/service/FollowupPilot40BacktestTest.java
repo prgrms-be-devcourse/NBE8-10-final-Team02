@@ -149,7 +149,7 @@ class FollowupPilot40BacktestTest {
         assertThat(ps09.predictedSecondaryGap()).isEqualTo(GapType.PREVENTION);
 
         assertThat(ps03.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
-        assertThat(ps04.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(ps04.predictedFinalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
         assertThat(ps08.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
         assertThat(ps10.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
     }
