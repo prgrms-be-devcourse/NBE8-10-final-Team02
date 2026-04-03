@@ -37,6 +37,9 @@ spring:
             clientSecret: ${GOOGLE_CLIENT_SECRET:}
           kakao:
             clientId: ${KAKAO_CLIENT_ID:}
+  gitleaks:
+    # 로컬 개발 환경에서는 gitleaks 미설치 가능성이 있으므로 기본 비활성화
+    enabled: false
 
 
 analysis:
@@ -44,11 +47,6 @@ analysis:
   # repo-base-path: 백엔드 실행 위치 기준 상대 경로 또는 절대 경로로 재정의 가능
   repo-base-path: ${user.home}/.dev-repos
   scripts-base-path: ${user.dir}/analysis-scripts
-
-security:
-  gitleaks:
-    # 로컬 개발 환경에서는 gitleaks 미설치 가능성이 있으므로 기본 비활성화
-    enabled: false
 
 logging:
   level:
