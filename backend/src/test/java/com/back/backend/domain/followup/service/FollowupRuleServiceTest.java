@@ -72,7 +72,7 @@ class FollowupRuleServiceTest {
         FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
                 QuestionType.PROJECT,
                 "사내 재고 관리 시스템을 만드는 프로젝트가 있었는데, 기존 엑셀 작업을 옮겨오는 성격이라 요구사항이 자주 바뀌었습니다. "
-                        + "저는 백엔드 쪽 기본 CRUD와 배치 작업을 맡아 필요한 기능을 우선 붙였습니다. "
+                        + "저는 백엔드 쪽 기본 CRUD와 배치 작업을 하면서 필요한 기능을 우선 붙였습니다. "
                         + "일정은 맞췄지만 어떤 기준으로 우선순위를 잡았는지나 결과가 얼마나 안정화됐는지는 "
                         + "지금 설명하면 조금 일반론적으로 들릴 수 있습니다."
         ));
