@@ -36,6 +36,7 @@ public class DocumentExtractionService {
 
     private final DocumentTextExtractor textExtractor;
     private final PiiMaskingService piiMaskingService;
+    private final SecretMaskingService secretMaskingService;
     private final DocumentRepository documentRepository;
     private final Clock clock;
     private final Executor documentTaskExecutor;
@@ -43,11 +44,13 @@ public class DocumentExtractionService {
     public DocumentExtractionService(
             DocumentTextExtractor textExtractor,
             PiiMaskingService piiMaskingService,
+            SecretMaskingService secretMaskingService,
             DocumentRepository documentRepository,
             Clock clock,
             @Qualifier("documentTaskExecutor") Executor documentTaskExecutor) {
         this.textExtractor = textExtractor;
         this.piiMaskingService = piiMaskingService;
+        this.secretMaskingService = secretMaskingService;
         this.documentRepository = documentRepository;
         this.clock = clock;
         this.documentTaskExecutor = documentTaskExecutor;
@@ -76,14 +79,25 @@ public class DocumentExtractionService {
             try {
                 String rawText = textExtractor.extract(event.storagePath(), event.mimeType());
 
-                // PII 마스킹: 실패 시 원문을 그대로 저장 (추출 자체는 성공이므로 FAILED 처리하지 않음)
-                String textToSave;
+                // 1) PII 마스킹: 실패 시 원문 유지 (추출 자체는 성공이므로 FAILED 처리하지 않음)
+                String afterPii;
                 try {
-                    textToSave = piiMaskingService.mask(rawText);
+                    afterPii = piiMaskingService.mask(rawText);
                 } catch (Exception maskEx) {
                     log.warn("PII masking failed for document id={}, saving raw text: {}",
                         event.documentId(), maskEx.getMessage());
-                    textToSave = rawText;
+                    afterPii = rawText;
+                }
+
+                // 2) 시크릿 마스킹: API Key, DB Password 등 탐지 후 [REDACTED] 치환
+                // 실패 시 PII 마스킹된 텍스트 그대로 사용 (분석은 계속 진행)
+                String textToSave;
+                try {
+                    textToSave = secretMaskingService.mask(afterPii);
+                } catch (Exception secretEx) {
+                    log.warn("Secret masking failed for document id={}, using PII-masked text: {}",
+                        event.documentId(), secretEx.getMessage());
+                    textToSave = afterPii;
                 }
 
                 doc.markExtracted(textToSave, clock.instant());

@@ -45,6 +45,11 @@ analysis:
   repo-base-path: ${user.home}/.dev-repos
   scripts-base-path: ${user.dir}/analysis-scripts
 
+security:
+  gitleaks:
+    # 로컬 개발 환경에서는 gitleaks 미설치 가능성이 있으므로 기본 비활성화
+    enabled: false
+
 logging:
   level:
     root: info
