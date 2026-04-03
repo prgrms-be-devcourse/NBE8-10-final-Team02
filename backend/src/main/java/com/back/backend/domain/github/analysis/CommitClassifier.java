@@ -16,10 +16,10 @@ public class CommitClassifier {
     private static final Pattern IGNORED_SUBJECT_PATTERN =
         Pattern.compile(
             // 1. 범용 / 컨벤션 (스타일, 포맷팅, 빌드, 리팩토링 등)
-            "^(docs|chore|style|ci|test|build|refactor|reformat|cleanup|clean|format|lint|typo|wip|draft|bump|deps|minor|trivial)[:(\\[]|" +
+            "^(docs|chore|style|test|build|cleanup|clean|format|lint|typo|wip|draft|bump|deps|minor|trivial)[:(\\[]|" +
 
                 // 2. 다국어(i18n) 및 디자인 정적 자원 (로직 없음)
-                "^(i18n|l10n|translation|asset|icon|font|css|scss|design)[:(\\[\\s]|" +
+                "^(i18n|l10n|translation|asset|icon|font)[:(\\[\\s]|" +
 
                 // 3. 프론트엔드/백엔드 테스트 부수 파일 및 더미 데이터
                 "^(mock|stub|fixture|snapshot|dummy)[:(\\[\\s]|" +
@@ -34,7 +34,7 @@ public class CommitClassifier {
                 "^(oops|whoops|asdf|test\\s*commit|temp\\s*commit)|" +
 
                 // 7. 한국어 관용구 (대괄호나 띄어쓰기로 시작하는 비핵심 작업들)
-                "^\\[?(문서|주석|오타|띄어쓰기|정리|단순|포맷|테스트|빌드|의존성|설정|임시|자잘한|번역|버전|배포)\\]?\\s+",
+                "^\\[?(문서|주석|오타|띄어쓰기|정리|단순|테스트|빌드|의존성|설정|임시|자잘한|번역|버전|배포)\\]?\\s+",
 
             Pattern.CASE_INSENSITIVE
         );
