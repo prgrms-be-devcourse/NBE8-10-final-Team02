@@ -28,6 +28,7 @@ import java.util.Map;
  *   <li>테스트 실행 (콘솔 출력 확인)</li>
  * </ol>
  */
+@Disabled("수동 검증용 — 실행 전 .env.test에 GEMINI_API_KEY 설정 후 이 어노테이션 제거")
 @IntegrationTest
 @TestPropertySource(properties = {
     "spring.config.import=optional:file:${user.dir}/../.env.dev[.properties]",
