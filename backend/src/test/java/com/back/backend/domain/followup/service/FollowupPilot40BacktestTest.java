@@ -206,6 +206,8 @@ class FollowupPilot40BacktestTest {
         assertThat(co05.predictedSecondaryGap()).isEqualTo(GapType.AGREEMENT);
 
         assertThat(co06.predictedFinalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+        assertThat(co06.predictedPrimaryGap()).isEqualTo(GapType.METRIC);
+        assertThat(co06.predictedSecondaryGap()).isNull();
         assertThat(co07.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
         assertThat(co07.predictedPrimaryGap()).isEqualTo(GapType.ISSUE);
         assertThat(co07.predictedSecondaryGap()).isEqualTo(GapType.AGREEMENT);
