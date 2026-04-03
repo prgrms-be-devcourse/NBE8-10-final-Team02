@@ -8,7 +8,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import org.springframework.util.FileSystemUtils;
+
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
@@ -210,34 +213,31 @@ public class RepoCloneService {
 
     /**
      * 디렉토리를 강제 삭제한다.
-     *
-     * 1단계: Java Files.walk로 파일 순차 삭제 (일반적인 경우)
-     * 2단계: 디렉토리가 남아 있으면 OS 명령(rm -rf)으로 재시도 (git lock 파일 등 잔여물 대응)
+     * .git/pack이 읽기전용으로 되어있기 떄문에 권한을 조정한뒤 삭제해야한다.
      */
     private void forceDelete(Path path) {
-        // 1단계: Java 삭제
+        if (!Files.exists(path)) return;
+
         try (var stream = Files.walk(path)) {
             stream.sorted(java.util.Comparator.reverseOrder())
-                  .forEach(p -> {
-                      try { Files.delete(p); }
-                      catch (IOException e) { log.debug("Java delete failed for {}: {}", p, e.getMessage()); }
-                  });
+                .forEach(p -> {
+                    try {
+                        // 1. 파일 객체로 변환
+                        File file = p.toFile();
+
+                        // 2. 삭제 전 쓰기 권한 강제 부여 (읽기 전용 해제)
+                        if (!file.canWrite()) {
+                            file.setWritable(true);
+                        }
+
+                        // 3. 삭제 시도
+                        Files.delete(p);
+                    } catch (IOException e) {
+                        log.debug("Java delete failed for {}: {}", p, e.getMessage());
+                    }
+                });
         } catch (IOException e) {
             log.warn("Files.walk failed for {}: {}", path, e.getMessage());
-        }
-
-        // 2단계: 아직 남아 있으면 OS rm -rf 재시도
-        if (Files.exists(path)) {
-            log.warn("Directory still exists after Java delete, retrying with rm -rf: {}", path);
-            try {
-                Process process = new ProcessBuilder("rm", "-rf", path.toString())
-                        .redirectErrorStream(true)
-                        .start();
-                process.waitFor(30, TimeUnit.SECONDS);
-            } catch (IOException | InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.warn("rm -rf fallback failed for {}: {}", path, e.getMessage());
-            }
         }
     }
 
