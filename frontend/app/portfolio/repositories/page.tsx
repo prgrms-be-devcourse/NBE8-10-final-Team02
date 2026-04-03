@@ -1,23 +1,25 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   getRepositories,
   saveRepositorySelection,
   syncCommits,
-  analyzeRepository,
-  cancelAnalysis,
   getContributions,
   saveContribution,
   addContributionByUrl,
   removeRepository,
   refreshGithubConnection,
 } from '@/api/github';
-import type { GithubRepository, RepoSyncStatus, ContributedRepo } from '@/types/github';
+import { useBatchAnalysis } from '@/context/BatchAnalysisContext';
+import ResyncConfirmModal from '@/components/ResyncConfirmModal';
+import type { GithubRepository, ContributedRepo, RepoSyncStatus } from '@/types/github';
 import type { Pagination } from '@/types/common';
 
-// 상대 시간 포맷 (가까우면 "N분 전", 멀면 "2022. 3. 15" 형식)
+// ── 유틸 ──────────────────────────────────────────────────────────────
+
 function formatPushedAt(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const diff = Date.now() - new Date(iso).getTime();
@@ -29,23 +31,26 @@ function formatPushedAt(iso: string | null | undefined): string | null {
   if (hr  < 24)  return `${hr}시간 전`;
   if (day < 30)  return `${day}일 전`;
   if (mon < 12)  return `${mon}개월 전`;
-  // 1년 이상: 날짜 그대로 표시
   return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' });
 }
 
-// visibility 배지 색상
+function formatDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString('ko-KR', {
+    year: 'numeric', month: 'long', day: 'numeric',
+  });
+}
+
 const VISIBILITY_STYLE: Record<string, string> = {
   public: 'bg-green-100 text-green-700',
   private: 'bg-yellow-100 text-yellow-700',
   internal: 'bg-blue-100 text-blue-700',
 };
 
-// ── 탭 타입 ───────────────────────────────────────────
 type Tab = 'owned' | 'contributed';
 
-// ══════════════════════════════════════════════════════
-// 메인 페이지
-// ══════════════════════════════════════════════════════
+// ── 메인 페이지 ───────────────────────────────────────────────────────
+
 export default function RepositoriesPage() {
   const [activeTab, setActiveTab] = useState<Tab>('owned');
 
@@ -53,10 +58,9 @@ export default function RepositoriesPage() {
     <main className="mx-auto max-w-2xl px-4 py-10">
       <h1 className="mb-1 text-xl font-semibold">Repository 관리</h1>
       <p className="mb-5 text-sm text-zinc-500">
-        포트폴리오에 활용할 repository를 선택하고 커밋을 수집하세요.
+        포트폴리오에 활용할 repository를 선택하고 일괄 분석을 시작하세요.
       </p>
 
-      {/* 탭 */}
       <div className="mb-6 flex rounded border border-zinc-200">
         <button
           onClick={() => setActiveTab('owned')}
@@ -94,37 +98,35 @@ export default function RepositoriesPage() {
   );
 }
 
-// ══════════════════════════════════════════════════════
-// 탭 1 — 내 repository
-// ══════════════════════════════════════════════════════
+// ── 탭 1 — 내 repository ─────────────────────────────────────────────
+
 function OwnedTab() {
+  const router = useRouter();
+  const { startBatch, preSelectedIds, clearPreSelected, activeBatch } = useBatchAnalysis();
+
   const [repos, setRepos] = useState<GithubRepository[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // 전체 페이지에 걸친 선택 ID 집합 (페이지 이동 시에도 유지)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState<Pagination | null>(null);
-  const [syncingIds, setSyncingIds] = useState<Set<number>>(new Set());
-  const [syncErrors, setSyncErrors] = useState<Record<number, string>>({});
-  const [analysisStatuses, setAnalysisStatuses] = useState<Record<number, RepoSyncStatus>>({});
-  const [analyzingIds, setAnalyzingIds] = useState<Set<number>>(new Set());
-  const [analyzeErrors, setAnalyzeErrors] = useState<Record<number, string>>({});
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [autoRefreshDone, setAutoRefreshDone] = useState(false);
+  const [startingBatch, setStartingBatch] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+
+  // Re-sync 모달 상태
+  const [resyncTarget, setResyncTarget] = useState<GithubRepository | null>(null);
+  const [reSyncing, setReSyncing] = useState<number | null>(null);
 
   function applyStatusesFromRepos(data: GithubRepository[]) {
-    const statuses: Record<number, RepoSyncStatus> = {};
-    data.forEach((r) => { if (r.analysisStatus) statuses[r.id] = r.analysisStatus; });
-    setAnalysisStatuses(statuses);
+    // 분석 상태는 repo 객체에서 직접 읽으므로 별도 상태 불필요
+    void data;
   }
 
-  // 초기 로드: 1페이지 표시 + 전체 선택된 ID를 병렬 조회
-  // saveRepositorySelection은 전체 선택 ID를 교체 방식으로 저장하므로
-  // 다른 페이지의 선택 상태도 초기에 파악해야 한다
   const init = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
@@ -137,7 +139,6 @@ function OwnedTab() {
       setPagination(pag);
       setCurrentPage(1);
       setSelectedIds(new Set(allSelected.map((r) => r.id)));
-      applyStatusesFromRepos(data);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : '목록을 불러오지 못했습니다.');
     } finally {
@@ -147,7 +148,17 @@ function OwnedTab() {
 
   useEffect(() => { init(); }, [init]);
 
-  // 최초 로드 후 repo가 없으면 GitHub에서 자동으로 가져오기 (1회만)
+  // 재시도 흐름: context에서 preSelectedIds 받아 체크 상태 반영
+  useEffect(() => {
+    if (preSelectedIds.length === 0) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      preSelectedIds.forEach((id) => next.add(id));
+      return next;
+    });
+    clearPreSelected();
+  }, [preSelectedIds, clearPreSelected]);
+
   useEffect(() => {
     if (!loading && !loadError && repos.length === 0 && !autoRefreshDone && !refreshing) {
       setAutoRefreshDone(true);
@@ -156,7 +167,6 @@ function OwnedTab() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, repos.length, loadError]);
 
-  // 페이지 이동 (selectedIds는 그대로 유지)
   async function loadPage(page: number) {
     setLoading(true);
     setLoadError(null);
@@ -173,22 +183,18 @@ function OwnedTab() {
     }
   }
 
-  // 폴링용 갱신: 로딩 UI 없음, selectedIds 유지
   const refreshRepos = useCallback(async () => {
     try {
       const { data, pagination: pag } = await getRepositories({ page: currentPage, size: 10 });
       setRepos(data);
       setPagination(pag);
-      applyStatusesFromRepos(data);
     } catch { /* 폴링 실패 무시 */ }
   }, [currentPage]);
 
-  // PENDING/IN_PROGRESS인 repo가 있을 때만 3초 폴링
-  const hasActiveAnalysis =
-    analyzingIds.size > 0 ||
-    Object.values(analysisStatuses).some(
-      (s) => s.status === 'PENDING' || s.status === 'IN_PROGRESS'
-    );
+  // 현재 페이지에 PENDING/IN_PROGRESS 상태인 repo가 있으면 3초 폴링
+  const hasActiveAnalysis = repos.some(
+    (r) => r.analysisStatus?.status === 'PENDING' || r.analysisStatus?.status === 'IN_PROGRESS'
+  );
 
   useEffect(() => {
     if (!hasActiveAnalysis) return;
@@ -196,78 +202,22 @@ function OwnedTab() {
     return () => clearInterval(id);
   }, [hasActiveAnalysis, refreshRepos]);
 
-  async function handleAnalyze(repoId: number) {
-    setAnalyzingIds((prev) => new Set(prev).add(repoId));
-    setAnalyzeErrors((prev) => { const n = { ...prev }; delete n[repoId]; return n; });
-    try {
-      const status = await analyzeRepository(repoId);
-      if (status) setAnalysisStatuses((prev) => ({ ...prev, [repoId]: status }));
-      setAnalyzingIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('409')) {
-        setAnalyzingIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });
-        return;
-      }
-      const msg = err instanceof Error ? err.message : '분석 시작 중 오류가 발생했습니다.';
-      setAnalyzeErrors((prev) => ({ ...prev, [repoId]: msg }));
-      setAnalyzingIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });
-    }
-  }
-
-  async function handleCancelAnalysis(repoId: number) {
-    try {
-      await cancelAnalysis(repoId);
-    } catch { /* 취소 실패는 무시 */ }
-    setAnalyzingIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });
-    setAnalysisStatuses((prev) => ({
-      ...prev,
-      [repoId]: { ...(prev[repoId] ?? {}), status: 'FAILED', error: '취소됨' } as RepoSyncStatus,
-    }));
-  }
-
   async function toggleSelect(repoId: number) {
     if (togglingId !== null) return;
     const prevIds = new Set(selectedIds);
     const newIds = new Set(selectedIds);
-    const wasSelected = newIds.has(repoId);
-    wasSelected ? newIds.delete(repoId) : newIds.add(repoId);
-
+    newIds.has(repoId) ? newIds.delete(repoId) : newIds.add(repoId);
     setSelectedIds(newIds);
     setTogglingId(repoId);
     setToggleError(null);
     try {
       await saveRepositorySelection(Array.from(newIds));
       await refreshRepos();
-      // 새로 선택한 경우 자동으로 동기화 → 분석 시작
-      if (!wasSelected) {
-        const repo = repos.find((r) => r.id === repoId);
-        if (repo) {
-          if (!repo.hasCommits) {
-            handleSyncCommits(repoId, true);
-          } else if (!repo.analysisStatus || repo.analysisStatus.status === 'FAILED') {
-            handleAnalyze(repoId);
-          }
-        }
-      }
     } catch (err) {
       setSelectedIds(prevIds);
       setToggleError(err instanceof Error ? err.message : '저장 중 오류가 발생했습니다.');
     } finally {
       setTogglingId(null);
-    }
-  }
-
-  async function handleSyncCommits(repoId: number, autoAnalyze = false) {
-    setSyncingIds((prev) => new Set(prev).add(repoId));
-    setSyncErrors((prev) => { const n = { ...prev }; delete n[repoId]; return n; });
-    try {
-      await syncCommits(repoId);
-      setRepos((prev) => prev.map((r) => r.id === repoId ? { ...r, hasCommits: true } : r));
-      if (autoAnalyze) handleAnalyze(repoId);
-    } catch (err) {
-      setSyncErrors((prev) => ({ ...prev, [repoId]: err instanceof Error ? err.message : '동기화 오류' }));
-    } finally {
-      setSyncingIds((prev) => { const n = new Set(prev); n.delete(repoId); return n; });
     }
   }
 
@@ -284,6 +234,59 @@ function OwnedTab() {
     }
   }
 
+  // ── 일괄 분석 시작 ──
+
+  // 선택된 repo 중 분석 대상: COMPLETED가 아닌 것 (커밋 동기화 여부는 무관 — 자동 처리)
+  function getAnalyzableIds(): number[] {
+    return Array.from(selectedIds).filter((id) => {
+      const repo = repos.find((r) => r.id === id);
+      if (!repo) return false;
+      return repo.analysisStatus?.status !== 'COMPLETED';
+    });
+  }
+
+  async function handleStartBatch() {
+    const ids = getAnalyzableIds();
+    if (ids.length === 0) return;
+    setStartingBatch(true);
+    setBatchError(null);
+    try {
+      // 커밋 미동기화 repo는 병렬로 sync 먼저 수행, 이미 된 것은 백엔드에서 skip
+      const unsynced = ids.filter((id) => !repos.find((r) => r.id === id)?.hasCommits);
+      if (unsynced.length > 0) {
+        await Promise.all(unsynced.map((id) => syncCommits(id).catch(() => {})));
+      }
+      const repoNames: Record<number, string> = {};
+      ids.forEach((id) => {
+        const repo = repos.find((r) => r.id === id);
+        if (repo) repoNames[id] = repo.fullName;
+      });
+      await startBatch(ids, repoNames);
+      router.push('/portfolio/documents');
+    } catch (err) {
+      setBatchError(err instanceof Error ? err.message : '분석 시작 중 오류가 발생했습니다.');
+      setStartingBatch(false);
+    }
+  }
+
+  // ── Re-sync ──
+
+  async function handleResyncConfirm(repo: GithubRepository) {
+    setResyncTarget(null);
+    setReSyncing(repo.id);
+    try {
+      await syncCommits(repo.id);
+      await startBatch([repo.id], { [repo.id]: repo.fullName });
+      router.push('/portfolio/documents');
+    } catch (err) {
+      setBatchError(err instanceof Error ? err.message : '업데이트 시작 중 오류가 발생했습니다.');
+    } finally {
+      setReSyncing(null);
+    }
+  }
+
+  // ── 렌더 ──
+
   if (loading) return <p className="text-sm text-zinc-400">repository 목록을 불러오는 중...</p>;
 
   if (loadError) return (
@@ -296,9 +299,7 @@ function OwnedTab() {
   if (repos.length === 0 && currentPage === 1) return (
     <div>
       <p className="mb-4 text-sm text-zinc-500">연결된 GitHub 계정이 없거나 repository가 없습니다.</p>
-      {refreshError && (
-        <p className="mb-3 text-sm text-red-600">{refreshError}</p>
-      )}
+      {refreshError && <p className="mb-3 text-sm text-red-600">{refreshError}</p>}
       <div className="flex gap-3">
         <button
           onClick={handleRefresh}
@@ -312,11 +313,14 @@ function OwnedTab() {
     </div>
   );
 
+  const analyzableIds = getAnalyzableIds();
+
   return (
     <div>
+      {/* 상단 안내 */}
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm text-zinc-500">
-          커밋을 수집할 repository를 선택하세요.
+          분석할 repository를 선택하세요.
           {selectedIds.size > 0 && (
             <span className="ml-1 font-medium text-zinc-800">{selectedIds.size}개 선택됨</span>
           )}
@@ -334,38 +338,61 @@ function OwnedTab() {
           </button>
         </div>
       </div>
+
       {refreshError && (
         <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{refreshError}</div>
       )}
-
       {toggleError && (
         <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{toggleError}</div>
       )}
 
+      {/* Repo 목록 */}
       <ul className="flex flex-col gap-3">
         {repos.map((repo) => {
           const isSelected = selectedIds.has(repo.id);
           const isToggling = togglingId === repo.id;
-          const isSyncing = syncingIds.has(repo.id);
-          const isAnalyzing = analyzingIds.has(repo.id);
-          const analysisStatus = analysisStatuses[repo.id];
-          const isAnalysisActive = isAnalyzing ||
-            (analysisStatus?.status === 'PENDING' || analysisStatus?.status === 'IN_PROGRESS');
+          const isCompleted = repo.analysisStatus?.status === 'COMPLETED';
+          const isDisabled = isCompleted; // 완료된 repo는 체크박스 비활성화
+          const isReSyncing = reSyncing === repo.id;
 
           return (
             <li
               key={repo.id}
-              onClick={() => toggleSelect(repo.id)}
-              className={`rounded border px-4 py-3 transition-opacity cursor-pointer select-none ${
-                isSelected ? 'border-zinc-300' : 'border-zinc-200 opacity-50'
-              } ${isToggling ? 'pointer-events-none' : 'hover:bg-zinc-50'}`}
+              className={`rounded border px-4 py-3 transition-opacity ${
+                isDisabled
+                  ? 'border-zinc-200 bg-zinc-50'
+                  : isSelected
+                  ? 'border-zinc-300 cursor-pointer hover:bg-zinc-50'
+                  : 'border-zinc-200 opacity-50 cursor-pointer hover:bg-zinc-50'
+              } ${isToggling ? 'pointer-events-none' : ''}`}
+              onClick={() => !isDisabled && toggleSelect(repo.id)}
             >
               <div className="flex items-start gap-3">
+                {/* 체크박스 */}
+                <div
+                  className="mt-0.5 shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    disabled={isDisabled || isToggling}
+                    onChange={() => !isDisabled && toggleSelect(repo.id)}
+                    className="cursor-pointer disabled:cursor-not-allowed"
+                    title={isDisabled ? '분석이 완료된 repository입니다. 업데이트 버튼을 사용하세요.' : undefined}
+                  />
+                </div>
+
+                {/* 정보 */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <a href={repo.htmlUrl} target="_blank" rel="noopener noreferrer"
+                    <a
+                      href={repo.htmlUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="text-sm font-medium text-zinc-900 hover:underline truncate">
+                      className="text-sm font-medium text-zinc-900 hover:underline truncate"
+                    >
                       {repo.fullName}
                     </a>
                     <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${VISIBILITY_STYLE[repo.visibility] ?? 'bg-zinc-100 text-zinc-600'}`}>
@@ -381,39 +408,34 @@ function OwnedTab() {
                       <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-500">{repo.language}</span>
                     )}
                   </div>
+
                   {formatPushedAt(repo.pushedAt) && (
                     <p className="mt-0.5 text-xs text-zinc-400">{formatPushedAt(repo.pushedAt)} 업데이트</p>
                   )}
-                  {syncErrors[repo.id] && <p className="mt-1 text-xs text-red-600">{syncErrors[repo.id]}</p>}
-                  {repo.hasCommits && !isSyncing && (
-                    <p className="mt-1 text-xs text-green-600">✓ 커밋 동기화됨</p>
-                  )}
-                  {!repo.hasCommits && isSelected && !isSyncing && (
-                    <p className="mt-1 text-xs text-amber-600">커밋 동기화 후 포트폴리오 분석을 시작할 수 있습니다.</p>
-                  )}
-                  {analyzeErrors[repo.id] && <p className="mt-1 text-xs text-red-600">{analyzeErrors[repo.id]}</p>}
-                  {analysisStatus && <AnalysisStatusBadge status={analysisStatus} />}
+
+                  {/* 분석 상태 배지 — 배치 진행 중이면 live status 우선 */}
+                  {(() => {
+                    const liveStatus = activeBatch?.statuses[repo.id] ?? repo.analysisStatus;
+                    return liveStatus ? <AnalysisStatusBadge status={liveStatus} /> : null;
+                  })()}
                 </div>
-                <div className="flex shrink-0 flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() => handleSyncCommits(repo.id)}
-                    disabled={isSyncing || isAnalysisActive || repo.hasCommits || !isSelected || isToggling}
-                    className="rounded border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {isSyncing ? '동기화 중...' : repo.hasCommits ? '동기화됨' : '커밋 동기화'}
-                  </button>
-                  <button
-                    onClick={() => isAnalysisActive ? handleCancelAnalysis(repo.id) : handleAnalyze(repo.id)}
-                    disabled={!repo.hasCommits || !isSelected || isToggling}
-                    className={`rounded border px-3 py-1.5 text-xs disabled:opacity-40 disabled:cursor-not-allowed ${
-                      isAnalysisActive
-                        ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100 cursor-pointer'
-                        : 'border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 cursor-pointer'
-                    }`}
-                  >
-                    {isAnalysisActive ? '분석 취소' : '포트폴리오 분석'}
-                  </button>
-                </div>
+
+                {/* Re-sync 버튼 (COMPLETED repo 전용) */}
+                {isCompleted && (
+                  <div className="shrink-0 flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
+                    {repo.analysisStatus?.completedAt && (
+                      <p className="text-xs text-zinc-400">{formatDate(repo.analysisStatus.completedAt)}</p>
+                    )}
+                    <button
+                      onClick={() => setResyncTarget(repo)}
+                      disabled={isReSyncing}
+                      title="최신 내용으로 업데이트 (Re-sync)"
+                      className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isReSyncing ? '업데이트 중...' : '🔄 업데이트'}
+                    </button>
+                  </div>
+                )}
               </div>
             </li>
           );
@@ -440,13 +462,47 @@ function OwnedTab() {
           </button>
         </div>
       )}
+
+      {/* 오류 메시지 */}
+      {batchError && (
+        <div className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{batchError}</div>
+      )}
+
+      {/* 일괄 분석 시작 버튼 */}
+      <div className="mt-6 border-t border-zinc-100 pt-5">
+        <button
+          onClick={handleStartBatch}
+          disabled={analyzableIds.length === 0 || startingBatch}
+          className="w-full rounded-full bg-zinc-900 py-3 text-sm font-semibold text-white hover:bg-zinc-700 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {startingBatch
+            ? '분석 시작 중...'
+            : analyzableIds.length > 0
+            ? `일괄 분석 시작 (${analyzableIds.length}개 repo)`
+            : '분석할 repository를 선택하세요'}
+        </button>
+        {analyzableIds.length > 0 && (
+          <p className="mt-2 text-center text-xs text-zinc-400">
+            분석 요청 후 문서 업로드 화면으로 이동하며, 백그라운드에서 계속 진행됩니다.
+          </p>
+        )}
+      </div>
+
+      {/* Re-sync 확인 모달 */}
+      {resyncTarget && (
+        <ResyncConfirmModal
+          repoFullName={resyncTarget.fullName}
+          lastAnalyzedAt={resyncTarget.analysisStatus?.completedAt ?? null}
+          onConfirm={() => handleResyncConfirm(resyncTarget)}
+          onCancel={() => setResyncTarget(null)}
+        />
+      )}
     </div>
   );
 }
 
-// ══════════════════════════════════════════════════════
-// 탭 2 — 기여한 repository
-// ══════════════════════════════════════════════════════
+// ── 탭 2 — 기여한 repository ─────────────────────────────────────────
+
 function ContributedTab() {
   const [contributions, setContributions] = useState<ContributedRepo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -458,7 +514,6 @@ function ContributedTab() {
   const [savingId, setSavingId] = useState<number | null>(null);
   const [saveErrors, setSaveErrors] = useState<Record<number, string>>({});
 
-  // URL 직접 추가 폼
   const [urlInput, setUrlInput] = useState('');
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -546,15 +601,6 @@ function ContributedTab() {
       const saved = await addContributionByUrl(urlInput.trim());
       setUrlSuccess(`${saved.fullName} 이(가) 추가되었습니다.`);
       setUrlInput('');
-      setContributions((prev) => {
-        const exists = prev.some((r) => r.githubRepoId === saved.githubRepoId);
-        if (exists) {
-          return prev.map((r) =>
-            r.githubRepoId === saved.githubRepoId ? { ...r, alreadySaved: true } : r
-          );
-        }
-        return prev;
-      });
     } catch (err) {
       setUrlError(err instanceof Error ? err.message : '추가 중 오류가 발생했습니다.');
     } finally {
@@ -573,7 +619,7 @@ function ContributedTab() {
     <div>
       <p className="mb-4 text-sm text-zinc-500">
         최근 {yearsOffset + 1}년간 커밋을 기여한 public repository 목록입니다.
-        클릭하면 포트폴리오에 추가됩니다. 추가된 repo를 다시 클릭하면 제거됩니다.
+        클릭하면 포트폴리오에 추가됩니다.
       </p>
 
       {contributions.length === 0 ? (
@@ -605,9 +651,7 @@ function ContributedTab() {
                         {repo.nameWithOwner}
                       </a>
                       {repo.language && (
-                        <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-500">
-                          {repo.language}
-                        </span>
+                        <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-500">{repo.language}</span>
                       )}
                     </div>
                     <p className="mt-0.5 text-xs text-zinc-400">
@@ -616,15 +660,10 @@ function ContributedTab() {
                     </p>
                     {saveError && <p className="mt-1 text-xs text-red-600">{saveError}</p>}
                   </div>
-
                   <span className={`shrink-0 text-xs font-medium ${
-                    isSaving ? 'text-zinc-400'
-                    : repo.alreadySaved ? 'text-green-600'
-                    : 'text-indigo-600'
+                    isSaving ? 'text-zinc-400' : repo.alreadySaved ? 'text-green-600' : 'text-indigo-600'
                   }`}>
-                    {isSaving ? '처리 중...'
-                      : repo.alreadySaved ? '추가됨'
-                      : '+ 추가'}
+                    {isSaving ? '처리 중...' : repo.alreadySaved ? '추가됨' : '+ 추가'}
                   </span>
                 </div>
               </li>
@@ -633,7 +672,6 @@ function ContributedTab() {
         </ul>
       )}
 
-      {/* 이전 기여 더 불러오기 */}
       {!loading && !noMoreData ? (
         <button
           onClick={() => handleLoad(yearsOffset + 1, true)}
@@ -646,14 +684,11 @@ function ContributedTab() {
         !loading && <p className="mb-6 text-center text-xs text-zinc-400">더 이상 불러올 기여 이력이 없습니다.</p>
       )}
 
-      {/* URL 직접 추가 */}
       <div className="rounded border border-zinc-200 p-4">
         <p className="mb-2 text-sm font-medium text-zinc-700">repo URL로 직접 추가</p>
         <p className="mb-3 text-xs text-zinc-500">
           목록에 없는 기여 repo가 있다면 URL을 입력하세요.
-          본인 커밋이 확인된 경우에만 추가됩니다.
         </p>
-
         <form onSubmit={handleAddByUrl} className="flex gap-2">
           <input
             type="text"
@@ -671,19 +706,14 @@ function ContributedTab() {
             {urlLoading ? '확인 중...' : '추가'}
           </button>
         </form>
-
-        {urlError && (
-          <p className="mt-2 text-xs text-red-600">{urlError}</p>
-        )}
-        {urlSuccess && (
-          <p className="mt-2 text-xs text-green-600">{urlSuccess}</p>
-        )}
+        {urlError && <p className="mt-2 text-xs text-red-600">{urlError}</p>}
+        {urlSuccess && <p className="mt-2 text-xs text-green-600">{urlSuccess}</p>}
       </div>
     </div>
   );
 }
 
-// ── 분석 상태 배지 ──────────────────────────────────────────
+// ── 분석 상태 배지 ────────────────────────────────────────────────────
 
 const STEP_LABEL: Record<string, string> = {
   significance_check: '변경 감지 중',
@@ -697,7 +727,7 @@ function AnalysisStatusBadge({ status }: { status: RepoSyncStatus }) {
     return <p className="mt-1 text-xs text-indigo-700 font-medium">✓ 포트폴리오 분석 완료</p>;
   }
   if (status.status === 'SKIPPED') {
-    return <p className="mt-1 text-xs text-zinc-400">변경 사항이 충분하지 않아 분석을 건너뛰었습니다.</p>;
+    return <p className="mt-1 text-xs text-zinc-400">{status.skipReason ?? '변경 사항이 충분하지 않아 분석을 건너뛰었습니다.'}</p>;
   }
   if (status.status === 'FAILED') {
     return <p className="mt-1 text-xs text-red-600">분석 실패{status.error ? `: ${status.error}` : ''}</p>;

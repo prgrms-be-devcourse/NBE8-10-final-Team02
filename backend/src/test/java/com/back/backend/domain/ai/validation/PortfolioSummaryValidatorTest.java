@@ -46,11 +46,9 @@ class PortfolioSummaryValidatorTest {
         @Test
         @DisplayName("필수 필드 누락 시 실패한다")
         void missing_required_field() throws Exception {
-            // projects 필드 없음
+            // project 필드 없음
             JsonNode node = objectMapper.readTree("""
                 {
-                  "globalStrengths": [],
-                  "globalRisks": [],
                   "qualityFlags": []
                 }
                 """);
@@ -59,17 +57,6 @@ class PortfolioSummaryValidatorTest {
 
             assertThat(result.valid()).isFalse();
             assertThat(result.errors()).isNotEmpty();
-        }
-
-        @Test
-        @DisplayName("confidence가 허용 enum이 아니면 실패한다")
-        void invalid_confidence_enum() throws Exception {
-            String json = validResponse().replace("\"high\"", "\"very_high\"");
-            JsonNode node = objectMapper.readTree(json);
-
-            ValidationResult result = validator.validate(node);
-
-            assertThat(result.valid()).isFalse();
         }
 
         @Test
@@ -99,22 +86,81 @@ class PortfolioSummaryValidatorTest {
 
             assertThat(result.valid()).isFalse();
         }
+
+        @Test
+        @DisplayName("evidenceBullets가 5개를 초과하면 실패한다")
+        void evidenceBullets_exceed_max() throws Exception {
+            String json = """
+            {
+              "project": {
+                "projectKey": "test-repo",
+                "projectName": "테스트 프로젝트",
+                "summary": "요약입니다.",
+                "role": "백엔드 개발",
+                "stack": ["Java 17"],
+                "signals": ["OAuth2"],
+                "strengths": ["강점"],
+                "risks": ["약점"],
+                "sourceRefs": ["repo:101"],
+                "qualityFlags": [],
+                "challenges": [
+                  { "id": "c1", "what": "문제", "how": "해결", "learning": "배움" }
+                ],
+                "techDecisions": [
+                  { "decision": "결정", "reason": "이유", "tradeOff": null }
+                ],
+                "evidenceBullets": [
+                  { "fact": "총알 1", "challengeRef": null },
+                  { "fact": "총알 2", "challengeRef": null },
+                  { "fact": "총알 3", "challengeRef": null },
+                  { "fact": "총알 4", "challengeRef": null },
+                  { "fact": "총알 5", "challengeRef": null },
+                  { "fact": "총알 6", "challengeRef": null }
+                ]
+              }
+            }
+            """;
+            JsonNode node = objectMapper.readTree(json);
+
+            ValidationResult result = validator.validate(node);
+
+            assertThat(result.valid()).isFalse();
+        }
+
+        @Test
+        @DisplayName("challenges가 3개를 초과하면 실패한다")
+        void challenges_exceed_max() throws Exception {
+            String extraChallenge = "{\"id\": \"cx\", \"what\": \"w\", \"how\": \"h\", \"learning\": \"l\"}";
+            String json = validResponse().replace(
+                "\"challenges\": []",
+                "\"challenges\": [" + extraChallenge + "," + extraChallenge + "," +
+                extraChallenge + "," + extraChallenge + "]"
+            );
+            JsonNode node = objectMapper.readTree(json);
+
+            ValidationResult result = validator.validate(node);
+
+            assertThat(result.valid()).isFalse();
+        }
+
+        @Test
+        @DisplayName("evidenceBullets의 fact가 빈 문자열이면 실패한다")
+        void evidence_fact_empty_string() throws Exception {
+            String json = validResponse().replace(
+                "\"fact\": \"OAuth2 로그인 구현\"",
+                "\"fact\": \"\""
+            );
+            JsonNode node = objectMapper.readTree(json);
+
+            ValidationResult result = validator.validate(node);
+
+            assertThat(result.valid()).isFalse();
+        }
     }
 
     @Nested
     @DisplayName("cross-field 검증")
     class CrossFieldValidation {
-
-        @Test
-        @DisplayName("projectKey가 중복되면 실패한다")
-        void duplicate_projectKey() throws Exception {
-            JsonNode node = objectMapper.readTree(duplicateProjectKeyResponse());
-
-            ValidationResult result = validator.validate(node);
-
-            assertThat(result.valid()).isFalse();
-            assertThat(result.errors()).anyMatch(e -> e.contains("projectKey 중복"));
-        }
 
         @Test
         @DisplayName("sourceRefs가 비어있으면 경고와 함께 통과한다")
@@ -135,53 +181,23 @@ class PortfolioSummaryValidatorTest {
     private String validResponse() {
         return """
             {
-              "projects": [
-                {
-                  "projectKey": "project_1",
-                  "projectName": "AI Interview Platform",
-                  "summary": "포트폴리오 기반 면접 준비 플랫폼",
-                  "signals": ["Spring Boot", "OAuth2"],
-                  "evidenceBullets": ["OAuth2 로그인 구현"],
-                  "confidence": "high",
-                  "sourceRefs": ["repo:101"],
-                  "qualityFlags": []
-                }
-              ],
-              "globalStrengths": ["백엔드 설계 경험"],
-              "globalRisks": ["정량 근거 부족"],
-              "qualityFlags": []
-            }
-            """;
-    }
-
-    private String duplicateProjectKeyResponse() {
-        return """
-            {
-              "projects": [
-                {
-                  "projectKey": "project_1",
-                  "projectName": "Project A",
-                  "summary": "요약 A",
-                  "signals": ["Spring Boot"],
-                  "evidenceBullets": ["구현 A"],
-                  "confidence": "high",
-                  "sourceRefs": ["repo:101"],
-                  "qualityFlags": []
-                },
-                {
-                  "projectKey": "project_1",
-                  "projectName": "Project B",
-                  "summary": "요약 B",
-                  "signals": ["React"],
-                  "evidenceBullets": ["구현 B"],
-                  "confidence": "medium",
-                  "sourceRefs": ["repo:102"],
-                  "qualityFlags": []
-                }
-              ],
-              "globalStrengths": ["경험"],
-              "globalRisks": ["부족"],
-              "qualityFlags": []
+              "project": {
+                "projectKey": "ai-interview-platform",
+                "projectName": "AI Interview Platform",
+                "summary": "포트폴리오 기반 면접 준비 플랫폼",
+                "role": "백엔드 개발 / 인증 도메인 담당",
+                "stack": ["Java 17", "Spring Boot 3", "Redis"],
+                "signals": ["Spring Boot", "OAuth2"],
+                "evidenceBullets": [
+                  {"fact": "OAuth2 로그인 구현", "challengeRef": null}
+                ],
+                "challenges": [],
+                "techDecisions": [],
+                "strengths": ["백엔드 설계 경험"],
+                "risks": ["정량 근거 부족"],
+                "sourceRefs": ["repo:101"],
+                "qualityFlags": []
+              }
             }
             """;
     }

@@ -76,4 +76,26 @@ export interface RepoSyncStatus {
   estimatedEndAt: string | null;
   completedAt: string | null;
   error: string | null;
+  skipReason: string | null;
+}
+
+// GET /github/repositories/{id}/summary 응답 (nullable — 분석 미완료 시 null)
+export interface RepoSummaryResponse {
+  repositoryId: number;
+  summaryVersion: number;
+  data: string;      // portfolio-summary.schema.json 형식 JSON 문자열. JSON.parse() 후 RepoSummaryData로 캐스팅
+  generatedAt: string;
+}
+
+// RepoSummaryResponse.data를 JSON.parse()한 결과 형태
+export interface RepoSummaryData {
+  project: {
+    repoName: string;
+    stack: string[];
+    signals: string[];
+    challenges: string[];
+    techDecisions: string[];
+    role: string | null;
+    period: string | null;
+  };
 }

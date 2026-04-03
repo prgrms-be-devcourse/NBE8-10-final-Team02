@@ -27,19 +27,28 @@ import java.util.List;
  *
  * 흐름:
  *   1. CodeIndexService에서 code structure 조회
- *   2. ContributionExtractorService에서 diff 조회
+ *   2. ContributionExtractorService에서 IGNORED 제거된 diff 조회
  *   3. PortfolioPromptBuilder로 userMessage 구성
  *   4. AiClient 호출 (ai.portfolio.summary.v1 템플릿)
  *   5. 응답 검증 후 repo_summaries 저장
  *
- * 출력 형식: portfolio-summary.schema.json (projects[] 1개 항목)
- * 저장: repo_summaries.data = AI 응답 JSON
+ * 커밋 카테고리(evidenceBullets/challenges/techDecisions) 분류는 AI에 위임한다.
+ *
+ * @deprecated Batch 다중 분석 아키텍처 도입으로 인한 사용 중단.
+ *   대체 클래스: {@link BatchRepoSummaryGeneratorService}
+ *   단일 repo 분석 시 AI를 매번 호출하여 Rate Limit을 낭비하는 구조로,
+ *   Batch 방식이 N개 repo를 1회 AI 호출로 처리한다.
  */
+@Deprecated
 @Service
 public class RepoSummaryGeneratorService {
 
     private static final Logger log = LoggerFactory.getLogger(RepoSummaryGeneratorService.class);
     private static final String TEMPLATE_ID = "ai.portfolio.summary.v1";
+
+    // IGNORED 제거 후 diff를 가져올 최대 커밋 수
+    private static final int OWNED_MAX_COMMITS    = 30;
+    private static final int EXTERNAL_MAX_COMMITS = 20;
 
     private final AiPipeline aiPipeline;
     private final PortfolioPromptBuilder promptBuilder;
@@ -84,16 +93,18 @@ public class RepoSummaryGeneratorService {
         // 1. Code Index 조회 (PageRank 필터링은 PortfolioPromptBuilder 내부에서)
         List<CodeIndex> codeEntries = codeIndexService.getTopByPageRank(repo, 0.0);
 
-        // 2. 기여 diff 조회 (최근 30개, 외부 repo는 20개)
+        // 2. IGNORED 제거 후 diff 조회
         boolean isOwnedRepo = isOwnedRepo(repo, user);
-        int maxDiffs = isOwnedRepo ? 30 : 20;
-        List<DiffEntry> diffs = contributionExtractorService.getContributionDiffs(
+        int maxCommits = isOwnedRepo ? OWNED_MAX_COMMITS : EXTERNAL_MAX_COMMITS;
+
+        List<DiffEntry> diffs = contributionExtractorService.getFilteredDiffs(
                 repoCloneService.getRepoPath(user.getId(), repo.getId()),
                 authorEmail,
-                maxDiffs
+                maxCommits,
+                codeEntries
         );
 
-        // 3. README/docs 읽기 (large repo에서 전체 코드 구조 파악 보완용, 항상 시도)
+        // 3. README/docs 읽기
         Path repoPath = repoCloneService.getRepoPath(user.getId(), repo.getId());
         String projectOverview = readProjectOverview(repoPath);
 
@@ -104,8 +115,7 @@ public class RepoSummaryGeneratorService {
         // 5. AI 호출
         String summaryJson = aiPipeline.execute(TEMPLATE_ID, userMessage).toString();
 
-        // 6. 버전 계산 + 저장 — 하나의 트랜잭션으로 묶어 버전 중복 방지
-        //    AI 호출이 끝난 뒤 짧은 트랜잭션만 커넥션을 점유한다.
+        // 6. 버전 계산 + 저장
         RepoSummary saved = transactionTemplate.execute(status -> {
             int nextVersion = getNextVersion(user, repo);
             RepoSummary summary = RepoSummary.builder()
@@ -129,22 +139,13 @@ public class RepoSummaryGeneratorService {
     // ─────────────────────────────────────────────────
 
     /**
-     * 클론된 repo에서 README 및 프로젝트 구조 문서를 읽는다.
+     * 클론된 repo에서 README를 읽는다. 최대 8,000자. 없으면 null.
      *
-     * 탐색 순서:
-     *   1. README.md / readme.md / README.MD
-     *   2. README.rst / README.txt (없으면 생략)
-     *
-     * 최대 8,000자로 잘라낸다. 없으면 null 반환.
-     *
-     * TODO: 읽는 문서 목록과 최대 글자 수(8,000)는 실제 AI 품질을 보며 조정 필요.
-     *   - CONTRIBUTING.md, docs/README.md 등 추가 후보 검토
-     *   - large repo에서 README만으로 부족할 경우 디렉터리 tree 출력 추가 검토
+     * TODO: 후보 파일 목록은 실무 피드백에 따라 확장 (예: CONTRIBUTING.md, docs/index.md)
      */
     private String readProjectOverview(Path repoPath) {
         if (repoPath == null || !Files.exists(repoPath)) return null;
 
-        // TODO: 후보 파일 목록은 실무 피드백에 따라 확장 (예: CONTRIBUTING.md, docs/index.md)
         String[] candidates = {
             "README.md", "readme.md", "README.MD",
             "README.rst", "README.txt", "readme.txt"

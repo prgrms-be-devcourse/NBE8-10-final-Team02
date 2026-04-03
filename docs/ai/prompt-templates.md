@@ -153,13 +153,39 @@ applies_to: ai-prompt-io-contract
 
 ### 6.1.2 입력 변수
 
-- `jobRole`
-- `companyName`
-- `repositories`
-- `documents`
-- `maxProjectCount`
-- `maxEvidencePerProject`
-- `compressionRules`
+**현재 구현 — user message named section 방식:**
+
+`PromptLoader`는 템플릿 파일을 그대로 읽고 변수 치환을 하지 않는다.
+입력 데이터는 `PortfolioPromptBuilder`가 user message에 아래 섹션으로 조립해 전달한다.
+
+| 섹션 헤더 | 내용 | 토큰 상한 (자체 repo) |
+|---|---|---:|
+| `## Repository` | repo 이름·URL·크기·author email | 1K |
+| `## Project Overview (README)` | README 전문 (최대 8,000자) | 2K |
+| `## Code Structure` | 기여 파일+PageRank, 클래스 목록 | 30K |
+| `## Contribution Commits` | docs/chore/style 등 IGNORED 제거 후 전체 커밋 (sha·subject·body·diff) | 50K |
+
+조립 주체: `PortfolioPromptBuilder.buildUserMessage()` (상세 구조는 개인 설계 문서 §10 참조)
+
+**`## Contribution Commits` 구성 원칙:**
+- `CommitClassifier`가 IGNORED(docs/chore/style/ci/test/build/refactor) 커밋을 제거한다.
+- 나머지 커밋을 최신순 상위 N개(자체 repo 30개, 외부 20개) 전달한다.
+- evidenceBullets / challenges / techDecisions 분류는 AI가 수행한다.
+- 각 커밋에 body(커밋 메시지 본문)를 포함하므로 AI가 // WHY: 주석·의사결정 근거를 직접 추출한다.
+
+**목표 설계 (미구현) — 변수 치환 방식:**
+
+| 변수 | 내용 | 토큰 상한 (자체 repo) |
+|---|---|---:|
+| `{{repoMeta}}` | repo 이름·주 언어·기여 기간·총 커밋 수·repo 유형 | 1K |
+| `{{staticAnalysis}}` | 기여 파일+PageRank, 상위 클래스 구조, import 기반 stack 후보 | 15K |
+| `{{contributionCommits}}` | IGNORED 제거·스코어링·시간 분산·도메인 다양성 적용 후 커밋 (sha·subject·body·diff) | 50K |
+
+전환 조건: 스코어링(§7.4)·시간 분산(§7.5) 구현 완료 후 `PromptRenderer` 추가 시점에 변수 치환 방식으로 전환한다.
+
+**레거시 Payload 필드 (이전 설계 잔존, 현재 미사용):**
+- `jobRole`, `companyName`, `repositories`, `documents`
+- `maxProjectCount`, `maxEvidencePerProject`, `compressionRules`
 
 ### 6.1.3 입력 예시
 
@@ -206,24 +232,37 @@ applies_to: ai-prompt-io-contract
 ```text
 당신은 개발자 취업 준비 플랫폼의 포트폴리오 evidence summarizer다.
 주어진 GitHub commit 정보와 문서 섹션을 읽고, 이후 자소서 생성과 면접 질문 생성에 재사용 가능한 evidence pack을 JSON으로 압축하라.
-근거가 약한 정보는 confidence를 낮게 표시하라.
 존재하지 않는 프로젝트명, 성과 수치, 기술 사용 이유를 새로 만들지 말라.
+근거가 부족하면 qualityFlags에 low_context 또는 weak_evidence를 넣는다.
 반드시 JSON object 하나만 출력하라.
 ```
 
 ### 6.1.5 Developer Prompt
 
+입력 변수 구조 및 필드 작성 지침은 `ai.portfolio.summary.v1.txt`에 정의됨.
+핵심 규칙 요약:
+
 ```text
-목표:
-- repository와 문서에서 프로젝트/경험 단위 evidence를 추출한다.
-- 비슷한 commit 메시지는 묶고, 의미 없는 commit은 제거하거나 가중치를 낮춘다.
-- 문서와 GitHub에 동시에 존재하는 정보는 하나의 evidence로 통합할 수 있다.
+입력 섹션 (user message):
+  ## Repository, ## Project Overview, ## Code Structure,
+  ## Contribution Commits (IGNORED 제거된 커밋 — subject·body·diff 포함)
+
+필드별 소스:
+- stack    ← ## Code Structure (기술/프레임워크명만, signals와 중복 금지)
+- signals  ← ## Contribution Commits 중 구현/해결 행위 커밋 (기술명 금지)
+- role     ← ## Code Structure 기여 파일 패턴 전체를 LLM이 추론
+- evidenceBullets ← ## Contribution Commits 중 기능 구현·성능 개선 커밋
+- challenges      ← ## Contribution Commits 중 결함 수정·장애 해결 커밋
+                    (evidenceBullets 근거 없으면 생성 금지)
+- techDecisions   ← ## Contribution Commits 중 body 또는 diff에
+                    // WHY: / // NOTE: 근거가 있는 커밋만
+                    (근거 없으면 빈 배열 — 생성 금지)
 
 출력 규칙:
-- projects 배열로 반환한다.
-- 각 project는 stable key를 가진다.
-- signals는 최대 6개, evidence bullets는 최대 5개로 제한한다.
-- confidence는 high, medium, low 중 하나만 사용한다.
+- project 단일 객체로 반환 (배열 아님).
+- signals ≤ 6개, evidenceBullets ≤ 5개, challenges ≤ 3개, techDecisions ≤ 3개.
+- 모든 signals는 evidenceBullets 중 최소 하나의 fact에서 설명되어야 한다.
+- challengeRef가 있으면 해당 challenge.id가 challenges에 존재해야 한다.
 - 근거가 약하면 qualityFlags에 low_context 또는 weak_evidence를 넣는다.
 ```
 
@@ -231,33 +270,51 @@ applies_to: ai-prompt-io-contract
 
 ```json
 {
-  "projects": [
-    {
-      "projectKey": "project_1",
-      "projectName": "AI Interview Practice Platform",
-      "summary": "포트폴리오 기반 자소서/면접 준비 플랫폼 개발 경험",
-      "signals": ["Spring Boot", "OAuth2", "PostgreSQL", "GitHub API"],
-      "evidenceBullets": [
-        "OAuth2 로그인 및 GitHub 연동 구현",
-        "repository/commit 수집 구조 설계",
-        "문서 업로드 및 텍스트 추출 처리"
-      ],
-      "confidence": "high",
-      "sourceRefs": ["repo:101", "doc:301"],
-      "qualityFlags": []
-    }
-  ],
-  "globalStrengths": ["백엔드 구조 설계 경험", "외부 연동 경험"],
-  "globalRisks": ["정량 성과 근거 부족 가능성"],
-  "qualityFlags": []
+  "project": {
+    "projectKey": "ai-interview-platform",
+    "projectName": "AI Interview Practice Platform",
+    "summary": "포트폴리오 기반 자소서/면접 준비 플랫폼 개발 경험",
+    "role": "백엔드 개발 / 인증·포트폴리오 도메인 담당",
+    "stack": ["Java 17", "Spring Boot 3", "PostgreSQL", "Redis"],
+    "signals": ["Spring Boot", "OAuth2", "GitHub API"],
+    "evidenceBullets": [
+      {
+        "fact": "Spring Security OAuth2 소셜 로그인 및 GitHub 연동 구현",
+        "challengeRef": null
+      },
+      {
+        "fact": "Redisson 분산 락으로 선착순 이벤트 동시성 이슈 해결",
+        "challengeRef": "c1"
+      }
+    ],
+    "challenges": [
+      {
+        "id": "c1",
+        "what": "Redis 락 해제 지연으로 데드락 발생",
+        "how": "Redisson Pub/Sub 기반 락 전환 및 타임아웃 정교화",
+        "learning": "분산 환경 자원 점유 정책과 예외 처리 설계의 중요성"
+      }
+    ],
+    "techDecisions": [
+      {
+        "decision": "Redis Pub/Sub 기반 분산 락 선택",
+        "reason": "DB 비관적 락 대비 분산 서버 간 확장성 확보, 인메모리 기반 낮은 지연",
+        "tradeOff": "Redis 인프라 유지 비용 추가"
+      }
+    ],
+    "strengths": ["백엔드 구조 설계 경험", "외부 API 연동 경험"],
+    "risks": ["정량 성과 근거 부족 가능성"],
+    "sourceRefs": ["repo:101", "doc:301"],
+    "qualityFlags": []
+  }
 }
 ```
 
 ### 6.1.7 후처리 검증
 
-- `projectKey` 중복 금지
-- `confidence` enum 검증
-- `signals`와 `evidenceBullets`는 빈 문자열 금지
+- `signals`와 `evidenceBullets[].fact`는 빈 문자열 금지
+- `challengeRef`가 non-null이면 해당 `challenge.id`가 `challenges` 배열에 존재해야 함
+- `sourceRefs`가 비어있으면 경고 (`weak_evidence` 권장)
 - `sourceRefs`는 실제 선택 source와 매핑 가능해야 함
 
 ### 6.1.8 저장/캐시 정책
