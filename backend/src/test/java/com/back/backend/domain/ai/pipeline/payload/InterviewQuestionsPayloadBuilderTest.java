@@ -26,7 +26,7 @@ class InterviewQuestionsPayloadBuilderTest {
     private String buildDefault() {
         return builder.build(
             JOB_ROLE, COMPANY_NAME, List.of(), List.of(),
-            QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES
+            QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES, List.of()
         );
     }
 
@@ -39,7 +39,7 @@ class InterviewQuestionsPayloadBuilderTest {
         void null_jobRole() {
             assertThatThrownBy(() -> builder.build(
                 null, COMPANY_NAME, List.of(), List.of(),
-                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES
+                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES, List.of()
             ))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("jobRole");
@@ -50,7 +50,7 @@ class InterviewQuestionsPayloadBuilderTest {
         void null_selfIntroQnAs() {
             assertThatThrownBy(() -> builder.build(
                 JOB_ROLE, COMPANY_NAME, null, List.of(),
-                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES
+                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES, List.of()
             ))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("selfIntroQnAs");
@@ -61,7 +61,7 @@ class InterviewQuestionsPayloadBuilderTest {
         void null_documentTexts() {
             assertThatThrownBy(() -> builder.build(
                 JOB_ROLE, COMPANY_NAME, List.of(), null,
-                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES
+                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES, List.of()
             ))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("documentTexts");
@@ -72,7 +72,7 @@ class InterviewQuestionsPayloadBuilderTest {
         void null_difficultyLevel() {
             assertThatThrownBy(() -> builder.build(
                 JOB_ROLE, COMPANY_NAME, List.of(), List.of(),
-                QUESTION_COUNT, null, QUESTION_TYPES
+                QUESTION_COUNT, null, QUESTION_TYPES, List.of()
             ))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("difficultyLevel");
@@ -83,7 +83,7 @@ class InterviewQuestionsPayloadBuilderTest {
         void null_questionTypes() {
             assertThatThrownBy(() -> builder.build(
                 JOB_ROLE, COMPANY_NAME, List.of(), List.of(),
-                QUESTION_COUNT, DIFFICULTY_LEVEL, null
+                QUESTION_COUNT, DIFFICULTY_LEVEL, null, List.of()
             ))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("questionTypes");
@@ -110,7 +110,7 @@ class InterviewQuestionsPayloadBuilderTest {
         void null_companyName_excluded() throws Exception {
             String payload = builder.build(
                 JOB_ROLE, null, List.of(), List.of(),
-                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES
+                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES, List.of()
             );
             JsonNode root = objectMapper.readTree(payload);
 
@@ -122,7 +122,7 @@ class InterviewQuestionsPayloadBuilderTest {
         void blank_companyName_excluded() throws Exception {
             String payload = builder.build(
                 JOB_ROLE, "  ", List.of(), List.of(),
-                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES
+                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES, List.of()
             );
             JsonNode root = objectMapper.readTree(payload);
 
@@ -150,7 +150,7 @@ class InterviewQuestionsPayloadBuilderTest {
         void empty_question_types() throws Exception {
             String payload = builder.build(
                 JOB_ROLE, null, List.of(), List.of(),
-                QUESTION_COUNT, DIFFICULTY_LEVEL, List.of()
+                QUESTION_COUNT, DIFFICULTY_LEVEL, List.of(), List.of()
             );
             JsonNode types = objectMapper.readTree(payload).get("questionTypes");
 
@@ -171,7 +171,7 @@ class InterviewQuestionsPayloadBuilderTest {
             );
             String payload = builder.build(
                 JOB_ROLE, null, List.of(qna), List.of(),
-                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES
+                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES, List.of()
             );
             JsonNode node = objectMapper.readTree(payload).get("selfIntroQnA").get(0);
 
@@ -188,7 +188,7 @@ class InterviewQuestionsPayloadBuilderTest {
             );
             String payload = builder.build(
                 JOB_ROLE, null, List.of(qna), List.of(),
-                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES
+                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES, List.of()
             );
             JsonNode node = objectMapper.readTree(payload).get("selfIntroQnA").get(0);
 
@@ -214,7 +214,7 @@ class InterviewQuestionsPayloadBuilderTest {
         void document_becomes_evidence() throws Exception {
             String payload = builder.build(
                 JOB_ROLE, null, List.of(), List.of("Spring Boot 프로젝트 경험"),
-                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES
+                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES, List.of()
             );
             JsonNode ev = objectMapper.readTree(payload).get("portfolioEvidence").get(0);
 
@@ -227,7 +227,7 @@ class InterviewQuestionsPayloadBuilderTest {
         void multiple_documents_indexed() throws Exception {
             String payload = builder.build(
                 JOB_ROLE, null, List.of(), List.of("문서1", "문서2"),
-                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES
+                QUESTION_COUNT, DIFFICULTY_LEVEL, QUESTION_TYPES, List.of()
             );
             JsonNode evidence = objectMapper.readTree(payload).get("portfolioEvidence");
 
