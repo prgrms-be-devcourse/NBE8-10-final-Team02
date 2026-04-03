@@ -76,6 +76,7 @@ export interface RepoSyncStatus {
   estimatedEndAt: string | null;
   completedAt: string | null;
   error: string | null;
+  skipReason: string | null;
 }
 
 // GET /github/repositories/{id}/summary 응답 (nullable — 분석 미완료 시 null)

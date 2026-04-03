@@ -134,6 +134,9 @@ export default function BatchProgressWidget() {
                   {isFailed && s?.error && (
                     <span className="text-red-500">{s.error}</span>
                   )}
+                  {s?.status === 'SKIPPED' && s?.skipReason && (
+                    <span className="text-zinc-400">{s.skipReason}</span>
+                  )}
                 </span>
               </li>
             );

@@ -102,7 +102,7 @@ export default function RepositoriesPage() {
 
 function OwnedTab() {
   const router = useRouter();
-  const { startBatch, preSelectedIds, clearPreSelected } = useBatchAnalysis();
+  const { startBatch, preSelectedIds, clearPreSelected, activeBatch } = useBatchAnalysis();
 
   const [repos, setRepos] = useState<GithubRepository[]>([]);
   const [loading, setLoading] = useState(true);
@@ -413,8 +413,11 @@ function OwnedTab() {
                     <p className="mt-0.5 text-xs text-zinc-400">{formatPushedAt(repo.pushedAt)} 업데이트</p>
                   )}
 
-                  {/* 분석 상태 배지 */}
-                  {repo.analysisStatus && <AnalysisStatusBadge status={repo.analysisStatus} />}
+                  {/* 분석 상태 배지 — 배치 진행 중이면 live status 우선 */}
+                  {(() => {
+                    const liveStatus = activeBatch?.statuses[repo.id] ?? repo.analysisStatus;
+                    return liveStatus ? <AnalysisStatusBadge status={liveStatus} /> : null;
+                  })()}
                 </div>
 
                 {/* Re-sync 버튼 (COMPLETED repo 전용) */}
@@ -724,7 +727,7 @@ function AnalysisStatusBadge({ status }: { status: RepoSyncStatus }) {
     return <p className="mt-1 text-xs text-indigo-700 font-medium">✓ 포트폴리오 분석 완료</p>;
   }
   if (status.status === 'SKIPPED') {
-    return <p className="mt-1 text-xs text-zinc-400">변경 사항이 충분하지 않아 분석을 건너뛰었습니다.</p>;
+    return <p className="mt-1 text-xs text-zinc-400">{status.skipReason ?? '변경 사항이 충분하지 않아 분석을 건너뛰었습니다.'}</p>;
   }
   if (status.status === 'FAILED') {
     return <p className="mt-1 text-xs text-red-600">분석 실패{status.error ? `: ${status.error}` : ''}</p>;
