@@ -37,9 +37,6 @@ spring:
             clientSecret: ${GOOGLE_CLIENT_SECRET:}
           kakao:
             clientId: ${KAKAO_CLIENT_ID:}
-  gitleaks:
-    # 로컬 개발 환경에서는 gitleaks 미설치 가능성이 있으므로 기본 비활성화
-    enabled: false
 
 
 analysis:
@@ -55,6 +52,9 @@ logging:
 
 # 개발 환경 JWT 설정
 security:
+  gitleaks:
+    # 로컬 개발 환경에서는 gitleaks 미설치 가능성이 있으므로 기본 비활성화
+    enabled: true
   jwt:
     secret: dev-local-jwt-secret-key-for-debugging-a1b2c3d4e5f6071829384756
     access-ttl-seconds: 900 # 15분
