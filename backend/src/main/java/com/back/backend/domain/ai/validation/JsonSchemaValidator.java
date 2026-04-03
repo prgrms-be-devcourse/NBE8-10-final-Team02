@@ -39,8 +39,8 @@ public class JsonSchemaValidator {
     public ParseResult parse(String content) {
         try {
             JsonNode node = objectMapper.readTree(content);
-            if (node == null || !node.isObject()) {
-                return ParseResult.failure("최상위 JSON object가 아닙니다");
+            if (node == null || (!node.isObject() && !node.isArray())) {
+                return ParseResult.failure("최상위 JSON이 object 또는 array가 아닙니다");
             }
             return ParseResult.success(node);
         } catch (Exception e) {

@@ -3,6 +3,9 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { getPortfolioReadiness } from '@/api/portfolio';
+import { getRepositories } from '@/api/github';
+import { useBatchAnalysis } from '@/context/BatchAnalysisContext';
+import RepoSummaryModal from '@/components/RepoSummaryModal';
 import type {
   PortfolioConnectionStatus,
   PortfolioMissingItem,
@@ -11,6 +14,7 @@ import type {
   PortfolioReadinessDashboard,
   PortfolioScopeStatus,
 } from '@/types/portfolio';
+import type { GithubRepository } from '@/types/github';
 
 const connectionStatusLabel: Record<PortfolioConnectionStatus, string> = {
   connected: '연결됨',
@@ -74,14 +78,26 @@ export default function PortfolioReadinessPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // 분석 완료 repo 목록
+  const [completedRepos, setCompletedRepos] = useState<GithubRepository[]>([]);
+  const [summaryModalRepo, setSummaryModalRepo] = useState<GithubRepository | null>(null);
+
+  const { cacheInvalidateKey } = useBatchAnalysis();
+
   useEffect(() => {
     async function load() {
       setLoading(true);
       setError(null);
 
       try {
-        const data = await getPortfolioReadiness();
+        const [data, { data: allRepos }] = await Promise.all([
+          getPortfolioReadiness(),
+          getRepositories({ selected: true, size: 1000 }),
+        ]);
         setDashboard(data);
+        setCompletedRepos(
+          allRepos.filter((r) => r.hasSummary)
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : '준비 현황을 불러오지 못했습니다.');
       } finally {
@@ -90,7 +106,7 @@ export default function PortfolioReadinessPage() {
     }
 
     void load();
-  }, []);
+  }, [cacheInvalidateKey]); // cacheInvalidateKey 변화 시 리페치
 
   if (loading) {
     return (
@@ -277,6 +293,45 @@ export default function PortfolioReadinessPage() {
         </section>
       </div>
 
+      {/* 분석 완료 Repo 결과 검수 섹션 (Step 8) */}
+      {completedRepos.length > 0 && (
+        <section className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-zinc-900">분석 완료 Repository</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            클릭하면 AI 분석 결과를 확인할 수 있습니다.
+          </p>
+          <ul className="mt-4 flex flex-col gap-2">
+            {completedRepos.map((repo) => (
+              <li key={repo.id}>
+                <button
+                  onClick={() => setSummaryModalRepo(repo)}
+                  className="w-full rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-left hover:bg-zinc-100 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-zinc-900 truncate">{repo.fullName}</p>
+                      {repo.analysisStatus?.completedAt && (
+                        <p className="text-xs text-zinc-400 mt-0.5">
+                          분석 완료: {new Date(repo.analysisStatus.completedAt).toLocaleDateString('ko-KR', {
+                            year: 'numeric', month: 'long', day: 'numeric',
+                          })}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {repo.language && (
+                        <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-500">{repo.language}</span>
+                      )}
+                      <span className="text-xs text-indigo-600 font-medium">결과 보기 →</span>
+                    </div>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="mt-8 flex flex-wrap gap-4 text-sm">
         <Link href="/portfolio" className="text-zinc-500 underline">
           ← 포트폴리오 홈
@@ -291,6 +346,15 @@ export default function PortfolioReadinessPage() {
           지원 준비
         </Link>
       </div>
+
+      {/* 분석 결과 모달 */}
+      {summaryModalRepo && (
+        <RepoSummaryModal
+          repositoryId={summaryModalRepo.id}
+          repoFullName={summaryModalRepo.fullName}
+          onClose={() => setSummaryModalRepo(null)}
+        />
+      )}
     </main>
   );
 }

@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -78,23 +79,27 @@ public class SignificanceCheckService {
     /**
      * 분석이 필요할 만큼 변경이 충분한지 판단한다.
      *
-     * 최초 분석(lastAnalyzedAt 없음): 사용자 커밋이 1개 이상이면 true.
-     * 재분석: lastAnalyzedAt 이후 새 커밋의 점수 합산이 SCORE_THRESHOLD 이상이면 true.
+     * 최초 분석(lastAnalyzedAt 없음): 사용자 커밋이 1개 이상이면 분석 실행.
+     * 재분석: lastAnalyzedAt 이후 새 커밋의 점수 합산이 SCORE_THRESHOLD 이상이면 분석 실행.
      *
-     * @return true이면 분석 실행, false이면 SKIPPED
+     * @return {@link Optional#empty()} 이면 분석 실행,
+     *         {@link Optional#of(String)} 이면 skip 이유 메시지와 함께 SKIPPED 처리
      */
     @Transactional(readOnly = true)
-    public boolean isSignificant(GithubRepository repo, Long userId) {
+    public Optional<String> isSignificant(GithubRepository repo, Long userId) {
         Instant lastAnalyzedAt = getLastAnalyzedAt(userId, repo.getId());
 
         List<GithubCommit> commits;
         if (lastAnalyzedAt == null) {
             // 최초 분석: 커밋이 1개 이상이면 분석 실행
             commits = commitRepository.findByRepositoryAndUserCommitTrue(repo);
-            boolean significant = !commits.isEmpty();
-            log.info("Significance check (first-time): repoId={}, userCommitCount={}, result={}",
-                    repo.getId(), commits.size(), significant);
-            return significant;
+            if (commits.isEmpty()) {
+                log.info("Significance check (first-time): repoId={}, no commits synced", repo.getId());
+                return Optional.of("커밋이 없습니다. 커밋 동기화를 먼저 실행해주세요.");
+            }
+            log.info("Significance check (first-time): repoId={}, userCommitCount={}, result=significant",
+                    repo.getId(), commits.size());
+            return Optional.empty();
         }
 
         commits = commitRepository.findByRepositoryAndUserCommitTrueAndCommittedAtAfter(
@@ -102,14 +107,19 @@ public class SignificanceCheckService {
 
         if (commits.isEmpty()) {
             log.info("Significance check: repoId={}, no new commits since {}", repo.getId(), lastAnalyzedAt);
-            return false;
+            return Optional.of("최근 변경량이 기준치에 미달합니다.");
         }
 
         int score = calculateScore(commits);
-        boolean significant = score >= SCORE_THRESHOLD;
-        log.info("Significance check: repoId={}, newCommits={}, score={}, threshold={}, result={}",
-                repo.getId(), commits.size(), score, SCORE_THRESHOLD, significant);
-        return significant;
+        if (score < SCORE_THRESHOLD) {
+            log.info("Significance check: repoId={}, newCommits={}, score={}, threshold={}, result=not-significant",
+                    repo.getId(), commits.size(), score, SCORE_THRESHOLD);
+            return Optional.of("최근 변경량이 기준치에 미달합니다.");
+        }
+
+        log.info("Significance check: repoId={}, newCommits={}, score={}, threshold={}, result=significant",
+                repo.getId(), commits.size(), score, SCORE_THRESHOLD);
+        return Optional.empty();
     }
 
     /**

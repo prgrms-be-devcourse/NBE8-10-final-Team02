@@ -34,6 +34,31 @@ public class PromptLoader {
     }
 
     /**
+     * base 프롬프트와 role overlay를 합성하여 반환
+     * overlay 파일이 null이거나 존재하지 않으면 base만 반환
+     *
+     * @param baseFile    기본 프롬프트 파일 경로 (예: "developer/ai.interview.evaluate.v1.txt")
+     * @param overlayFile overlay 프롬프트 파일 경로 (예: "developer/evaluate-role/backend.txt"), null 허용
+     * @return 합성된 프롬프트 텍스트
+     */
+    public String loadComposite(String baseFile, String overlayFile) {
+        String base = load(baseFile);
+        if (overlayFile == null) {
+            return base;
+        }
+
+        String fullPath = BASE_PATH + overlayFile;
+        ClassPathResource resource = new ClassPathResource(fullPath);
+        if (!resource.exists()) {
+            log.warn("직무별 overlay 파일이 없어 base 프롬프트만 사용: {}", fullPath);
+            return base;
+        }
+
+        String overlay = load(overlayFile);
+        return base + "\n\n" + overlay;
+    }
+
+    /**
      * classpath에서 파일을 읽어 문자열로 반환
      * ConcurrentHashMap.computeIfAbsent()의 매핑 함수로 사용되며, 키당 1회만 실행
      */

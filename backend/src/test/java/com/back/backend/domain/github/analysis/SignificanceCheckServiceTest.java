@@ -57,20 +57,20 @@ class SignificanceCheckServiceTest {
     // ─────────────────────────────────────────────────
 
     @Test
-    void firstTime_noCommits_returnsFalse() {
+    void firstTime_noCommits_returnsSkipReason() {
         given(valueOps.get(anyString())).willReturn(null);
         given(commitRepository.findByRepositoryAndUserCommitTrue(repo)).willReturn(List.of());
 
-        assertThat(service.isSignificant(repo, 10L)).isFalse();
+        assertThat(service.isSignificant(repo, 10L)).isPresent();
     }
 
     @Test
-    void firstTime_hasCommits_returnsTrue() {
+    void firstTime_hasCommits_returnsEmpty() {
         given(valueOps.get(anyString())).willReturn(null);
         given(commitRepository.findByRepositoryAndUserCommitTrue(repo))
                 .willReturn(List.of(commit("init: project setup")));
 
-        assertThat(service.isSignificant(repo, 10L)).isTrue();
+        assertThat(service.isSignificant(repo, 10L)).isEmpty();
     }
 
     // ─────────────────────────────────────────────────
@@ -78,17 +78,17 @@ class SignificanceCheckServiceTest {
     // ─────────────────────────────────────────────────
 
     @Test
-    void reanalysis_noNewCommits_returnsFalse() throws Exception {
+    void reanalysis_noNewCommits_returnsSkipReason() throws Exception {
         stubLastAnalyzedAt(10L, 1L, Instant.now().minusSeconds(3600));
         given(commitRepository.findByRepositoryAndUserCommitTrueAndCommittedAtAfter(eq(repo), any()))
                 .willReturn(List.of());
 
-        assertThat(service.isSignificant(repo, 10L)).isFalse();
+        assertThat(service.isSignificant(repo, 10L)).isPresent();
     }
 
     @Test
-    void reanalysis_fourPlainCommits_scoreTwelve_returnsFalse() throws Exception {
-        // 4 commits × 3pts = 12 < threshold(15) → false
+    void reanalysis_fourPlainCommits_scoreTwelve_returnsSkipReason() throws Exception {
+        // 4 commits × 3pts = 12 < threshold(15) → skip
         stubLastAnalyzedAt(10L, 1L, Instant.now().minusSeconds(3600));
         given(commitRepository.findByRepositoryAndUserCommitTrueAndCommittedAtAfter(eq(repo), any()))
                 .willReturn(List.of(
@@ -98,12 +98,12 @@ class SignificanceCheckServiceTest {
                         commit("chore: cleanup")
                 ));
 
-        assertThat(service.isSignificant(repo, 10L)).isFalse();
+        assertThat(service.isSignificant(repo, 10L)).isPresent();
     }
 
     @Test
-    void reanalysis_fivePlainCommits_scoreFifteen_returnsTrue() throws Exception {
-        // 5 commits × 3pts = 15 = threshold(15) → true
+    void reanalysis_fivePlainCommits_scoreFifteen_returnsEmpty() throws Exception {
+        // 5 commits × 3pts = 15 = threshold(15) → significant
         stubLastAnalyzedAt(10L, 1L, Instant.now().minusSeconds(3600));
         given(commitRepository.findByRepositoryAndUserCommitTrueAndCommittedAtAfter(eq(repo), any()))
                 .willReturn(List.of(
@@ -114,12 +114,12 @@ class SignificanceCheckServiceTest {
                         commit("chore: cleanup")
                 ));
 
-        assertThat(service.isSignificant(repo, 10L)).isTrue();
+        assertThat(service.isSignificant(repo, 10L)).isEmpty();
     }
 
     @Test
-    void reanalysis_twoFeatureCommits_scoreEighteen_returnsTrue() throws Exception {
-        // 2 commits × (3 + 5) pts = 16 >= 15 → true
+    void reanalysis_twoFeatureCommits_scoreEighteen_returnsEmpty() throws Exception {
+        // 2 commits × (3 + 5) pts = 16 >= 15 → significant
         stubLastAnalyzedAt(10L, 1L, Instant.now().minusSeconds(3600));
         given(commitRepository.findByRepositoryAndUserCommitTrueAndCommittedAtAfter(eq(repo), any()))
                 .willReturn(List.of(
@@ -127,7 +127,7 @@ class SignificanceCheckServiceTest {
                         commit("feat: add logout")
                 ));
 
-        assertThat(service.isSignificant(repo, 10L)).isTrue();
+        assertThat(service.isSignificant(repo, 10L)).isEmpty();
     }
 
     // ─────────────────────────────────────────────────
@@ -149,7 +149,7 @@ class SignificanceCheckServiceTest {
             "introduce rate limiting"
     })
     void featureKeywordCommit_oneCommitExceedsThreshold(String message) throws Exception {
-        // feature keyword commit: 3 + 5 = 8pts → 2개면 16 >= 15 → true
+        // feature keyword commit: 3 + 5 = 8pts → 2개면 16 >= 15 → significant
         stubLastAnalyzedAt(10L, 1L, Instant.now().minusSeconds(3600));
         given(commitRepository.findByRepositoryAndUserCommitTrueAndCommittedAtAfter(eq(repo), any()))
                 .willReturn(List.of(
@@ -157,13 +157,13 @@ class SignificanceCheckServiceTest {
                         commit(message)
                 ));
 
-        assertThat(service.isSignificant(repo, 10L)).isTrue();
+        assertThat(service.isSignificant(repo, 10L)).isEmpty();
     }
 
     @Test
     void nonFeatureKeyword_doesNotAddBonusPoints() throws Exception {
         // "fix:", "docs:" 등은 키워드 아님 → 3pts/commit only
-        // 4 × 3 = 12 < 15 → false
+        // 4 × 3 = 12 < 15 → skip
         stubLastAnalyzedAt(10L, 1L, Instant.now().minusSeconds(3600));
         given(commitRepository.findByRepositoryAndUserCommitTrueAndCommittedAtAfter(eq(repo), any()))
                 .willReturn(List.of(
@@ -173,7 +173,7 @@ class SignificanceCheckServiceTest {
                         commit("style: format code")
                 ));
 
-        assertThat(service.isSignificant(repo, 10L)).isFalse();
+        assertThat(service.isSignificant(repo, 10L)).isPresent();
     }
 
     // ─────────────────────────────────────────────────

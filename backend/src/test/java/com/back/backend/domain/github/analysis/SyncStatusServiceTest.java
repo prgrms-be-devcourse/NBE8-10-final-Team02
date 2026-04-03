@@ -73,7 +73,7 @@ class SyncStatusServiceTest {
     void getStatus_validJson_returnsData() throws Exception {
         SyncStatusService.SyncStatusData data = new SyncStatusService.SyncStatusData(
                 2L, SyncStatus.IN_PROGRESS, "clone",
-                Instant.parse("2026-01-01T00:00:00Z"), null, null, null);
+                Instant.parse("2026-01-01T00:00:00Z"), null, null, null, null);
         String json = objectMapper.writeValueAsString(data);
         given(valueOps.get("sync:status:1:2")).willReturn(json);
 
@@ -119,7 +119,7 @@ class SyncStatusServiceTest {
     void getStatusBulk_somePresentSomeMissing_onlyIncludesPresent() throws Exception {
         SyncStatusService.SyncStatusData data = new SyncStatusService.SyncStatusData(
                 20L, SyncStatus.COMPLETED, null, null, null,
-                Instant.parse("2026-01-01T00:00:00Z"), null);
+                Instant.parse("2026-01-01T00:00:00Z"), null, null);
         String json = objectMapper.writeValueAsString(data);
 
         given(valueOps.multiGet(List.of("sync:status:1:10", "sync:status:1:20")))
@@ -168,7 +168,7 @@ class SyncStatusServiceTest {
 
     @Test
     void setSkipped_savesWithSkippedStatusAndCompletedAt() throws Exception {
-        service.setSkipped(1L, 2L);
+        service.setSkipped(1L, 2L, "최근 변경량이 기준치에 미달합니다.");
 
         org.mockito.ArgumentCaptor<String> jsonCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(valueOps).set(
@@ -180,6 +180,7 @@ class SyncStatusServiceTest {
                 objectMapper.readValue(jsonCaptor.getValue(), SyncStatusService.SyncStatusData.class);
         assertThat(saved.status()).isEqualTo(SyncStatus.SKIPPED);
         assertThat(saved.completedAt()).isNotNull();
+        assertThat(saved.skipReason()).isEqualTo("최근 변경량이 기준치에 미달합니다.");
     }
 
     @Test

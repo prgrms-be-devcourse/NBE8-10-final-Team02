@@ -11,9 +11,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import java.util.Base64;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -23,7 +25,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * GitHub REST API를 호출하는 클라이언트.
@@ -43,16 +44,27 @@ public class GithubApiClient {
     private static final Logger log = LoggerFactory.getLogger(GithubApiClient.class);
 
     private final RestClient restClient;
+    private final String githubClientId;
+    private final String githubClientSecret;
 
     public GithubApiClient(
             // test에서는 WireMock DynamicPropertySource설정
-            @Value("${github.api.base-url:https://api.github.com}") String baseUrl) {
+            @Value("${github.api.base-url:https://api.github.com}") String baseUrl,
+            @Value("${spring.security.oauth2.client.registration.github.clientId:}") String githubClientId,
+            @Value("${spring.security.oauth2.client.registration.github.clientSecret:}") String githubClientSecret) {
+        // Force HTTP/1.1 — GitHub API doesn't require HTTP/2 and WireMock tests use HTTP/1.1
+        java.net.http.HttpClient jdkClient = java.net.http.HttpClient.newBuilder()
+                .version(java.net.http.HttpClient.Version.HTTP_1_1)
+                .build();
         this.restClient = RestClient.builder()
+                .requestFactory(new JdkClientHttpRequestFactory(jdkClient))
                 .baseUrl(baseUrl)
                 .defaultHeader("Accept", "application/vnd.github+json")
                 .defaultHeader("X-GitHub-Api-Version", "2022-11-28")
                 .defaultHeader("User-Agent", "interview-platform/1.0")
                 .build();
+        this.githubClientId = githubClientId;
+        this.githubClientSecret = githubClientSecret;
     }
 
     // ─────────────────────────────────────────────────
@@ -608,6 +620,48 @@ public class GithubApiClient {
                     owner, repo, authorLogin, e.getMessage());
             throw new ServiceException(ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
                     HttpStatus.SERVICE_UNAVAILABLE, "GitHub API 호출에 실패했습니다.");
+        }
+    }
+
+    /**
+     * GitHub OAuth 앱 인가(grant)를 완전히 취소한다.
+     * 로그아웃 시 호출하여 다음 로그인에서 GitHub가 앱 인가 확인 화면을 표시하도록 강제한다.
+     *
+     * /token vs /grant 차이:
+     *   - DELETE /token → 특정 토큰만 삭제. 앱 인가는 유지되므로 GitHub은 다음 OAuth 요청 시
+     *     인가 화면 없이 새 토큰을 조용히 발급한다. (같은 계정으로 자동 재인증)
+     *   - DELETE /grant → 앱 인가 자체를 삭제. GitHub은 반드시 "앱 인가" 화면을 보여주며,
+     *     화면 상단에 "Not [username]? Sign in with a different account" 링크가 표시된다.
+     *
+     * /grant를 사용해야 다음 로그인 시 계정 전환 링크가 노출된다.
+     *
+     * DELETE /applications/{client_id}/grant (Basic auth: client_id:client_secret)
+     * Body: { "access_token": "..." }
+     *
+     * 실패해도 로그아웃 흐름을 중단하지 않는다.
+     */
+    public void revokeAccessToken(String accessToken) {
+        if (accessToken == null || accessToken.isBlank()) return;
+        if (githubClientId == null || githubClientId.isBlank()
+                || githubClientSecret == null || githubClientSecret.isBlank()) {
+            log.warn("GitHub client credentials not configured — skipping grant revocation");
+            return;
+        }
+
+        String basicAuth = Base64.getEncoder()
+                .encodeToString((githubClientId + ":" + githubClientSecret).getBytes());
+        try {
+            restClient.method(org.springframework.http.HttpMethod.DELETE)
+                    .uri("/applications/{clientId}/grant", githubClientId)
+                    .header("Authorization", "Basic " + basicAuth)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("access_token", accessToken))
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("Revoked GitHub OAuth app grant");
+        } catch (RestClientException e) {
+            // grant 취소 실패는 로그아웃을 방해하지 않음
+            log.warn("Failed to revoke GitHub OAuth grant: {}", e.getMessage());
         }
     }
 

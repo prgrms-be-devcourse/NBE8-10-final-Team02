@@ -84,6 +84,18 @@ public class PromptTemplateRegistry {
             new PromptTemplate.RetryPolicy(1, false)
         ));
 
+        // Batch 포트폴리오 요약 템플릿 (여러 repo → 1회 AI 호출)
+        // maxTokens: 단일 repo(4000)보다 넉넉히 설정 — 배열 응답이므로 repo 수에 비례
+        // schemaFile: null — 배열 응답이라 기존 schema 재사용 불가, BatchPortfolioSummaryValidator가 직접 검증
+        map.put("ai.portfolio.summary.batch.v1", new PromptTemplate(
+            "ai.portfolio.summary.batch.v1", "v1", "portfolio_summary_batch",
+            "system/common-system.txt",
+            "developer/ai.portfolio.summary.batch.v1.txt",
+            null,   // JSON Schema 파일 없음 (배열 검증은 BatchPortfolioSummaryValidator에서 수행)
+            0.2, 8000, // 여러 repo의 배열 결과를 담으므로 단일 호출의 2배 확보
+            new PromptTemplate.RetryPolicy(0, false)
+        ));
+
         // Map.copyOf()로 불변 맵 생성 — 이후 수정 시도 시 UnsupportedOperationException
         return new PromptTemplateRegistry(Map.copyOf(map));
     }

@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -27,21 +28,25 @@ import java.util.stream.StreamSupport;
 public class InterviewResultGenerationService {
 
     private static final String EVALUATE_TEMPLATE_ID = "ai.interview.evaluate.v1";
+    private static final String OVERLAY_BASE = "developer/evaluate-role/";
 
     private final AiPipeline aiPipeline;
     private final FeedbackTagRepository feedbackTagRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public GeneratedInterviewResult generate(long sessionId, long questionSetId, List<InterviewAnswer> answers) {
+    public GeneratedInterviewResult generate(long sessionId, long questionSetId, List<InterviewAnswer> answers, String jobRole) {
         List<FeedbackTag> tagMaster = feedbackTagRepository.findAllByOrderByIdAsc();
         if (tagMaster.isEmpty()) {
             throw generationFailed();
         }
 
+        String roleOverlayFile = resolveRoleOverlay(jobRole);
+
         try {
             JsonNode response = aiPipeline.execute(
                     EVALUATE_TEMPLATE_ID,
-                    objectMapper.writeValueAsString(buildEvaluatePayload(sessionId, questionSetId, answers, tagMaster))
+                    objectMapper.writeValueAsString(buildEvaluatePayload(sessionId, questionSetId, answers, tagMaster, jobRole)),
+                    roleOverlayFile
             );
             return mapGeneratedResult(response, answers, tagMaster);
         } catch (AiClientException exception) {
@@ -67,30 +72,70 @@ public class InterviewResultGenerationService {
             long sessionId,
             long questionSetId,
             List<InterviewAnswer> answers,
-            List<FeedbackTag> tagMaster
+            List<FeedbackTag> tagMaster,
+            String jobRole
     ) {
-        return Map.of(
-                "sessionId", sessionId,
-                "questionSetId", questionSetId,
-                "tagMaster", tagMaster.stream()
-                        .map(tag -> Map.of(
-                                "tagId", tag.getId(),
-                                "tagName", tag.getTagName(),
-                                "tagCategory", tag.getTagCategory().getValue()
-                        ))
-                        .toList(),
-                "answers", answers.stream()
-                        .map(answer -> Map.of(
-                                "questionOrder", answer.getAnswerOrder(),
-                                "questionId", answer.getSessionQuestion().getId(),
-                                "questionType", answer.getSessionQuestion().getQuestionType().getValue(),
-                                "difficultyLevel", answer.getSessionQuestion().getDifficultyLevel().getValue(),
-                                "questionText", answer.getSessionQuestion().getQuestionText(),
-                                "answerText", answer.getAnswerText(),
-                                "isSkipped", answer.isSkipped()
-                        ))
-                        .toList()
-        );
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("sessionId", sessionId);
+        payload.put("questionSetId", questionSetId);
+        payload.put("jobRole", jobRole);
+        payload.put("tagMaster", tagMaster.stream()
+                .map(tag -> Map.of(
+                        "tagId", tag.getId(),
+                        "tagName", tag.getTagName(),
+                        "tagCategory", tag.getTagCategory().getValue()
+                ))
+                .toList());
+        payload.put("answers", answers.stream()
+                .map(answer -> Map.of(
+                        "questionOrder", answer.getAnswerOrder(),
+                        "questionId", answer.getSessionQuestion().getId(),
+                        "questionType", answer.getSessionQuestion().getQuestionType().getValue(),
+                        "difficultyLevel", answer.getSessionQuestion().getDifficultyLevel().getValue(),
+                        "questionText", answer.getSessionQuestion().getQuestionText(),
+                        "answerText", answer.getAnswerText(),
+                        "isSkipped", answer.isSkipped()
+                ))
+                .toList());
+        return payload;
+    }
+
+    String resolveRoleOverlay(String jobRole) {
+        if (jobRole == null || jobRole.isBlank()) {
+            return OVERLAY_BASE + "default.txt";
+        }
+        String normalized = jobRole.trim().toLowerCase();
+
+        if (normalized.contains("백엔드") || normalized.contains("backend")
+                || normalized.contains("서버") || normalized.contains("server")) {
+            return OVERLAY_BASE + "backend.txt";
+        }
+        if (normalized.contains("프론트엔드") || normalized.contains("frontend")
+                || normalized.contains("프론트") || normalized.contains("front")) {
+            return OVERLAY_BASE + "frontend.txt";
+        }
+        if (normalized.contains("풀스택") || normalized.contains("fullstack")
+                || normalized.contains("full-stack") || normalized.contains("full stack")) {
+            return OVERLAY_BASE + "fullstack.txt";
+        }
+        if (normalized.contains("데브옵스") || normalized.contains("devops")
+                || normalized.contains("인프라") || normalized.contains("sre")
+                || normalized.contains("클라우드") || normalized.contains("cloud")) {
+            return OVERLAY_BASE + "devops.txt";
+        }
+        if (normalized.contains("모바일") || normalized.contains("mobile")
+                || normalized.contains("ios") || normalized.contains("android")
+                || normalized.contains("flutter") || normalized.contains("react native")
+                || normalized.contains("앱")) {
+            return OVERLAY_BASE + "mobile.txt";
+        }
+        if (normalized.contains("데이터") || normalized.contains("data")
+                || normalized.contains("ml") || normalized.contains("머신러닝")
+                || normalized.contains("machine learning") || normalized.contains("ai")
+                || normalized.contains("인공지능")) {
+            return OVERLAY_BASE + "data.txt";
+        }
+        return OVERLAY_BASE + "default.txt";
     }
 
     private GeneratedInterviewResult mapGeneratedResult(

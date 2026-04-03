@@ -87,6 +87,13 @@ ai:
       read: 60s
     retry:
       max-attempts: 1
+  # 배치 AI 호출 토큰 예산 설정
+  # 기본값(480_000 chars = 120K tokens)은 Gemini Pro free tier 기준.
+  # Groq free (TPM 매우 제한): 120_000 (30K tokens × 4 chars)으로 낮출 것.
+  # 현재는 git repo 분석에만 적용되어있음
+  portfolio:
+    batch:
+      global-budget-chars: 480000
 
 analysis:
   # OCI 파일시스템의 repo clone 베이스 경로 (/data/repos/{userId}/{repoId}/)

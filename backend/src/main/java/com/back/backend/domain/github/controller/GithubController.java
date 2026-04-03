@@ -1,6 +1,8 @@
 package com.back.backend.domain.github.controller;
 
 import com.back.backend.domain.github.dto.request.AddContributionByUrlRequest;
+import com.back.backend.domain.github.dto.request.BatchAnalyzeRequest;
+import com.back.backend.domain.github.dto.request.BatchCancelRequest;
 import com.back.backend.domain.github.dto.request.GithubConnectRequest;
 import com.back.backend.domain.github.dto.request.RepositorySelectionRequest;
 import com.back.backend.domain.github.dto.request.SaveContributionRequest;
@@ -8,9 +10,11 @@ import com.back.backend.domain.github.dto.response.ContributedRepoResponse;
 import com.back.backend.domain.github.dto.response.GithubRepositoryResponse;
 import com.back.backend.domain.github.dto.response.GithubConnectionResponse;
 import com.back.backend.domain.github.dto.response.GithubRepositoryResponse;
+import com.back.backend.domain.github.dto.response.RepoSummaryResponse;
 import com.back.backend.domain.github.dto.response.RepoSyncStatusResponse;
 import com.back.backend.domain.github.dto.response.RepositorySelectionResponse;
 import com.back.backend.domain.github.dto.response.RepositorySyncResponse;
+import com.back.backend.domain.github.entity.RepoSummary;
 import com.back.backend.domain.github.analysis.AnalysisPipelineService;
 import com.back.backend.domain.github.analysis.SyncStatusService;
 import com.back.backend.domain.github.service.GithubConnectionService;
@@ -228,6 +232,23 @@ public class GithubController {
     }
 
     /**
+     * 특정 repo의 최신 AI 분석 요약(RepoSummary)을 조회한다.
+     *
+     * <p>분석이 완료된 적 없으면 data: null을 반환한다 (에러 아님).
+     * 프론트엔드는 data가 null이면 "분석 결과 없음" 상태를 표시한다.
+     */
+    @GetMapping("/repositories/{repositoryId}/summary")
+    public ResponseEntity<ApiResponse<RepoSummaryResponse>> getRepoSummary(
+            Authentication authentication,
+            @PathVariable Long repositoryId
+    ) {
+        Long userId = extractUserId(authentication);
+        RepoSummary summary = repositoryService.getLatestSummary(userId, repositoryId);
+        RepoSummaryResponse response = summary != null ? RepoSummaryResponse.from(summary) : null;
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
      * 분석 파이프라인의 진행 상태를 조회한다.
      *
      * Redis에 저장된 sync:status:{userId}:{repositoryId} 값을 반환한다.
@@ -266,6 +287,45 @@ public class GithubController {
                 .map(RepoSyncStatusResponse::from)
                 .orElse(null);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(response));
+    }
+
+    /**
+     * 여러 repo를 묶어 단 1회의 AI 호출로 분석하는 배치 파이프라인을 비동기로 시작한다.
+     *
+     * <p>Gemini/Groq 무료 tier의 분당 요청 수(Rate Limit)를 절약하기 위해,
+     * 선택된 N개 repo의 데이터를 하나의 XML 페이로드로 묶어 AI를 1회만 호출한다.
+     *
+     * <p>즉시 202 Accepted 반환. 각 repo의 진행 상황은
+     * {@code GET /repositories/{repositoryId}/sync-status} 폴링으로 확인한다.
+     *
+     * @param request 분석할 repo ID 목록 ({@code repositoryIds}, 1개 이상 필수)
+     */
+    @PostMapping("/repositories/analyze-batch")
+    public ResponseEntity<ApiResponse<Void>> analyzeBatch(
+            Authentication authentication,
+            @RequestBody @Valid BatchAnalyzeRequest request
+    ) {
+        Long userId = extractUserId(authentication);
+        analysisPipelineService.triggerBatchAnalysis(userId, request.repositoryIds());
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(null));
+    }
+
+    /**
+     * 여러 repo의 진행 중인 분석 파이프라인을 일괄 취소한다.
+     *
+     * <p>각 repo에 대해 스레드 interrupt + Redis 상태 FAILED 갱신을 수행한다.
+     * 이미 완료됐거나 진행 중이 아닌 repo가 포함돼도 idempotent하게 처리된다 (200 반환).
+     *
+     * @param request 취소할 repo ID 목록 ({@code repositoryIds}, 1개 이상 필수)
+     */
+    @DeleteMapping("/repositories/analyze-batch")
+    public ResponseEntity<ApiResponse<Void>> cancelBatch(
+            Authentication authentication,
+            @RequestBody @Valid BatchCancelRequest request
+    ) {
+        Long userId = extractUserId(authentication);
+        analysisPipelineService.cancelBatch(userId, request.repositoryIds());
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     /**
