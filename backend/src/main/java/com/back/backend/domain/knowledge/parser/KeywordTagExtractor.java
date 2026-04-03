@@ -8,6 +8,13 @@ import java.util.Map;
 /**
  * 제목+내용 키워드 매칭으로 태그를 자동 추출한다.
  * 대소문자 무시. 키워드 하나라도 포함되면 해당 태그 부여.
+ *
+ * <p>!! 태그 목록(TAG_CATEGORY)이 knowledge_tags 테이블의 source of truth입니다.
+ * 태그를 추가/수정할 때는 아래 두 파일도 함께 변경하세요:
+ * <ul>
+ *   <li>src/main/resources/data.sql (dev 환경 시드)</li>
+ *   <li>src/main/resources/db/migration/V11__seed_knowledge_tags.sql (prod 환경 시드)</li>
+ * </ul>
  */
 public class KeywordTagExtractor {
 
@@ -19,7 +26,7 @@ public class KeywordTagExtractor {
         register("interview", "domain", List.of(
                 "면접", "interview", "질문과 답변", "q:", "예상 질문", "기술 면접", "면접 질문"
         ));
-        register("cs", "domain", List.of(
+        register("computer science", "domain", List.of(
                 "cs", "computer science", "컴퓨터 과학", "컴퓨터공학", "기초 지식", "전공 지식"
         ));
         register("backend", "domain", List.of(
