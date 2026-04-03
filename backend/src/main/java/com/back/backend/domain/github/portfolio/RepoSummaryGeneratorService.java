@@ -33,7 +33,13 @@ import java.util.List;
  *   5. 응답 검증 후 repo_summaries 저장
  *
  * 커밋 카테고리(evidenceBullets/challenges/techDecisions) 분류는 AI에 위임한다.
+ *
+ * @deprecated Batch 다중 분석 아키텍처 도입으로 인한 사용 중단.
+ *   대체 클래스: {@link BatchRepoSummaryGeneratorService}
+ *   단일 repo 분석 시 AI를 매번 호출하여 Rate Limit을 낭비하는 구조로,
+ *   Batch 방식이 N개 repo를 1회 AI 호출로 처리한다.
  */
+@Deprecated
 @Service
 public class RepoSummaryGeneratorService {
 
