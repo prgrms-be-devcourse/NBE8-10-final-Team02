@@ -23,6 +23,7 @@ export interface GithubRepository {
   isSelected: boolean;
   hasCommits: boolean; // 커밋 동기화 완료 여부
   analysisStatus: RepoSyncStatus | null; // 분석 상태 (미요청 또는 TTL 만료 시 null)
+  hasSummary: boolean; // DB에 RepoSummary 레코드 존재 여부 (Redis TTL과 무관한 영구 상태)
   pushedAt: string | null; // GitHub pushed_at (ISO-8601). 기여/URL 추가 경로는 null
   ownerType: 'owner' | 'collaborator' | null; // 목록 조회 외 경로는 null
   language: string | null; // primary language
@@ -90,12 +91,18 @@ export interface RepoSummaryResponse {
 // RepoSummaryResponse.data를 JSON.parse()한 결과 형태
 export interface RepoSummaryData {
   project: {
-    repoName: string;
+    projectKey: string;
+    projectName: string;
+    summary: string;
+    role: string | null;
     stack: string[];
     signals: string[];
-    challenges: string[];
-    techDecisions: string[];
-    role: string | null;
-    period: string | null;
+    evidenceBullets: { fact: string; challengeRef: string | null }[];
+    challenges: { id: string; what: string; how: string; learning: string }[];
+    techDecisions: { decision: string; reason: string; tradeOff: string | null }[];
+    strengths: string[];
+    risks: string[];
+    sourceRefs: string[];
+    qualityFlags: string[];
   };
 }

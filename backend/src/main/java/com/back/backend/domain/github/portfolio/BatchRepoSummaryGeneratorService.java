@@ -138,7 +138,16 @@ public class BatchRepoSummaryGeneratorService {
 
         // ── Step 4: 단 1회 AI 호출 ────────────────────────────────────
         // ai.portfolio.summary.batch.v1 템플릿 → JSON 배열 응답
-        JsonNode responseArray = aiPipeline.execute(BATCH_TEMPLATE_ID, batchPayload);
+        JsonNode rawResponse = aiPipeline.execute(BATCH_TEMPLATE_ID, batchPayload);
+
+        // 일부 모델이 1개 repo일 때 배열 대신 단일 객체로 반환하는 경우 정규화
+        JsonNode responseArray;
+        if (rawResponse.isObject()) {
+            log.warn("Batch AI response was a single object, not an array. Wrapping in array.");
+            responseArray = objectMapper.createArrayNode().add(rawResponse);
+        } else {
+            responseArray = rawResponse;
+        }
         log.info("Batch AI call completed. responseSize={}", responseArray.size());
 
         // ── Step 5: 응답 배열 파싱 → repoId 기준으로 repo 매핑 ─────────

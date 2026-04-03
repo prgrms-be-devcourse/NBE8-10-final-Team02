@@ -111,11 +111,17 @@ public class GithubRepositoryService {
                 ? Map.of()
                 : syncStatusService.getStatusBulk(userId, pageRepoIds);
 
+        // DB에 RepoSummary가 존재하는 repo ID 집합 (Redis TTL 만료와 무관한 영구 상태)
+        Set<Long> reposWithSummary = pageRepoIds.isEmpty()
+                ? Set.of()
+                : repoSummaryRepository.findRepoIdsWithSummary(pageRepoIds);
+
         return repoPage.map(repo -> {
             RepoSyncStatusResponse analysisStatus = statusMap.containsKey(repo.getId())
                     ? RepoSyncStatusResponse.from(statusMap.get(repo.getId()))
                     : null;
-            return GithubRepositoryResponse.from(repo, reposWithCommits.contains(repo.getId()), analysisStatus);
+            return GithubRepositoryResponse.from(repo, reposWithCommits.contains(repo.getId()),
+                    analysisStatus, reposWithSummary.contains(repo.getId()));
         });
     }
 

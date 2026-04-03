@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 
 import java.util.List;
 import java.util.Optional;
@@ -129,28 +130,12 @@ class AiPipelineTest {
         verify(mockAiClient, times(3)).call(any());
     }
 
-    @Test
-    @DisplayName("AiClientException 발생 시 fallback 미설정이면 즉시 전파된다")
-    void execute_aiClientException_noFallback_propagatesImmediately() {
-        // fallback 미설정 (getFallback → empty)
-        when(router.getFallback()).thenReturn(Optional.empty());
-        when(mockAiClient.call(any())).thenThrow(
-            new AiClientException(AiProvider.GEMINI,
-                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "AI 호출 실패")
-        );
-
-        assertThatThrownBy(() -> pipeline.execute("ai.portfolio.summary.v1", "{}"))
-            .isInstanceOf(AiClientException.class);
-
-        verify(mockAiClient, times(1)).call(any());
-    }
-
     // ─ fallback 전환 테스트 ─
 
     @Test
-    @DisplayName("기본 provider 실패 시 fallback provider로 전환하여 성공한다")
+    @DisplayName("기본 provider rate limit 시 fallback provider로 전환하여 성공한다")
     void execute_fallbackOnAiClientException() {
-        // 기본 provider(Gemini) 실패, fallback provider(Groq) 성공
+        // 기본 provider(Gemini) rate limit 실패, fallback provider(Groq) 성공
         AiClient fallbackClient = mock(AiClient.class);
         when(fallbackClient.getProvider()).thenReturn(AiProvider.GROQ);
         when(fallbackClient.call(any())).thenReturn(response("{}"));
@@ -158,36 +143,56 @@ class AiPipelineTest {
         when(router.getFallback()).thenReturn(Optional.of(fallbackClient));
         when(mockAiClient.call(any())).thenThrow(
             new AiClientException(AiProvider.GEMINI,
-                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "Gemini 429 할당량 초과")
+                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                HttpStatus.BAD_GATEWAY, "Gemini 429 할당량 초과",
+                RateLimitType.MINUTE, 60, null)
         );
         when(mockValidator.validate(any())).thenReturn(ValidationResult.success());
 
         JsonNode result = pipeline.execute("ai.portfolio.summary.v1", "{}");
 
-        // 기본 1회 호출 후 fallback 1회 호출
         assertThat(result).isNotNull();
-        verify(mockAiClient, times(1)).call(any());       // Gemini 1회 시도 → 실패
-        verify(fallbackClient, times(1)).call(any());     // Groq 1회 시도 → 성공
+        verify(mockAiClient, times(1)).call(any());
+        verify(fallbackClient, times(1)).call(any());
     }
 
     @Test
-    @DisplayName("기본 provider 실패 후 fallback provider도 실패하면 예외를 전파한다")
+    @DisplayName("rate limit이 아닌 오류는 fallback 없이 즉시 전파된다")
+    void execute_nonRateLimitError_noFallback() {
+        AiClient fallbackClient = mock(AiClient.class);
+        when(router.getFallback()).thenReturn(Optional.of(fallbackClient));
+        when(mockAiClient.call(any())).thenThrow(
+            new AiClientException(AiProvider.GEMINI,
+                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "Gemini 네트워크 오류")
+        );
+
+        assertThatThrownBy(() -> pipeline.execute("ai.portfolio.summary.v1", "{}"))
+            .isInstanceOf(AiClientException.class);
+
+        verify(mockAiClient, times(1)).call(any());
+        verify(fallbackClient, never()).call(any());
+    }
+
+    @Test
+    @DisplayName("기본 provider rate limit 후 fallback provider도 실패하면 예외를 전파한다")
     void execute_fallbackAlsoFails() {
-        // 기본, fallback 모두 실패
         AiClient fallbackClient = mock(AiClient.class);
         when(fallbackClient.getProvider()).thenReturn(AiProvider.GROQ);
         when(fallbackClient.call(any())).thenThrow(
             new AiClientException(AiProvider.GROQ,
-                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "Groq도 실패")
+                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                HttpStatus.BAD_GATEWAY, "Groq도 실패",
+                RateLimitType.MINUTE, 60, null)
         );
 
         when(router.getFallback()).thenReturn(Optional.of(fallbackClient));
         when(mockAiClient.call(any())).thenThrow(
             new AiClientException(AiProvider.GEMINI,
-                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "Gemini 실패")
+                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                HttpStatus.BAD_GATEWAY, "Gemini rate limit",
+                RateLimitType.MINUTE, 60, null)
         );
 
-        // fallback의 AiClientException이 전파됨
         assertThatThrownBy(() -> pipeline.execute("ai.portfolio.summary.v1", "{}"))
             .isInstanceOf(AiClientException.class)
             .hasMessageContaining("Groq");
@@ -199,23 +204,24 @@ class AiPipelineTest {
     @Test
     @DisplayName("fallback provider에서도 파싱/검증 재시도가 동작한다")
     void execute_fallbackRetryOnParseFailure() {
-        // Gemini 실패 → Groq에서 1회 파싱 실패 후 2회째 성공
+        // Gemini rate limit → Groq에서 1회 파싱 실패 후 2회째 성공
         AiClient fallbackClient = mock(AiClient.class);
         when(fallbackClient.getProvider()).thenReturn(AiProvider.GROQ);
         when(fallbackClient.call(any()))
-            .thenReturn(response("invalid json"))   // 1회차: 파싱 실패
-            .thenReturn(response("{}"));             // 2회차: 성공
+            .thenReturn(response("invalid json"))
+            .thenReturn(response("{}"));
 
         when(router.getFallback()).thenReturn(Optional.of(fallbackClient));
         when(mockAiClient.call(any())).thenThrow(
             new AiClientException(AiProvider.GEMINI,
-                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "Gemini 실패")
+                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                HttpStatus.BAD_GATEWAY, "Gemini rate limit",
+                RateLimitType.MINUTE, 60, null)
         );
         when(mockValidator.validate(any())).thenReturn(ValidationResult.success());
 
         JsonNode result = pipeline.execute("ai.portfolio.summary.v1", "{}");
 
-        // fallback에서도 재시도가 정상 동작
         assertThat(result).isNotNull();
         verify(fallbackClient, times(2)).call(any());
     }

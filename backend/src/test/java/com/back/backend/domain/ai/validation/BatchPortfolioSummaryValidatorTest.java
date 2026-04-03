@@ -45,11 +45,22 @@ class BatchPortfolioSummaryValidatorTest {
         }
 
         @Test
-        @DisplayName("응답이 배열이 아니면 실패한다")
-        void nonArray_fails() throws Exception {
+        @DisplayName("단일 객체 응답은 경고와 함께 통과한다 (모델이 배열 대신 객체를 반환하는 경우 허용)")
+        void singleObject_passesWithWarning() throws Exception {
             JsonNode node = objectMapper.readTree("""
-                    { "repoId": "my-repo", "project": {} }
-                    """);
+                    { "repoId": "my-repo", "project": %s }
+                    """.formatted(validProject("my-repo")));
+
+            ValidationResult result = validator.validate(node);
+
+            assertThat(result.valid()).isTrue();
+            assertThat(result.warnings()).anyMatch(w -> w.contains("단일 객체"));
+        }
+
+        @Test
+        @DisplayName("배열도 객체도 아닌 타입이면 실패한다")
+        void nonArrayNonObject_fails() throws Exception {
+            JsonNode node = objectMapper.readTree("\"invalid string response\"");
 
             ValidationResult result = validator.validate(node);
 

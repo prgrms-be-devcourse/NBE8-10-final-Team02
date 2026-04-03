@@ -125,10 +125,14 @@ public class AiPipeline {
         try {
             return executeWithClient(router.getDefault(), request, template, validator, templateId);
         } catch (AiClientException e) {
-            // fallback provider가 설정되어 있으면 전환 시도
+            // rate limit(429)일 때만 fallback provider로 전환
+            // 그 외(빈 응답, 타임아웃, API 오류 등)는 즉시 전파
+            if (e.getRateLimitType() == null) {
+                throw e;
+            }
             return router.getFallback()
                 .map(fallbackClient -> {
-                    log.warn("[Fallback] 기본 provider({}) 실패 → fallback provider({})로 전환. 원인: {}",
+                    log.warn("[Fallback] 기본 provider({}) rate limit → fallback provider({})로 전환. 원인: {}",
                         e.getProvider(), fallbackClient.getProvider(), e.getMessage());
                     return executeWithClient(fallbackClient, request, template, validator, templateId);
                 })

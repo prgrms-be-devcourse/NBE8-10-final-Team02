@@ -96,7 +96,7 @@ export default function PortfolioReadinessPage() {
         ]);
         setDashboard(data);
         setCompletedRepos(
-          allRepos.filter((r) => r.analysisStatus?.status === 'COMPLETED')
+          allRepos.filter((r) => r.hasSummary)
         );
       } catch (e) {
         setError(e instanceof Error ? e.message : '준비 현황을 불러오지 못했습니다.');

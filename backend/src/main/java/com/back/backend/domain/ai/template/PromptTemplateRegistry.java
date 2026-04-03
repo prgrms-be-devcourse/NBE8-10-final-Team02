@@ -93,7 +93,7 @@ public class PromptTemplateRegistry {
             "developer/ai.portfolio.summary.batch.v1.txt",
             null,   // JSON Schema 파일 없음 (배열 검증은 BatchPortfolioSummaryValidator에서 수행)
             0.2, 8000, // 여러 repo의 배열 결과를 담으므로 단일 호출의 2배 확보
-            new PromptTemplate.RetryPolicy(2, false)
+            new PromptTemplate.RetryPolicy(0, false)
         ));
 
         // Map.copyOf()로 불변 맵 생성 — 이후 수정 시도 시 UnsupportedOperationException
