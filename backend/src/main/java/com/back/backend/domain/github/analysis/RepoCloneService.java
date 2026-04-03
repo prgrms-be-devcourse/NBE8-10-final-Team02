@@ -15,7 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 /**
  * 분석 파이프라인용 repo clone/fetch 서비스.
@@ -125,20 +124,40 @@ public class RepoCloneService {
 
     private void runGit(List<String> command, Path workingDir, int timeoutMinutes) {
         Process process = null;
+        Thread outputDrainer = null;
+        StringBuilder outputBuilder = new StringBuilder();
         try {
             ProcessBuilder pb = new ProcessBuilder(command)
                     .directory(workingDir.toFile())
                     .redirectErrorStream(true);
 
             process = pb.start();
-            String output = readOutput(process);
+
+            // stdout을 별도 스레드에서 drain한다.
+            // readOutput()을 waitFor() 이전에 같은 스레드에서 호출하면
+            // OS 파이프 버퍼(~64KB)가 가득 찰 때 git 프로세스와 교착 상태(deadlock)가 발생한다.
+            final Process finalProcess = process;
+            outputDrainer = new Thread(() -> {
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(finalProcess.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        outputBuilder.append(line).append("\n");
+                    }
+                } catch (IOException ignored) {}
+            });
+            outputDrainer.setDaemon(true);
+            outputDrainer.start();
 
             boolean finished = process.waitFor(timeoutMinutes, TimeUnit.MINUTES);
             if (!finished) {
                 process.destroyForcibly();
                 throw new ServiceException(ErrorCode.INTERNAL_SERVER_ERROR, HttpStatus.INTERNAL_SERVER_ERROR,
-                        "git 명령 타임아웃: " + String.join(" ", command));
+                        "git 명령 타임아웃 (" + timeoutMinutes + "분): " + String.join(" ", command));
             }
+
+            outputDrainer.join(3_000); // 출력 수집이 끝날 때까지 최대 3초 대기
+            String output = outputBuilder.toString();
 
             int exitCode = process.exitValue();
             if (exitCode != 0) {
@@ -153,20 +172,14 @@ public class RepoCloneService {
         } catch (ServiceException e) {
             throw e;
         } catch (InterruptedException e) {
-            if (process != null) process.destroyForcibly(); // git 프로세스 즉시 종료
+            if (process != null) process.destroyForcibly();
+            if (outputDrainer != null) outputDrainer.interrupt();
             Thread.currentThread().interrupt();
             throw new ServiceException(ErrorCode.INTERNAL_SERVER_ERROR, HttpStatus.INTERNAL_SERVER_ERROR,
                     "git 명령이 취소되었습니다: " + command.get(1));
         } catch (IOException e) {
             throw new ServiceException(ErrorCode.INTERNAL_SERVER_ERROR, HttpStatus.INTERNAL_SERVER_ERROR,
                     "git 명령 실행 중 오류: " + e.getMessage());
-        }
-    }
-
-    private String readOutput(Process process) throws IOException {
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-            return reader.lines().collect(Collectors.joining("\n"));
         }
     }
 
@@ -177,7 +190,17 @@ public class RepoCloneService {
     public void deleteRepo(Long userId, Long repositoryId) {
         Path repoPath = buildRepoPath(userId, repositoryId);
         if (!Files.exists(repoPath)) return;
-        forceDelete(repoPath);
+
+        // 취소된 스레드에서 호출될 수 있으므로 interrupt 플래그를 임시 해제한다.
+        // 플래그가 set된 채로 forceDelete() 내부의 process.waitFor()를 호출하면
+        // InterruptedException이 즉시 발생하여 rm -rf 정리가 실패한다.
+        boolean wasInterrupted = Thread.interrupted();
+        try {
+            forceDelete(repoPath);
+        } finally {
+            if (wasInterrupted) Thread.currentThread().interrupt(); // 원래 상태 복원
+        }
+
         if (Files.exists(repoPath)) {
             log.warn("Could not fully delete repo clone (some files remain): userId={}, repoId={}", userId, repositoryId);
         } else {

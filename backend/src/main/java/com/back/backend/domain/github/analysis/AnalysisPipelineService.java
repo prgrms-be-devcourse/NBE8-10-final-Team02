@@ -320,6 +320,27 @@ public class AnalysisPipelineService {
     }
 
     /**
+     * 여러 repo의 진행 중인 분석 파이프라인을 일괄 취소한다.
+     *
+     * 각 repo에 대해 {@link #cancel}을 순차 호출한다.
+     * 개별 취소는 idempotent하므로 이미 완료된 repo가 포함돼도 안전하다.
+     *
+     * @param userId        인증된 사용자 ID
+     * @param repositoryIds 취소할 repo ID 목록
+     */
+    public void cancelBatch(Long userId, List<Long> repositoryIds) {
+        if (repositoryIds == null || repositoryIds.isEmpty()) return;
+        for (Long repositoryId : repositoryIds) {
+            try {
+                cancel(userId, repositoryId);
+            } catch (Exception e) {
+                log.warn("Batch cancel partial failure: userId={}, repoId={}, reason={}",
+                        userId, repositoryId, e.getMessage());
+            }
+        }
+    }
+
+    /**
      * 여러 repo를 배치로 분석하고 단 1회의 AI 호출로 요약을 생성한다.
      *
      * <p>기존 {@link #triggerAnalysis}는 repo마다 AI를 1회씩 호출했다.

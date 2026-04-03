@@ -7,6 +7,7 @@ import com.back.backend.domain.github.dto.response.RepoSyncStatusResponse;
 import com.back.backend.domain.github.dto.response.RepositorySelectionResponse;
 import com.back.backend.domain.github.entity.GithubConnection;
 import com.back.backend.domain.github.entity.GithubRepository;
+import com.back.backend.domain.github.entity.RepoSummary;
 import com.back.backend.domain.github.portfolio.MergedSummaryService;
 import com.back.backend.domain.github.repository.CodeIndexRepository;
 import com.back.backend.domain.github.repository.GithubCommitRepository;
@@ -235,6 +236,32 @@ public class GithubRepositoryService {
 
         repositoryRepository.delete(repo);
         log.info("Deleted repository id={} for userId={}", repositoryId, userId);
+    }
+
+    /**
+     * 특정 repo의 최신 AI 분석 요약을 조회한다.
+     *
+     * 분석이 완료된 적 없으면 null을 반환한다 (에러 아님).
+     * 소유권 검사: 해당 repo가 현재 사용자의 connection에 속하는지 확인.
+     */
+    @Transactional(readOnly = true)
+    public RepoSummary getLatestSummary(Long userId, Long repositoryId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ServiceException(
+                        ErrorCode.RESOURCE_NOT_FOUND, HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+
+        GithubRepository repo = repositoryRepository.findById(repositoryId)
+                .orElseThrow(() -> new ServiceException(
+                        ErrorCode.GITHUB_REPOSITORY_NOT_FOUND, HttpStatus.NOT_FOUND, "repository를 찾을 수 없습니다."));
+
+        if (!repo.getGithubConnection().getUser().getId().equals(userId)) {
+            throw new ServiceException(ErrorCode.GITHUB_REPOSITORY_FORBIDDEN, HttpStatus.FORBIDDEN,
+                    "접근 권한이 없는 repository입니다.");
+        }
+
+        return repoSummaryRepository
+                .findTopByUserAndGithubRepositoryOrderBySummaryVersionDesc(user, repo)
+                .orElse(null);
     }
 
     // ─────────────────────────────────────────────────
