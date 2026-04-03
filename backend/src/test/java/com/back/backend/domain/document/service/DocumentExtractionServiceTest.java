@@ -69,7 +69,7 @@ class DocumentExtractionServiceTest {
         given(clock.instant()).willReturn(FIXED_NOW);
 
         extractionService.performExtraction(
-            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf"));
+            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf", 1L));
 
         assertThat(doc.getExtractStatus()).isEqualTo(DocumentExtractStatus.SUCCESS);
         assertThat(doc.getExtractedText()).isEqualTo("이름: 홍*동");
@@ -91,7 +91,7 @@ class DocumentExtractionServiceTest {
         given(clock.instant()).willReturn(FIXED_NOW);
 
         extractionService.performExtraction(
-            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf"));
+            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf", 1L));
 
         // 추출 자체는 성공이므로 SUCCESS, 원문이 저장됨
         assertThat(doc.getExtractStatus()).isEqualTo(DocumentExtractStatus.SUCCESS);
@@ -112,7 +112,7 @@ class DocumentExtractionServiceTest {
                 HttpStatus.UNPROCESSABLE_CONTENT, "추출 실패"));
 
         extractionService.performExtraction(
-            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf"));
+            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf", 1L));
 
         assertThat(doc.getExtractStatus()).isEqualTo(DocumentExtractStatus.FAILED);
         assertThat(doc.getExtractedText()).isNull();
@@ -130,7 +130,7 @@ class DocumentExtractionServiceTest {
         given(textExtractor.extract(any(), any())).willThrow(new RuntimeException("unexpected"));
 
         extractionService.performExtraction(
-            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf"));
+            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf", 1L));
 
         assertThat(doc.getExtractStatus()).isEqualTo(DocumentExtractStatus.FAILED);
         then(documentRepository).should().save(doc);
@@ -145,7 +145,7 @@ class DocumentExtractionServiceTest {
         given(documentRepository.findById(1L)).willReturn(Optional.empty());
 
         extractionService.performExtraction(
-            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf"));
+            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf", 1L));
 
         then(textExtractor).shouldHaveNoInteractions();
         then(documentRepository).should().findById(1L);

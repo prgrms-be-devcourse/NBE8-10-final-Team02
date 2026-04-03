@@ -10,5 +10,5 @@ package com.back.backend.domain.document.event;
  * @param storagePath 파일이 저장된 상대 경로 (예: "uploads/uuid_resume.pdf")
  * @param mimeType    파일 MIME type — 추출 방식 선택에 사용
  */
-public record DocumentUploadedEvent(Long documentId, String storagePath, String mimeType) {
+public record DocumentUploadedEvent(Long documentId, String storagePath, String mimeType, Long userId) {
 }

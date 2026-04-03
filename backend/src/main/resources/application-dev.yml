@@ -4,6 +4,11 @@ spring:
       - optional:file:.env.dev[.properties]         # working dir = 프로젝트 루트일 때
       - optional:file:../.env.dev[.properties]    # working dir = backend/ 일 때
 
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:data.sql
+
   datasource:
     # localhost:5432는 로컬 docker-compose에서 뚫어준 포트
     url: jdbc:postgresql://localhost:5432/appdb
@@ -47,7 +52,7 @@ analysis:
 
 logging:
   level:
-    root: info
+    root: debug
     com.back.backend: debug
 
 # 개발 환경 JWT 설정

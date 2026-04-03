@@ -63,6 +63,13 @@
             "items": {
               "type": "string"
             }
+          },
+          "knowledgeTagNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 3
           }
         }
       }

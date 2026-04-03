@@ -20,6 +20,8 @@ import com.back.backend.domain.interview.dto.response.QuestionSetDetailResponse;
 import com.back.backend.domain.interview.dto.response.QuestionSetSummaryResponse;
 import com.back.backend.domain.interview.repository.InterviewQuestionRepository;
 import com.back.backend.domain.interview.repository.InterviewQuestionSetRepository;
+import com.back.backend.domain.knowledge.entity.KnowledgeTag;
+import com.back.backend.domain.knowledge.repository.KnowledgeTagRepository;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.global.exception.ErrorCode;
@@ -51,6 +53,7 @@ public class InterviewQuestionsGenerateService {
     private final InterviewQuestionRepository questionRepository;
     private final InterviewQuestionsPayloadBuilder payloadBuilder;
     private final AiPipeline aiPipeline;
+    private final KnowledgeTagRepository knowledgeTagRepository;
 
     @Transactional
     public QuestionSetSummaryResponse generate(
@@ -94,6 +97,10 @@ public class InterviewQuestionsGenerateService {
             .map(Document::getExtractedText)
             .toList();
 
+        Map<String, KnowledgeTag> knowledgeTagsByName = knowledgeTagRepository.findAll().stream()
+            .collect(Collectors.toMap(KnowledgeTag::getName, Function.identity()));
+        List<String> knowledgeTagNames = new ArrayList<>(knowledgeTagsByName.keySet());
+
         String payload = payloadBuilder.build(
             application.getJobRole(),
             application.getCompanyName(),
@@ -101,7 +108,8 @@ public class InterviewQuestionsGenerateService {
             documentTexts,
             questionCount,
             difficultyLevel.getValue(),
-            questionTypes
+            questionTypes,
+            knowledgeTagNames
         );
 
         JsonNode responseNode = aiPipeline.execute(TEMPLATE_ID, payload);
@@ -130,14 +138,25 @@ public class InterviewQuestionsGenerateService {
                 );
             }
 
-            interviewQuestions.add(InterviewQuestion.builder()
+            InterviewQuestion interviewQuestion = InterviewQuestion.builder()
                 .questionSet(questionSet)
                 .questionOrder(q.get("questionOrder").asInt())
                 .questionType(parseQuestionType(q.get("questionType").asText()))
                 .difficultyLevel(parseDifficultyLevel(q.get("difficultyLevel").asText()))
                 .questionText(q.get("questionText").asText())
                 .sourceApplicationQuestion(sourceAppQuestion)
-                .build());
+                .build();
+
+            if (q.hasNonNull("knowledgeTagNames") && q.get("knowledgeTagNames").isArray()) {
+                List<KnowledgeTag> tags = new ArrayList<>();
+                for (JsonNode tagName : q.get("knowledgeTagNames")) {
+                    KnowledgeTag tag = knowledgeTagsByName.get(tagName.asText());
+                    if (tag != null) tags.add(tag);
+                }
+                interviewQuestion.assignKnowledgeTags(tags);
+            }
+
+            interviewQuestions.add(interviewQuestion);
         }
         questionRepository.saveAll(interviewQuestions);
 

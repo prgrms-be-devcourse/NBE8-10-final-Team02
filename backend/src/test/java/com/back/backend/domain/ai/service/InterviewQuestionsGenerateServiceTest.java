@@ -16,6 +16,7 @@ import com.back.backend.domain.interview.entity.InterviewQuestionType;
 import com.back.backend.domain.interview.dto.response.QuestionSetSummaryResponse;
 import com.back.backend.domain.interview.repository.InterviewQuestionRepository;
 import com.back.backend.domain.interview.repository.InterviewQuestionSetRepository;
+import com.back.backend.domain.knowledge.repository.KnowledgeTagRepository;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.global.exception.ErrorCode;
@@ -72,6 +73,9 @@ class InterviewQuestionsGenerateServiceTest {
     @Mock
     private AiPipeline aiPipeline;
 
+    @Mock
+    private KnowledgeTagRepository knowledgeTagRepository;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private InterviewQuestionsGenerateService service;
@@ -86,7 +90,8 @@ class InterviewQuestionsGenerateServiceTest {
             questionSetRepository,
             questionRepository,
             new InterviewQuestionsPayloadBuilder(),
-            aiPipeline
+            aiPipeline,
+            knowledgeTagRepository
         );
     }
 

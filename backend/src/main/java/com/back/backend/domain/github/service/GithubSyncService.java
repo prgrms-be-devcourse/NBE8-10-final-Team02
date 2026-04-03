@@ -12,6 +12,8 @@ import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.back.backend.domain.activity.event.GithubSyncCompletedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,19 +39,22 @@ public class GithubSyncService {
     private final GithubCommitRepository commitRepository;
     private final GithubConnectionRepository connectionRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public GithubSyncService(
             GithubApiClient githubApiClient,
             GithubRepositoryRepository repositoryRepository,
             GithubCommitRepository commitRepository,
             GithubConnectionRepository connectionRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.githubApiClient = githubApiClient;
         this.repositoryRepository = repositoryRepository;
         this.commitRepository = commitRepository;
         this.connectionRepository = connectionRepository;
         this.userRepository = userRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -138,6 +143,11 @@ public class GithubSyncService {
         }
 
         log.info("Commit sync complete for repo={}: {} new commits saved", repository.getFullName(), savedCount);
+
+        if (savedCount > 0) {
+            Long userId = repository.getGithubConnection().getUser().getId();
+            eventPublisher.publishEvent(new GithubSyncCompletedEvent(userId, repository.getId(), savedCount));
+        }
     }
 
     /**
