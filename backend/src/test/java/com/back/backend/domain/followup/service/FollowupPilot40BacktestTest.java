@@ -118,9 +118,16 @@ class FollowupPilot40BacktestTest {
         BacktestRow ps06 = requireRow(backtestRows, "PS06");
         BacktestRow ps09 = requireRow(backtestRows, "PS09");
         BacktestRow ps03 = requireRow(backtestRows, "PS03");
-        BacktestRow ps04 = requireRow(backtestRows, "PS04");
         BacktestRow ps08 = requireRow(backtestRows, "PS08");
         BacktestRow ps10 = requireRow(backtestRows, "PS10");
+        BacktestRow co02 = requireRow(backtestRows, "CO02");
+        BacktestRow co03 = requireRow(backtestRows, "CO03");
+        BacktestRow co04 = requireRow(backtestRows, "CO04");
+        BacktestRow co05 = requireRow(backtestRows, "CO05");
+        BacktestRow co07 = requireRow(backtestRows, "CO07");
+        BacktestRow co08 = requireRow(backtestRows, "CO08");
+        BacktestRow co09 = requireRow(backtestRows, "CO09");
+        BacktestRow co10 = requireRow(backtestRows, "CO10");
 
         assertThat(Files.exists(csvPath)).isTrue();
         assertThat(Files.exists(reportPath)).isTrue();
@@ -149,9 +156,40 @@ class FollowupPilot40BacktestTest {
         assertThat(ps09.predictedSecondaryGap()).isEqualTo(GapType.PREVENTION);
 
         assertThat(ps03.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
-        assertThat(ps04.predictedFinalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
         assertThat(ps08.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
         assertThat(ps10.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+
+        assertThat(co02.predictedFinalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(co02.predictedPrimaryGap()).isEqualTo(GapType.AGREEMENT);
+        assertThat(co02.predictedSecondaryGap()).isEqualTo(GapType.REASON);
+
+        assertThat(co03.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(co03.predictedPrimaryGap()).isEqualTo(GapType.ISSUE);
+        assertThat(co03.predictedSecondaryGap()).isEqualTo(GapType.AGREEMENT);
+
+        assertThat(co04.predictedFinalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(co04.predictedPrimaryGap()).isEqualTo(GapType.AGREEMENT);
+        assertThat(co04.predictedSecondaryGap()).isEqualTo(GapType.REASON);
+
+        assertThat(co05.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(co05.predictedPrimaryGap()).isEqualTo(GapType.ISSUE);
+        assertThat(co05.predictedSecondaryGap()).isEqualTo(GapType.AGREEMENT);
+
+        assertThat(co07.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(co07.predictedPrimaryGap()).isEqualTo(GapType.ISSUE);
+        assertThat(co07.predictedSecondaryGap()).isEqualTo(GapType.AGREEMENT);
+
+        assertThat(co08.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(co08.predictedPrimaryGap()).isEqualTo(GapType.AGREEMENT);
+        assertThat(co08.predictedSecondaryGap()).isEqualTo(GapType.METRIC);
+
+        assertThat(co09.predictedFinalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(co09.predictedPrimaryGap()).isEqualTo(GapType.AGREEMENT);
+        assertThat(co09.predictedSecondaryGap()).isEqualTo(GapType.RESULT);
+
+        assertThat(co10.predictedFinalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+        assertThat(co10.predictedPrimaryGap()).isEqualTo(GapType.METRIC);
+        assertThat(co10.predictedSecondaryGap()).isNull();
     }
 
     private BacktestRow requireRow(List<BacktestRow> rows, String sampleId) {

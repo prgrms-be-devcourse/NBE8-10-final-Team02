@@ -92,9 +92,15 @@ class FollowupPilot40CandidateQuestionBacktestTest {
         writeReport(summary, backtestRows, reportPath, workbookPath);
 
         CandidateBacktestRow pe05 = requireRow(backtestRows, "PE05");
+        CandidateBacktestRow pe03 = requireRow(backtestRows, "PE03");
+        CandidateBacktestRow pe07 = requireRow(backtestRows, "PE07");
         CandidateBacktestRow ps03 = requireRow(backtestRows, "PS03");
         CandidateBacktestRow ps07 = requireRow(backtestRows, "PS07");
         CandidateBacktestRow ps08 = requireRow(backtestRows, "PS08");
+        CandidateBacktestRow co03 = requireRow(backtestRows, "CO03");
+        CandidateBacktestRow co05 = requireRow(backtestRows, "CO05");
+        CandidateBacktestRow co07 = requireRow(backtestRows, "CO07");
+        CandidateBacktestRow co08 = requireRow(backtestRows, "CO08");
 
         assertThat(Files.exists(csvPath)).isTrue();
         assertThat(Files.exists(reportPath)).isTrue();
@@ -104,10 +110,16 @@ class FollowupPilot40CandidateQuestionBacktestTest {
         assertThat(summary.unorderedMatchRate()).isGreaterThanOrEqualTo(0.250);
         assertThat(summary.primaryCandidateMatchRate()).isGreaterThanOrEqualTo(0.437);
 
+        assertThat(pe03.exactMatch()).isTrue();
         assertThat(pe05.exactMatch()).isTrue();
+        assertThat(pe07.exactMatch()).isTrue();
         assertThat(ps03.exactMatch()).isTrue();
         assertThat(ps07.exactMatch()).isTrue();
         assertThat(ps08.exactMatch()).isTrue();
+        assertThat(co03.exactMatch()).isTrue();
+        assertThat(co05.exactMatch()).isTrue();
+        assertThat(co07.exactMatch()).isTrue();
+        assertThat(co08.exactMatch()).isTrue();
     }
 
     private CandidateBacktestRow requireRow(List<CandidateBacktestRow> rows, String sampleId) {
