@@ -307,6 +307,6 @@ class FollowupRuleServiceTest {
     }
 
     private FollowupRulesProperties loadProperties() {
-        return FollowupRulesConfig.loadRules(new ClassPathResource("followup-rules-v0.2.yaml"));
+        return FollowupRulesConfig.loadRules(new ClassPathResource("followup/rules/followup-rules-v0.2.yaml"));
     }
 }

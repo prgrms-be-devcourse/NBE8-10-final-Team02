@@ -19,7 +19,7 @@ import java.util.List;
 public class FollowupRulesConfig {
 
     private static final String FOLLOWUP_RULES_PREFIX = "followup";
-    private static final String FOLLOWUP_RULES_RESOURCE_PATH = "followup-rules-v0.2.yaml";
+    private static final String FOLLOWUP_RULES_RESOURCE_PATH = "followup/rules/followup-rules-v0.2.yaml";
 
     @Bean
     public FollowupRulesProperties followupRulesProperties() {

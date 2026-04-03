@@ -559,7 +559,7 @@ class FollowupPilot40BacktestTest {
             YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
             List<PropertySource<?>> propertySources = loader.load(
                     "followup-rules",
-                    new ClassPathResource("followup-rules-v0.2.yaml")
+                new ClassPathResource("followup/rules/followup-rules-v0.2.yaml")
             );
             MutablePropertySources mutablePropertySources = new MutablePropertySources();
             propertySources.forEach(mutablePropertySources::addLast);
