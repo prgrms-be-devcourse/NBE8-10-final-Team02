@@ -783,7 +783,7 @@ components:
           - COMPLETED
           - SKIPPED
           - FAILED
-          description: PENDING=대기중, IN_PROGRESS=처리중, COMPLETED=완료, SKIPPED=변경없음(significance check 미달), FAILED=오류
+          description: PENDING=대기중, IN_PROGRESS=처리중, COMPLETED=완료, SKIPPED=분석 생략(skipReason 참조), FAILED=오류
         step:
           type: string
           nullable: true
@@ -803,6 +803,10 @@ components:
         error:
           type: string
           nullable: true
+        skipReason:
+          type: string
+          nullable: true
+          description: SKIPPED 상태일 때 skip 이유 (예:"커밋이 없습니다. 커밋 동기화를 먼저 실행해주세요.", "최근 변경량이 기준치에 미달합니다.")
       required:
       - repositoryId
       - status

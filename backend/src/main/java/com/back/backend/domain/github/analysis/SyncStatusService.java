@@ -56,7 +56,8 @@ public class SyncStatusService {
             Instant startedAt,       // 처리 시작 시각
             Instant estimatedEndAt,  // 예상 완료 시각 (PENDING/IN_PROGRESS 시)
             Instant completedAt,     // 완료 시각 (COMPLETED/SKIPPED/FAILED 시)
-            String error             // 오류 메시지 (FAILED 시)
+            String error,            // 오류 메시지 (FAILED 시)
+            String skipReason        // SKIPPED 이유 (SKIPPED 시)
     ) {}
 
     // ─────────────────────────────────────────────────
@@ -75,6 +76,7 @@ public class SyncStatusService {
                 null,
                 null,
                 estimatedEndAt,
+                null,
                 null,
                 null
         );
@@ -100,6 +102,7 @@ public class SyncStatusService {
                 startedAt,
                 estimatedEndAt,
                 null,
+                null,
                 null
         );
         save(userId, repositoryId, data);
@@ -119,14 +122,19 @@ public class SyncStatusService {
                 startedAt,
                 null,
                 Instant.now(),
+                null,
                 null
         );
         save(userId, repositoryId, data);
         log.info("Sync status set to COMPLETED: userId={}, repoId={}", userId, repositoryId);
     }
 
-    /** significance check 미달로 분석을 생략했을 때 상태를 기록한다. */
-    public void setSkipped(Long userId, Long repositoryId) {
+    /**
+     * significance check 미달 또는 커밋 없음으로 분석을 생략했을 때 상태를 기록한다.
+     *
+     * @param skipReason 사용자에게 노출 가능한 skip 이유 메시지
+     */
+    public void setSkipped(Long userId, Long repositoryId, String skipReason) {
         SyncStatusData data = new SyncStatusData(
                 repositoryId,
                 SyncStatus.SKIPPED,
@@ -134,10 +142,11 @@ public class SyncStatusService {
                 null,
                 null,
                 Instant.now(),
-                null
+                null,
+                skipReason
         );
         save(userId, repositoryId, data);
-        log.info("Sync status set to SKIPPED: userId={}, repoId={}", userId, repositoryId);
+        log.info("Sync status set to SKIPPED: userId={}, repoId={}, reason={}", userId, repositoryId, skipReason);
     }
 
     /**
@@ -157,7 +166,8 @@ public class SyncStatusService {
                 startedAt,
                 null,
                 Instant.now(),
-                error
+                error,
+                null
         );
         save(userId, repositoryId, data);
         log.warn("Sync status set to FAILED: userId={}, repoId={}, error={}", userId, repositoryId, error);

@@ -145,12 +145,6 @@ public class AnalysisPipelineService {
                     HttpStatus.FORBIDDEN, "접근 권한이 없는 저장소입니다.");
         }
 
-        // 커밋 동기화가 완료되지 않은 repo는 분석 불가
-        if (!commitRepository.existsByRepository(repo)) {
-            throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
-                    HttpStatus.UNPROCESSABLE_ENTITY, "커밋 동기화를 먼저 완료해주세요.");
-        }
-
         // 이미 PENDING/IN_PROGRESS 상태이면 중복 실행 방지 (git lock 충돌 예방)
         syncStatusService.getStatus(userId, repositoryId).ifPresent(existing -> {
             if (existing.status() == SyncStatus.PENDING || existing.status() == SyncStatus.IN_PROGRESS) {
@@ -375,12 +369,6 @@ public class AnalysisPipelineService {
                         HttpStatus.FORBIDDEN, "접근 권한이 없는 저장소입니다: " + repositoryId);
             }
 
-            if (!commitRepository.existsByRepository(repo)) {
-                throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
-                        HttpStatus.UNPROCESSABLE_ENTITY,
-                        "커밋 동기화를 먼저 완료해주세요: " + repositoryId);
-            }
-
             // 이미 진행 중인 분석이 있으면 중복 방지
             syncStatusService.getStatus(userId, repositoryId).ifPresent(existing -> {
                 if (existing.status() == SyncStatus.PENDING
@@ -467,10 +455,11 @@ public class AnalysisPipelineService {
                                    Long userId, Long repositoryId) {
         // ① Significance Check
         syncStatusService.setInProgress(userId, repositoryId, "significance_check");
-        boolean significant = significanceCheckService.isSignificant(repo, userId);
-        if (!significant) {
-            log.info("Batch: repo not significant, skipping: userId={}, repoId={}", userId, repositoryId);
-            syncStatusService.setSkipped(userId, repositoryId);
+        Optional<String> skipReason = significanceCheckService.isSignificant(repo, userId);
+        if (skipReason.isPresent()) {
+            log.info("Batch: repo not significant, skipping: userId={}, repoId={}, reason={}",
+                    userId, repositoryId, skipReason.get());
+            syncStatusService.setSkipped(userId, repositoryId, skipReason.get());
             significanceCheckService.markAnalyzed(userId, repositoryId);
             return false; // 이 repo는 배치 AI 호출 대상에서 제외
         }
@@ -507,10 +496,10 @@ public class AnalysisPipelineService {
 
         // ① Significance Check
         syncStatusService.setInProgress(userId, repositoryId, "significance_check");
-        boolean significant = significanceCheckService.isSignificant(repo, userId);
-        if (!significant) {
-            log.info("Pipeline skipped (not significant): userId={}, repoId={}", userId, repositoryId);
-            syncStatusService.setSkipped(userId, repositoryId);
+        Optional<String> skipReason = significanceCheckService.isSignificant(repo, userId);
+        if (skipReason.isPresent()) {
+            log.info("Pipeline skipped: userId={}, repoId={}, reason={}", userId, repositoryId, skipReason.get());
+            syncStatusService.setSkipped(userId, repositoryId, skipReason.get());
             significanceCheckService.markAnalyzed(userId, repositoryId);
             return;
         }
