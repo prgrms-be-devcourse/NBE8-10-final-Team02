@@ -176,7 +176,8 @@ public class InterviewSessionService {
                     interviewResultGenerationService.generate(
                             preparation.sessionId(),
                             preparation.questionSetId(),
-                            preparation.answers()
+                            preparation.answers(),
+                            preparation.jobRole()
                     );
 
             InterviewSessionCompletionResponse response = executeInTransaction(
@@ -287,11 +288,13 @@ public class InterviewSessionService {
         // 이렇게 해야 세션 종료 기록은 남기면서도 외부 API를 긴 트랜잭션 안에 두지 않는다.
         List<InterviewAnswer> answers = interviewAnswerRepository
                 .findAllWithSessionQuestionBySessionIdOrderByAnswerOrderAsc(session.getId());
+        String jobRole = session.getQuestionSet().getApplication().getJobRole();
         return new SessionCompletionPreparation(
                 session.getId(),
                 session.getQuestionSet().getId(),
                 endedAt,
-                answers
+                answers,
+                jobRole
         );
     }
 
@@ -321,7 +324,8 @@ public class InterviewSessionService {
                     interviewResultGenerationService.generate(
                             preparation.sessionId(),
                             preparation.questionSetId(),
-                            preparation.answers()
+                            preparation.answers(),
+                            preparation.jobRole()
                     );
             executeInTransaction(() -> finalizeGeneratedResult(userId, preparation, generatedResult));
             clearResultGenerationRetryState(preparation.sessionId());
@@ -351,11 +355,13 @@ public class InterviewSessionService {
         }
 
         Instant endedAt = session.getEndedAt() == null ? clock.instant() : session.getEndedAt();
+        String jobRole = session.getQuestionSet().getApplication().getJobRole();
         return new SessionCompletionPreparation(
                 session.getId(),
                 session.getQuestionSet().getId(),
                 endedAt,
-                answers
+                answers,
+                jobRole
         );
     }
 
@@ -882,7 +888,8 @@ public class InterviewSessionService {
             long sessionId,
             long questionSetId,
             Instant endedAt,
-            List<InterviewAnswer> answers
+            List<InterviewAnswer> answers,
+            String jobRole
     ) {
     }
 

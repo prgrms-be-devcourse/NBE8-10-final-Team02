@@ -61,6 +61,42 @@ public class AiPipeline {
     }
 
     /**
+     * AI 파이프라인 실행 — 직무별 overlay 프롬프트 합성 지원
+     * base developerPrompt에 roleOverlayFile을 append하여 직무별 평가 기준을 적용
+     *
+     * @param templateId      사용할 프롬프트 템플릿 ID
+     * @param payload         AI에 전달할 입력 데이터 (JSON 문자열)
+     * @param roleOverlayFile 직무별 overlay 프롬프트 파일 경로 (null이면 overlay 없이 실행)
+     * @return 파싱 및 검증을 통과한 AI 응답 JsonNode
+     */
+    public JsonNode execute(String templateId, String payload, String roleOverlayFile) {
+        PromptTemplate template = templateRegistry.get(templateId);
+        AiResponseValidator validator = validationRegistry.get(templateId);
+
+        String systemPrompt = promptLoader.load(template.systemPromptFile());
+        String developerPrompt = promptLoader.loadComposite(
+            template.developerPromptFile(), roleOverlayFile
+        );
+
+        AiRequest request = new AiRequest(
+            systemPrompt, developerPrompt, payload,
+            template.temperature(), template.maxTokens()
+        );
+
+        try {
+            return executeWithClient(router.getDefault(), request, template, validator, templateId);
+        } catch (AiClientException e) {
+            return router.getFallback()
+                .map(fallbackClient -> {
+                    log.warn("[Fallback] 기본 provider({}) 실패 → fallback provider({})로 전환. 원인: {}",
+                        e.getProvider(), fallbackClient.getProvider(), e.getMessage());
+                    return executeWithClient(fallbackClient, request, template, validator, templateId);
+                })
+                .orElseThrow(() -> e);
+        }
+    }
+
+    /**
      * AI 파이프라인 실행
      * 기본 provider 호출 실패(AiClientException) 시 fallback provider로 자동 전환
      *
