@@ -12,6 +12,7 @@ tags:
 - name: Documents
 - name: Applications
 - name: Interview
+- name: Followup
 - name: AI
 components:
   securitySchemes:
@@ -992,6 +993,164 @@ components:
       - totalScore
       - summaryFeedback
       - endedAt
+    FollowupQuestionType:
+      type: string
+      enum:
+      - PROJECT
+      - PROBLEM
+      - TECH
+      - COLLABORATION
+    FollowupGapType:
+      type: string
+      enum:
+      - ROLE
+      - ACTION
+      - RESULT
+      - REASON
+      - METRIC
+      - CAUSE
+      - VERIFICATION
+      - PREVENTION
+      - ALTERNATIVE
+      - TRADEOFF
+      - LIMITATION
+      - ISSUE
+      - AGREEMENT
+      - REFLECTION
+      - SCOPE_MIXED
+    FollowupFinalAction:
+      type: string
+      enum:
+      - NO_FOLLOW_UP
+      - USE_CANDIDATE
+      - USE_DYNAMIC
+    FollowupCandidateQuestionType:
+      type: string
+      enum:
+      - PROJECT_RESULT_DETAIL
+      - PROJECT_RESULT_METRIC
+      - PROJECT_APPROACH_REASON
+      - PROJECT_SCOPE_NARROW
+      - PROJECT_CORE_CLARIFY
+      - PROBLEM_CAUSE_DETAIL
+      - PROBLEM_VERIFICATION_DETAIL
+      - PROBLEM_PREVENTION_DETAIL
+      - PROBLEM_CORE_CLARIFY
+      - TECH_ALTERNATIVE_COMPARE
+      - TECH_TRADEOFF_DETAIL
+      - TECH_EFFECT_AFTER_ADOPTION
+      - TECH_CORE_CLARIFY
+      - COLLAB_ISSUE_DETAIL
+      - COLLAB_AGREEMENT_CRITERIA
+      - COLLAB_DECISION_REASON
+      - COLLAB_RESULT_IMPACT
+      - COLLAB_CORE_CLARIFY
+    FollowupSignals:
+      type: object
+      properties:
+        ROLE:
+          type: boolean
+        ACTION:
+          type: boolean
+        RESULT:
+          type: boolean
+        REASON:
+          type: boolean
+        METRIC:
+          type: boolean
+        CAUSE:
+          type: boolean
+        VERIFICATION:
+          type: boolean
+        PREVENTION:
+          type: boolean
+        ALTERNATIVE:
+          type: boolean
+        TRADEOFF:
+          type: boolean
+        LIMITATION:
+          type: boolean
+        ISSUE:
+          type: boolean
+        AGREEMENT:
+          type: boolean
+        REFLECTION:
+          type: boolean
+        SCOPE_MIXED:
+          type: boolean
+      required:
+      - ROLE
+      - ACTION
+      - RESULT
+      - REASON
+      - METRIC
+      - CAUSE
+      - VERIFICATION
+      - PREVENTION
+      - ALTERNATIVE
+      - TRADEOFF
+      - LIMITATION
+      - ISSUE
+      - AGREEMENT
+      - REFLECTION
+      - SCOPE_MIXED
+    FollowupAnalyzeRequest:
+      type: object
+      properties:
+        questionType:
+          $ref: '#/components/schemas/FollowupQuestionType'
+        answerText:
+          type: string
+      required:
+      - questionType
+      - answerText
+    FollowupAnalyzeData:
+      type: object
+      properties:
+        questionType:
+          $ref: '#/components/schemas/FollowupQuestionType'
+        signals:
+          $ref: '#/components/schemas/FollowupSignals'
+        orderedMissingGaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/FollowupGapType'
+        primaryGap:
+          allOf:
+          - $ref: '#/components/schemas/FollowupGapType'
+          nullable: true
+        secondaryGap:
+          allOf:
+          - $ref: '#/components/schemas/FollowupGapType'
+          nullable: true
+        finalAction:
+          $ref: '#/components/schemas/FollowupFinalAction'
+        candidateQuestionTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/FollowupCandidateQuestionType'
+      required:
+      - questionType
+      - signals
+      - orderedMissingGaps
+      - primaryGap
+      - secondaryGap
+      - finalAction
+      - candidateQuestionTypes
+    FollowupAnalyzeApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/FollowupAnalyzeData'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - success
+      - data
+      - meta
 security:
 - AuthorizationHeader: []
 paths:
@@ -3684,6 +3843,68 @@ paths:
       description: 세션 결과와 피드백 리포트를 조회한다. answers[].questionId는 세션 질문 id를 사용한다.
         답변된 dynamic follow-up도 answers[]에 일반 질문과 동일하게 포함한다. 완료 직후에는 결과 생성 지연이
         있을 수 있다.
+  /followup-rules/analyze:
+    post:
+      tags:
+      - Followup
+      summary: follow-up rules 분석
+      description: questionType과 answerText만으로 P0 로컬 follow-up 규칙을 분석한다. 현재는 면접 세션 플로우와 연결되지 않은 독립 엔드포인트다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowupAnalyzeRequest'
+      responses:
+        '200':
+          description: 분석 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowupAnalyzeApiResponse'
+              examples:
+                followupAnalyzeSuccess:
+                  value:
+                    success: true
+                    data:
+                      questionType: PROJECT
+                      signals:
+                        ROLE: true
+                        ACTION: true
+                        RESULT: false
+                        REASON: false
+                        METRIC: false
+                        CAUSE: false
+                        VERIFICATION: false
+                        PREVENTION: false
+                        ALTERNATIVE: false
+                        TRADEOFF: false
+                        LIMITATION: false
+                        ISSUE: false
+                        AGREEMENT: false
+                        REFLECTION: false
+                        SCOPE_MIXED: false
+                      orderedMissingGaps:
+                      - RESULT
+                      - REASON
+                      - METRIC
+                      primaryGap: RESULT
+                      secondaryGap: REASON
+                      finalAction: USE_DYNAMIC
+                      candidateQuestionTypes: []
+                    meta: *id001
+        '400':
+          description: 요청 validation 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 인증 필요
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /ai/status:
     get:
       tags:
