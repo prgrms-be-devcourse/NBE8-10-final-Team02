@@ -191,9 +191,9 @@ public class KeywordTagExtractor {
         return TAG_CATEGORY.getOrDefault(tag, "topic");
     }
 
-    public static Map<String, String> allTags() {
-        return Map.copyOf(TAG_CATEGORY);
-    }
+//    public static Map<String, String> allTags() {
+//        return Map.copyOf(TAG_CATEGORY);
+//    }
 
     private KeywordTagExtractor() {}
 }
