@@ -243,6 +243,80 @@ class FollowupRuleServiceTest {
     }
 
     @Test
+    void analyze_returnsNoFollowUpForProblemWhenCauseResultAndAlertPreventionAreExplicit() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.PROBLEM,
+                "결제 승인 API에서 간헐적으로 타임아웃이 나는 장애를 해결한 경험이 있습니다. "
+                        + "특정 시간대에만 응답이 길어져서 처음에는 외부 PG 문제로 봤는데, "
+                        + "제가 슬로우 쿼리 로그와 커넥션 풀 상태를 같이 보니 주문 테이블의 락 대기가 원인이었습니다. "
+                        + "승인 요청과 정산 업데이트가 같은 트랜잭션 안에 묶여 있어 락 점유 시간이 길어졌고, "
+                        + "이를 승인 처리와 후속 정산 업데이트로 분리했습니다. "
+                        + "수정 후에는 부하 테스트와 실제 배포 후 대시보드 지표를 같이 확인했고, "
+                        + "p95 응답 시간이 2.1초에서 700ms 수준으로 내려갔습니다. "
+                        + "이후에는 락 대기 경고 알람도 추가해서 같은 유형의 문제를 먼저 감지할 수 있게 했습니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.CAUSE, true);
+        assertThat(response.signals()).containsEntry(GapType.RESULT, true);
+        assertThat(response.signals()).containsEntry(GapType.VERIFICATION, true);
+        assertThat(response.signals()).containsEntry(GapType.PREVENTION, true);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+        assertThat(response.candidateQuestionTypes()).isEmpty();
+    }
+
+    @Test
+    void analyze_returnsNoFollowUpForProblemWhenPatternReuseActsAsPrevention() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.PROBLEM,
+                "이미지 업로드 서비스에서 캐시 스탬피드 때문에 CPU가 튀는 문제가 있었습니다. "
+                        + "인기 이미지가 한꺼번에 만료되면 원본 스토리지 조회가 몰리는 구조였고, "
+                        + "저는 만료 시점을 분산시키는 TTL jitter와 single-flight 방식의 중복 요청 방지 로직을 적용했습니다. "
+                        + "변경 전후로 동일한 부하를 걸어 비교했고, 캐시 미스 구간 CPU 피크가 약 40% 줄었습니다. "
+                        + "운영 적용 후 일주일 동안 알람도 같이 봤는데 재발은 없었고, 이후 비슷한 캐시 키에도 같은 패턴을 재사용했습니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.CAUSE, true);
+        assertThat(response.signals()).containsEntry(GapType.PREVENTION, true);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+    }
+
+    @Test
+    void analyze_keepsProblemAsCandidateWhenOnlyVerificationDetailRemains() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.PROBLEM,
+                "데이터 적재 배치가 아침마다 밀리는 문제가 있었습니다. "
+                        + "확인해 보니 전날 누적 데이터가 많을수록 조인 범위가 커져서 배치 시간이 늘어나는 구조였습니다. "
+                        + "그래서 저는 증분 기준 컬럼을 다시 잡고 쿼리를 나눠서 실행되게 바꿨습니다. "
+                        + "처리 시간은 전보다 줄었지만, 정확히 어느 정도 줄었는지와 배포 후 장기적으로 안정화됐는지는 수치까지 챙기지는 못했습니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.CAUSE, true);
+        assertThat(response.signals()).containsEntry(GapType.RESULT, true);
+        assertThat(response.signals()).containsEntry(GapType.PREVENTION, true);
+        assertThat(response.signals()).containsEntry(GapType.VERIFICATION, false);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(response.candidateQuestionTypes()).containsExactly(
+                CandidateQuestionType.PROBLEM_VERIFICATION_DETAIL
+        );
+    }
+
+    @Test
+    void analyze_returnsNoFollowUpForProblemWhenTestGuardAndNoRecurrenceAreExplicit() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.PROBLEM,
+                "회원 탈퇴 처리에서 개인정보가 일부 테이블에 남는 문제가 있었습니다. "
+                        + "원인을 추적해 보니 비동기 삭제 대상 테이블 목록이 오래된 코드와 문서에서 서로 달랐습니다. "
+                        + "저는 삭제 대상 정의를 한곳으로 모으고 통합 테스트를 추가했습니다. "
+                        + "배포 후 샘플 계정으로 여러 번 검증했고 누락이 재현되지 않았습니다. "
+                        + "아주 큰 수치 개선을 말하긴 어렵지만, 컴플라이언스 이슈라서 팀 안에서는 꽤 중요하게 해결된 건으로 봤습니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.PREVENTION, true);
+        assertThat(response.signals()).containsEntry(GapType.RESULT, true);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+    }
+
+    @Test
     void analyze_returnsUseDynamicForTechWhenInsteadChoiceAndReasonArePresent() {
         FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
                 QuestionType.TECH,
@@ -293,6 +367,42 @@ class FollowupRuleServiceTest {
     }
 
     @Test
+    void analyze_keepsTechAsEffectCandidateWhenMonolithChoiceAlreadyImpliesAlternativeAndTradeoff() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.TECH,
+                "초기 서비스에서는 MSA로 쪼개지 않고 모놀리스를 유지했습니다. "
+                        + "팀 규모가 작고 도메인 경계도 아직 자주 바뀌어서, "
+                        + "저는 배포와 디버깅 비용을 먼저 줄이는 쪽이 낫다고 봤습니다. "
+                        + "다만 이 판단이 언제까지 유효한지나 나중에 어떤 시점에 분리 기준을 잡을지까지는 "
+                        + "당시 명확히 정해 두진 않았습니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.ALTERNATIVE, true);
+        assertThat(response.signals()).containsEntry(GapType.TRADEOFF, true);
+        assertThat(response.signals()).containsEntry(GapType.RESULT, false);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(response.candidateQuestionTypes()).containsExactly(
+                CandidateQuestionType.TECH_EFFECT_AFTER_ADOPTION
+        );
+    }
+
+    @Test
+    void analyze_returnsNoFollowUpForTechWhenComposeChoiceCoversAlternativeAndTradeoff() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.TECH,
+                "초기 개발 환경에서는 Kubernetes 대신 Docker Compose를 썼습니다. "
+                        + "서비스 수가 많지 않았고, 새 팀원이 로컬에서 빨리 띄우는 게 더 중요했습니다. "
+                        + "DB, 캐시, API, 워커 정도만 묶으면 됐기 때문에 Compose가 가장 단순했습니다. "
+                        + "운영 환경은 별도 배포 파이프라인으로 가져가고 로컬만 Compose로 제한해서 과한 추상화를 피했습니다. "
+                        + "나중에 서비스 수가 늘어나면 바꿀 수 있다는 전제는 있었지만, 초기 온보딩 시간 단축에는 분명히 도움이 됐습니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.ALTERNATIVE, true);
+        assertThat(response.signals()).containsEntry(GapType.TRADEOFF, true);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+    }
+
+    @Test
     void analyze_doesNotTreatAskedButUnexplainedComparisonAsAlternativeSignal() {
         FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
                 QuestionType.TECH,
@@ -304,6 +414,62 @@ class FollowupRuleServiceTest {
         assertThat(response.signals()).containsEntry(GapType.ALTERNATIVE, false);
         assertThat(response.signals()).containsEntry(GapType.TRADEOFF, false);
         assertThat(response.finalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+    }
+
+    @Test
+    void analyze_returnsNoFollowUpForProjectWhenConstraintDrivenReasonIsAlreadyExplained() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.PROJECT,
+                "반려동물 병원 예약 서비스를 출시한 경험이 있습니다. "
+                        + "초기에는 전화 예약 비중이 높아서 예약 누락이 많았고, "
+                        + "저는 백엔드 담당으로 예약 상태 머신과 알림 스케줄러를 맡았습니다. "
+                        + "병원별 영업시간이 달라 예외 처리가 많았는데, 예약 가능 슬롯을 미리 계산하는 구조로 바꾸고 "
+                        + "예약·취소·노쇼 상태를 이벤트 기반으로 관리했습니다. "
+                        + "QA 단계에서는 실제 병원 운영팀과 시나리오를 돌려 보면서 예외 케이스를 계속 보완했고, "
+                        + "출시 첫 달에 온라인 예약 비중이 20%대에서 60% 가까이 올라갔습니다. "
+                        + "중복 예약 문의도 눈에 띄게 줄어서 이후 추가 지점 확장 때 같은 구조를 재사용했습니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.REASON, true);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+    }
+
+    @Test
+    void analyze_keepsProjectAsCandidateWhenBriefSummaryWouldOtherwiseMatchDynamicWhitelist() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.PROJECT,
+                "사내 재고 관리 시스템을 만드는 프로젝트가 있었는데, 기존 엑셀 작업을 옮겨오는 성격이라 요구사항이 자주 바뀌었습니다. "
+                        + "저는 백엔드 쪽 기본 CRUD와 배치 작업을 맡아 필요한 기능을 우선 붙였습니다. "
+                        + "일정은 맞췄지만 어떤 기준으로 우선순위를 잡았는지나 결과가 얼마나 안정화됐는지는 "
+                        + "지금 설명하면 조금 일반론적으로 들릴 수 있습니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.ROLE, true);
+        assertThat(response.signals()).containsEntry(GapType.ACTION, true);
+        assertThat(response.signals()).containsEntry(GapType.RESULT, false);
+        assertThat(response.signals()).containsEntry(GapType.REASON, false);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(response.candidateQuestionTypes()).containsExactly(
+                CandidateQuestionType.PROJECT_APPROACH_REASON,
+                CandidateQuestionType.PROJECT_RESULT_DETAIL
+        );
+    }
+
+    @Test
+    void analyze_returnsNoFollowUpForCollaborationWhenDefinitionMismatchIsResolvedWithSharedEvidence() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.COLLABORATION,
+                "정산 대시보드를 만들 때 데이터 분석가와 해석 기준이 자주 달라 협업이 쉽지 않았습니다. "
+                        + "저는 백엔드에서 원천 데이터 생성 로직을 담당했고, 분석가는 대시보드 지표 정의를 맡고 있었습니다. "
+                        + "논쟁이 반복되자 제가 샘플 데이터 20건을 뽑아 계산식과 실제 결과를 나란히 비교하는 검증 문서를 만들었고, "
+                        + "그 문서로 어떤 예외를 포함할지 합의했습니다. "
+                        + "이후 API 스펙도 그 정의에 맞춰 고정했고, 재오픈 이슈 없이 배포까지 갔습니다. "
+                        + "협업이 잘 됐던 이유는 말로만 맞춘 게 아니라 같은 데이터를 기준으로 합의했기 때문이라고 생각합니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.ISSUE, true);
+        assertThat(response.signals()).containsEntry(GapType.RESULT, true);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
     }
 
     private FollowupRulesProperties loadProperties() {

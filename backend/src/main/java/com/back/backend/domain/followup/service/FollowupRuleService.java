@@ -37,7 +37,12 @@ public class FollowupRuleService {
         String normalizedAnswerText = textNormalizer.normalize(request.answerText());
         Map<GapType, Boolean> signals = signalExtractor.extract(normalizedAnswerText);
         GapResolver.Resolution resolution = gapResolver.resolve(request.questionType(), signals);
-        FinalAction finalAction = finalActionDecider.decide(request.questionType(), signals, resolution);
+        FinalAction finalAction = finalActionDecider.decide(
+                request.questionType(),
+                signals,
+                resolution,
+                normalizedAnswerText
+        );
         List<CandidateQuestionType> candidateQuestionTypes = candidateQuestionSelector.select(
                 request.questionType(),
                 signals,
