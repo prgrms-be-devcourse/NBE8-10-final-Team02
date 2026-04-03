@@ -22,7 +22,8 @@ public record GithubRepositoryResponse(
         boolean hasSummary,     // DB에 RepoSummary 레코드가 존재하는지 여부 (Redis TTL과 무관한 영구 상태)
         Instant pushedAt,       // GitHub pushed_at. 기여/URL 추가 경로는 null
         String ownerType,       // "owner" | "collaborator". 저장 시점에 결정됨. 기존 데이터는 null
-        String language         // primary language. null 가능
+        String language,        // primary language. null 가능
+        String secretExcludedFiles  // 시크릿 스캔으로 제외된 파일 목록 JSON (null이면 발견 없음)
 ) {
 
     public static GithubRepositoryResponse from(GithubRepository repo) {
@@ -51,7 +52,8 @@ public record GithubRepositoryResponse(
                 hasSummary,
                 repo.getPushedAt(),
                 repo.getOwnerType(),
-                repo.getLanguage()
+                repo.getLanguage(),
+                repo.getSecretExcludedFiles()
         );
     }
 }

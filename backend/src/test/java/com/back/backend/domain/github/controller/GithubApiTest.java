@@ -156,12 +156,12 @@ class GithubApiTest extends ApiTestBase {
         GithubRepositoryResponse repoA = new GithubRepositoryResponse(
                 1L, 1001L, "github-user", "repo-a", "github-user/repo-a",
                 "https://github.com/github-user/repo-a", "public", "main",
-                true, false, null, false, null, "owner", "Java"
+                true, false, null, false, null, "owner", "Java", null
         );
         GithubRepositoryResponse repoB = new GithubRepositoryResponse(
                 2L, 1002L, "github-user", "repo-b", "github-user/repo-b",
                 "https://github.com/github-user/repo-b", "public", "main",
-                false, false, null, false, null, "owner", null
+                false, false, null, false, null, "owner", null, null
         );
         given(repositoryService.getRepositories(any(), eq(null), eq(1), eq(20)))
                 .willReturn(new PageImpl<>(List.of(repoA, repoB), PageRequest.of(0, 20), 2));
@@ -180,7 +180,7 @@ class GithubApiTest extends ApiTestBase {
         GithubRepositoryResponse selected = new GithubRepositoryResponse(
                 1L, 1001L, "github-user", "selected-repo", "github-user/selected-repo",
                 "https://github.com/github-user/selected-repo", "public", "main",
-                true, false, null, false, null, "owner", null
+                true, false, null, false, null, "owner", null, null
         );
         given(repositoryService.getRepositories(any(), eq(true), eq(1), eq(20)))
                 .willReturn(new PageImpl<>(List.of(selected), PageRequest.of(0, 20), 1));

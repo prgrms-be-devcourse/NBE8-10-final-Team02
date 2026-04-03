@@ -10,6 +10,8 @@ import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
+import com.back.backend.global.security.GitleaksService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
@@ -81,6 +83,9 @@ public class AnalysisPipelineService {
     private final BatchRepoSummaryGeneratorService batchRepoSummaryGeneratorService;
     private final MergedSummaryService mergedSummaryService;
     private final Executor parallelAnalysisExecutor;
+    private final RepoFileFilterService repoFileFilterService;
+    private final GitleaksService gitleaksService;
+    private final ObjectMapper objectMapper;
 
     // Self-injection: @Async 프록시를 통해 executeAsync를 호출하기 위함
     private AnalysisPipelineService self;
@@ -100,7 +105,10 @@ public class AnalysisPipelineService {
             BatchRepoSummaryGeneratorService batchRepoSummaryGeneratorService,
             MergedSummaryService mergedSummaryService,
             @org.springframework.beans.factory.annotation.Qualifier("parallelAnalysisExecutor")
-            Executor parallelAnalysisExecutor
+            Executor parallelAnalysisExecutor,
+            RepoFileFilterService repoFileFilterService,
+            GitleaksService gitleaksService,
+            ObjectMapper objectMapper
     ) {
         this.userRepository = userRepository;
         this.repositoryRepository = repositoryRepository;
@@ -116,6 +124,9 @@ public class AnalysisPipelineService {
         this.batchRepoSummaryGeneratorService = batchRepoSummaryGeneratorService;
         this.mergedSummaryService = mergedSummaryService;
         this.parallelAnalysisExecutor = parallelAnalysisExecutor;
+        this.repoFileFilterService = repoFileFilterService;
+        this.gitleaksService = gitleaksService;
+        this.objectMapper = objectMapper;
     }
 
     // Spring이 주입한 자기 자신 (프록시) — @Lazy로 순환 참조 방지
@@ -481,19 +492,28 @@ public class AnalysisPipelineService {
         syncStatusService.setInProgress(userId, repositoryId, "clone");
         repoCloneService.cloneOrFetch(repo.getHtmlUrl(), userId, repositoryId);
 
+        // ② 파일 필터링 + 시크릿 스캔
+        Path repoPath = repoCloneService.getRepoPath(userId, repositoryId);
+        Set<String> safeFiles = applyFileFilterAndSecretScan(repo, repoPath);
+
         // ③ 정적 분석 + PageRank + Code Index 저장
         checkCancelled(userId, repositoryId);
         syncStatusService.setInProgress(userId, repositoryId, "analysis");
-        Path repoPath = repoCloneService.getRepoPath(userId, repositoryId);
 
         String authorEmail = resolveAuthorEmail(repo, user);
         Set<String> authoredFiles = contributionExtractorService.getAuthoredFiles(repoPath, authorEmail);
 
         boolean largeRepo = isLargeRepo(repoPath);
-        Optional<Set<String>> analyzeScope = largeRepo ? Optional.of(authoredFiles) : Optional.empty();
+        Optional<Set<String>> analyzeScope;
         if (largeRepo) {
-            log.info("Batch: large repo detected (>{} files), analyzing authored files only: repoId={}",
-                    LARGE_REPO_FILE_THRESHOLD, repositoryId);
+            Set<String> scopedFiles = authoredFiles.stream()
+                    .filter(safeFiles::contains)
+                    .collect(java.util.stream.Collectors.toSet());
+            analyzeScope = Optional.of(scopedFiles);
+            log.info("Batch: large repo detected (>{} files), scope=authored∩safe: repoId={}, count={}",
+                    LARGE_REPO_FILE_THRESHOLD, repositoryId, scopedFiles.size());
+        } else {
+            analyzeScope = Optional.of(safeFiles);
         }
 
         List<AnalysisNode> nodes = staticAnalysisService.analyze(repoPath, analyzeScope);
@@ -521,6 +541,9 @@ public class AnalysisPipelineService {
         syncStatusService.setInProgress(userId, repositoryId, "clone");
         Path repoPath = repoCloneService.cloneOrFetch(repo.getHtmlUrl(), userId, repositoryId);
 
+        // ② 파일 필터링 + 시크릿 스캔 (확장자/크기 필터 → Gitleaks 스캔 → 시크릿 파일 제거)
+        Set<String> safeFiles = applyFileFilterAndSecretScan(repo, repoPath);
+
         // ③ 정적 분석 + PageRank + Code Index 저장
         checkCancelled(userId, repositoryId); // clone 완료 후 취소 여부 확인
         syncStatusService.setInProgress(userId, repositoryId, "analysis");
@@ -528,13 +551,19 @@ public class AnalysisPipelineService {
         String authorEmail = resolveAuthorEmail(repo, user);
         Set<String> authoredFiles = contributionExtractorService.getAuthoredFiles(repoPath, authorEmail);
 
-        // large repo이면 본인 기여 파일만 정적 분석 (전체 분석은 비용 대비 효과 낮음)
-        // 부족한 전체 구조 파악은 README/docs로 보완 (RepoSummaryGeneratorService에서 프롬프트에 주입)
+        // large repo이면 본인 기여 파일과 safe files의 교집합만 분석
+        // 일반 repo는 safe files 전체 분석
         boolean largeRepo = isLargeRepo(repoPath);
-        Optional<Set<String>> analyzeScope = largeRepo ? Optional.of(authoredFiles) : Optional.empty();
+        Optional<Set<String>> analyzeScope;
         if (largeRepo) {
-            log.info("Large repo detected (>{} source files), analyzing authored files only: userId={}, repoId={}",
-                    LARGE_REPO_FILE_THRESHOLD, userId, repositoryId);
+            Set<String> scopedFiles = authoredFiles.stream()
+                    .filter(safeFiles::contains)
+                    .collect(java.util.stream.Collectors.toSet());
+            analyzeScope = Optional.of(scopedFiles);
+            log.info("Large repo detected (>{} source files), scope=authored∩safe: userId={}, repoId={}, count={}",
+                    LARGE_REPO_FILE_THRESHOLD, userId, repositoryId, scopedFiles.size());
+        } else {
+            analyzeScope = Optional.of(safeFiles);
         }
 
         List<AnalysisNode> nodes = staticAnalysisService.analyze(repoPath, analyzeScope);
@@ -648,6 +677,73 @@ public class AnalysisPipelineService {
             Thread.currentThread().interrupt(); // interrupt 플래그 복원
             throw new CancellationException("분석이 취소되었습니다.");
         }
+    }
+
+    /**
+     * 파일 확장자/크기 필터링과 시크릿 스캔을 순서대로 실행하고 안전한 파일의 상대 경로 집합을 반환한다.
+     *
+     * <p>처리 순서:</p>
+     * <ol>
+     *   <li>{@link RepoFileFilterService}: 확장자 Whitelist + 단일 파일 크기 상한 필터링</li>
+     *   <li>{@link GitleaksService}: 시크릿 스캔 — 발견된 파일을 분석 대상에서 제거</li>
+     *   <li>시크릿 발견 시: 파일 경로 + 룰 ID를 {@code github_repositories.secret_excluded_files}에 저장</li>
+     * </ol>
+     *
+     * <p>시크릿 발견 시에도 <b>분석은 계속 진행</b>된다 (Graceful Degradation).
+     * 실제 시크릿 값은 저장하거나 로그에 남기지 않는다.</p>
+     *
+     * @param repo     분석 대상 GithubRepository
+     * @param repoPath clone된 repo 루트 경로
+     * @return 분석 가능한 파일의 상대 경로 집합 (repoPath 기준)
+     */
+    private Set<String> applyFileFilterAndSecretScan(GithubRepository repo, Path repoPath) {
+        // 1) 확장자 Whitelist + 크기 필터
+        RepoFileFilterService.FilterResult filterResult = repoFileFilterService.filter(repoPath);
+
+        // 절대 경로 → 상대 경로(String) 변환 (OS 경로 구분자를 /로 통일)
+        Set<String> safeFiles = filterResult.allowed().stream()
+                .map(p -> repoPath.relativize(p).toString().replace('\\', '/'))
+                .collect(java.util.stream.Collectors.toCollection(java.util.HashSet::new));
+
+        log.info("FileFilter: allowed={}, skipped={}, repoId={}",
+                safeFiles.size(), filterResult.skipped().size(), repo.getId());
+
+        // 2) 시크릿 스캔
+        GitleaksService.GitleaksScanResult scanResult = gitleaksService.scanRepo(repoPath);
+
+        if (!scanResult.hasFindings()) {
+            // 시크릿 없음: 이전 분석에서 남은 excluded 기록 초기화 (재분석 시 stale 방지)
+            repo.updateSecretExcludedFiles(null);
+            repositoryRepository.save(repo);
+            return safeFiles;
+        }
+
+        // 3) 시크릿 발견된 파일 제거 (경로 구분자 통일 후 비교)
+        Set<String> secretFilePaths = scanResult.findings().stream()
+                .map(f -> f.filePath().replace('\\', '/'))
+                .collect(java.util.stream.Collectors.toSet());
+        safeFiles.removeAll(secretFilePaths);
+
+        log.warn("Secret scan: {} file(s) excluded from analysis. repoId={}, ruleIds={}",
+                secretFilePaths.size(),
+                repo.getId(),
+                scanResult.findings().stream()
+                        .map(GitleaksService.SecretFinding::ruleId)
+                        .distinct()
+                        .toList());
+
+        // 4) 제외 파일 목록 DB 저장 (파일 경로 + 룰 ID만 — 시크릿 값 포함 없음)
+        try {
+            List<java.util.Map<String, String>> excluded = scanResult.findings().stream()
+                    .map(f -> java.util.Map.of("filePath", f.filePath(), "ruleId", f.ruleId()))
+                    .toList();
+            repo.updateSecretExcludedFiles(objectMapper.writeValueAsString(excluded));
+            repositoryRepository.save(repo);
+        } catch (Exception e) {
+            log.warn("Failed to persist secret excluded files for repoId={}: {}", repo.getId(), e.getMessage());
+        }
+
+        return safeFiles;
     }
 
     private String summarizeError(Exception e) {
