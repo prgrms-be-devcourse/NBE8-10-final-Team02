@@ -21,8 +21,6 @@ export default function WeakTagsChart({ entries }: Props) {
     );
   }
 
-  const maxAvg = Math.max(...entries.map((e) => e.avgScore));
-
   return (
     <ul className="space-y-3">
       {entries.map((e) => (
@@ -41,7 +39,7 @@ export default function WeakTagsChart({ entries }: Props) {
           <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-100">
             <div
               className={`h-full rounded-full ${scoreColor(e.avgScore)} transition-all`}
-              style={{ width: `${(e.avgScore / maxAvg) * 100}%` }}
+              style={{ width: `${e.avgScore}%` }}
             />
           </div>
         </li>
