@@ -93,7 +93,7 @@ public class InterviewResultGenerationService {
                         "questionType", answer.getSessionQuestion().getQuestionType().getValue(),
                         "difficultyLevel", answer.getSessionQuestion().getDifficultyLevel().getValue(),
                         "questionText", answer.getSessionQuestion().getQuestionText(),
-                        "answerText", answer.getAnswerText(),
+                        "answerText", answer.getAnswerText() != null ? answer.getAnswerText() : "",
                         "isSkipped", answer.isSkipped()
                 ))
                 .toList());
