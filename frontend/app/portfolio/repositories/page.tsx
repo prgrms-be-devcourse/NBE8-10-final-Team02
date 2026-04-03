@@ -236,12 +236,12 @@ function OwnedTab() {
 
   // ── 일괄 분석 시작 ──
 
-  // 선택된 repo 중 분석 대상: COMPLETED가 아닌 것 (커밋 동기화 여부는 무관 — 자동 처리)
+  // 선택된 repo 중 분석 대상: summary가 없는 것 (커밋 동기화 여부는 무관 — 자동 처리)
   function getAnalyzableIds(): number[] {
     return Array.from(selectedIds).filter((id) => {
       const repo = repos.find((r) => r.id === id);
       if (!repo) return false;
-      return repo.analysisStatus?.status !== 'COMPLETED';
+      return !repo.hasSummary;
     });
   }
 
@@ -351,7 +351,7 @@ function OwnedTab() {
         {repos.map((repo) => {
           const isSelected = selectedIds.has(repo.id);
           const isToggling = togglingId === repo.id;
-          const isCompleted = repo.analysisStatus?.status === 'COMPLETED';
+          const isCompleted = repo.hasSummary;
           const isDisabled = isCompleted; // 완료된 repo는 체크박스 비활성화
           const isReSyncing = reSyncing === repo.id;
 

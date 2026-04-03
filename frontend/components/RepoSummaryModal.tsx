@@ -10,6 +10,12 @@ interface RepoSummaryModalProps {
   onClose: () => void;
 }
 
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">{title}</h3>
+  );
+}
+
 export default function RepoSummaryModal({
   repositoryId,
   repoFullName,
@@ -44,16 +50,19 @@ export default function RepoSummaryModal({
     void load();
   }, [repositoryId]);
 
+  const p = data?.project;
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-10">
-      <div className="w-full max-w-lg rounded-2xl border border-zinc-200 bg-white shadow-xl">
+      <div className="w-full max-w-xl rounded-2xl border border-zinc-200 bg-white shadow-xl">
+
         {/* 헤더 */}
         <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-4">
-          <div>
-            <h2 className="text-base font-semibold text-zinc-900">분석 결과</h2>
-            <p className="text-xs text-zinc-500 truncate">{repoFullName}</p>
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-zinc-900 truncate">{p?.projectName ?? repoFullName}</h2>
+            <p className="text-xs text-zinc-400 truncate">{repoFullName}</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0 ml-4">
             <button
               onClick={() => setShowRaw((v) => !v)}
               title="원본 JSON 보기"
@@ -78,18 +87,26 @@ export default function RepoSummaryModal({
             <p className="text-sm text-zinc-400">아직 분석 결과가 없습니다.</p>
           )}
 
-          {!loading && !error && data && !showRaw && (
-            <div className="flex flex-col gap-5">
+          {!loading && !error && p && !showRaw && (
+            <div className="flex flex-col gap-6">
+
+              {/* 요약 + 역할 */}
+              <section>
+                {p.summary && (
+                  <p className="text-sm text-zinc-600 leading-relaxed">{p.summary}</p>
+                )}
+                {p.role && (
+                  <p className="mt-1.5 text-xs text-zinc-400">역할: <span className="text-zinc-600">{p.role}</span></p>
+                )}
+              </section>
+
               {/* 기술 스택 */}
-              {data.project.stack.length > 0 && (
+              {p.stack.length > 0 && (
                 <section>
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">기술 스택</h3>
+                  <SectionHeader title="기술 스택" />
                   <div className="flex flex-wrap gap-1.5">
-                    {data.project.stack.map((s) => (
-                      <span
-                        key={s}
-                        className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700"
-                      >
+                    {p.stack.map((s) => (
+                      <span key={s} className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700">
                         {s}
                       </span>
                     ))}
@@ -98,54 +115,118 @@ export default function RepoSummaryModal({
               )}
 
               {/* 핵심 구현 */}
-              {data.project.signals.length > 0 && (
+              {p.signals.length > 0 && (
                 <section>
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">핵심 구현</h3>
-                  <ol className="list-decimal list-inside flex flex-col gap-1">
-                    {data.project.signals.map((s, i) => (
-                      <li key={i} className="text-sm text-zinc-700 leading-relaxed">{s}</li>
+                  <SectionHeader title="핵심 구현" />
+                  <ul className="flex flex-col gap-1">
+                    {p.signals.map((s, i) => (
+                      <li key={i} className="flex gap-2 text-sm text-zinc-700">
+                        <span className="mt-0.5 text-zinc-300">•</span>
+                        <span>{s}</span>
+                      </li>
                     ))}
-                  </ol>
+                  </ul>
+                </section>
+              )}
+
+              {/* 구현 근거 */}
+              {p.evidenceBullets.length > 0 && (
+                <section>
+                  <SectionHeader title="구현 근거" />
+                  <ul className="flex flex-col gap-1">
+                    {p.evidenceBullets.map((e, i) => (
+                      <li key={i} className="flex gap-2 text-sm text-zinc-700">
+                        <span className="mt-0.5 text-zinc-300">•</span>
+                        <span>{e.fact}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </section>
               )}
 
               {/* 트러블슈팅 */}
-              {data.project.challenges.length > 0 && (
+              {p.challenges.length > 0 && (
                 <section>
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">트러블슈팅</h3>
-                  <ol className="list-decimal list-inside flex flex-col gap-1">
-                    {data.project.challenges.map((c, i) => (
-                      <li key={i} className="text-sm text-zinc-700 leading-relaxed">{c}</li>
+                  <SectionHeader title="트러블슈팅" />
+                  <div className="flex flex-col gap-3">
+                    {p.challenges.map((c, i) => (
+                      <div key={i} className="rounded-lg bg-zinc-50 px-4 py-3">
+                        <p className="text-sm font-medium text-zinc-800">{c.what}</p>
+                        {c.how && <p className="mt-1 text-sm text-zinc-600">{c.how}</p>}
+                        {c.learning && (
+                          <p className="mt-1 text-xs text-zinc-400">배운 점: {c.learning}</p>
+                        )}
+                      </div>
                     ))}
-                  </ol>
+                  </div>
                 </section>
               )}
 
               {/* 기술적 의사결정 */}
-              {data.project.techDecisions.length > 0 && (
+              {p.techDecisions.length > 0 && (
                 <section>
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">기술적 의사결정</h3>
-                  <ol className="list-decimal list-inside flex flex-col gap-1">
-                    {data.project.techDecisions.map((t, i) => (
-                      <li key={i} className="text-sm text-zinc-700 leading-relaxed">{t}</li>
+                  <SectionHeader title="기술적 의사결정" />
+                  <div className="flex flex-col gap-3">
+                    {p.techDecisions.map((t, i) => (
+                      <div key={i} className="rounded-lg bg-zinc-50 px-4 py-3">
+                        <p className="text-sm font-medium text-zinc-800">{t.decision}</p>
+                        {t.reason && <p className="mt-1 text-sm text-zinc-600">{t.reason}</p>}
+                        {t.tradeOff && (
+                          <p className="mt-1 text-xs text-zinc-400">트레이드오프: {t.tradeOff}</p>
+                        )}
+                      </div>
                     ))}
-                  </ol>
+                  </div>
                 </section>
               )}
 
-              {/* Role / Period */}
-              {(data.project.role || data.project.period) && (
-                <section className="flex gap-4 text-xs text-zinc-400">
-                  {data.project.role && <span>역할: <span className="text-zinc-600">{data.project.role}</span></span>}
-                  {data.project.period && <span>기간: <span className="text-zinc-600">{data.project.period}</span></span>}
+              {/* 강점 */}
+              {p.strengths.length > 0 && (
+                <section>
+                  <SectionHeader title="강점" />
+                  <ul className="flex flex-col gap-1">
+                    {p.strengths.map((s, i) => (
+                      <li key={i} className="flex gap-2 text-sm text-zinc-700">
+                        <span className="mt-0.5 text-emerald-400">✓</span>
+                        <span>{s}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </section>
               )}
+
+              {/* 리스크 */}
+              {p.risks.length > 0 && (
+                <section>
+                  <SectionHeader title="리스크" />
+                  <ul className="flex flex-col gap-1">
+                    {p.risks.map((r, i) => (
+                      <li key={i} className="flex gap-2 text-sm text-zinc-700">
+                        <span className="mt-0.5 text-amber-400">!</span>
+                        <span>{r}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {/* 품질 플래그 */}
+              {p.qualityFlags.length > 0 && (
+                <section className="flex flex-wrap gap-1.5">
+                  {p.qualityFlags.map((f) => (
+                    <span key={f} className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-600">
+                      {f}
+                    </span>
+                  ))}
+                </section>
+              )}
+
             </div>
           )}
 
           {/* Raw JSON 뷰어 */}
           {showRaw && rawJson && (
-            <pre className="overflow-x-auto rounded-xl bg-zinc-950 p-4 text-xs text-green-400 leading-relaxed max-h-96 overflow-y-auto">
+            <pre className="overflow-x-auto rounded-xl bg-zinc-950 p-4 text-xs text-green-400 leading-relaxed max-h-[60vh] overflow-y-auto">
               {JSON.stringify(JSON.parse(rawJson), null, 2)}
             </pre>
           )}

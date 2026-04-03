@@ -29,4 +29,8 @@ public interface RepoSummaryRepository extends JpaRepository<RepoSummary, Long> 
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.data.jpa.repository.Query("delete from RepoSummary s where s.githubRepository.id = :repoId")
     void deleteByGithubRepositoryId(@org.springframework.data.repository.query.Param("repoId") Long repoId);
+
+    // repo ID 목록 중 summary가 존재하는 ID 집합 조회 (N+1 방지용 배치 조회)
+    @org.springframework.data.jpa.repository.Query("select distinct s.githubRepository.id from RepoSummary s where s.githubRepository.id in :repoIds")
+    java.util.Set<Long> findRepoIdsWithSummary(@org.springframework.data.repository.query.Param("repoIds") java.util.List<Long> repoIds);
 }
