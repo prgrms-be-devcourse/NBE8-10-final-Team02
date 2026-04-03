@@ -22,13 +22,15 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executor;
 
 /**
  * clone → 정적 분석 → Code Index → RepoSummary → MergedSummary 파이프라인 오케스트레이터.
@@ -78,6 +80,7 @@ public class AnalysisPipelineService {
     private final RepoSummaryGeneratorService repoSummaryGeneratorService;
     private final BatchRepoSummaryGeneratorService batchRepoSummaryGeneratorService;
     private final MergedSummaryService mergedSummaryService;
+    private final Executor parallelAnalysisExecutor;
 
     // Self-injection: @Async 프록시를 통해 executeAsync를 호출하기 위함
     private AnalysisPipelineService self;
@@ -95,7 +98,9 @@ public class AnalysisPipelineService {
             ContributionExtractorService contributionExtractorService,
             RepoSummaryGeneratorService repoSummaryGeneratorService,
             BatchRepoSummaryGeneratorService batchRepoSummaryGeneratorService,
-            MergedSummaryService mergedSummaryService
+            MergedSummaryService mergedSummaryService,
+            @org.springframework.beans.factory.annotation.Qualifier("parallelAnalysisExecutor")
+            Executor parallelAnalysisExecutor
     ) {
         this.userRepository = userRepository;
         this.repositoryRepository = repositoryRepository;
@@ -110,6 +115,7 @@ public class AnalysisPipelineService {
         this.repoSummaryGeneratorService = repoSummaryGeneratorService;
         this.batchRepoSummaryGeneratorService = batchRepoSummaryGeneratorService;
         this.mergedSummaryService = mergedSummaryService;
+        this.parallelAnalysisExecutor = parallelAnalysisExecutor;
     }
 
     // Spring이 주입한 자기 자신 (프록시) — @Lazy로 순환 참조 방지
@@ -193,56 +199,62 @@ public class AnalysisPipelineService {
             return;
         }
 
-        // ── 1단계: 각 repo에 대해 ①②③ 실행 ──────────────────────────
-        List<GithubRepository> analyzedRepos = new ArrayList<>();
+        // ── 1단계: 각 repo에 대해 ①②③ 병렬 실행 ────────────────────────
+        // thread-safe list: 여러 CompletableFuture가 동시에 add()하므로 CopyOnWriteArrayList 사용
+        List<GithubRepository> analyzedRepos = new CopyOnWriteArrayList<>();
 
-        for (Long repositoryId : repositoryIds) {
-            // 스레드 추적 등록 (cancel() 호출 시 interrupt 가능)
-            String key = threadKey(userId, repositoryId);
-            activeThreads.put(key, Thread.currentThread());
+        List<CompletableFuture<Void>> futures = repositoryIds.stream()
+                .map(repositoryId -> CompletableFuture.runAsync(() -> {
+                    // 스레드 추적 등록 (cancel() 호출 시 interrupt 가능)
+                    String key = threadKey(userId, repositoryId);
+                    activeThreads.put(key, Thread.currentThread());
 
-            // PENDING 중 cancel() 이 먼저 호출된 경우 즉시 skip
-            SyncStatusService.SyncStatusData currentStatus =
-                    syncStatusService.getStatus(userId, repositoryId).orElse(null);
-            if (currentStatus == null || currentStatus.status() == SyncStatus.FAILED) {
-                log.info("Batch: repo skipped (cancelled before start): repoId={}", repositoryId);
-                activeThreads.remove(key);
-                continue;
-            }
+                    // PENDING 중 cancel() 이 먼저 호출된 경우 즉시 skip
+                    SyncStatusService.SyncStatusData currentStatus =
+                            syncStatusService.getStatus(userId, repositoryId).orElse(null);
+                    if (currentStatus == null || currentStatus.status() == SyncStatus.FAILED) {
+                        log.info("Batch: repo skipped (cancelled before start): repoId={}", repositoryId);
+                        activeThreads.remove(key);
+                        return;
+                    }
 
-            // findByIdWithConnection: githubConnection + user JOIN FETCH → LazyInitializationException 방지
-            GithubRepository repo = repositoryRepository.findByIdWithConnection(repositoryId).orElse(null);
-            if (repo == null) {
-                syncStatusService.setFailed(userId, repositoryId, "저장소를 찾을 수 없습니다.");
-                activeThreads.remove(key);
-                continue;
-            }
+                    // findByIdWithConnection: githubConnection + user JOIN FETCH → LazyInitializationException 방지
+                    GithubRepository repo = repositoryRepository.findByIdWithConnection(repositoryId).orElse(null);
+                    if (repo == null) {
+                        syncStatusService.setFailed(userId, repositoryId, "저장소를 찾을 수 없습니다.");
+                        activeThreads.remove(key);
+                        return;
+                    }
 
-            try {
-                // ①②③ 실행. significance check 미달이면 false 반환 → 배치 AI 대상 제외
-                boolean passed = runStaticAnalysisSteps(user, repo, userId, repositoryId);
-                if (passed) {
-                    analyzedRepos.add(repo);
-                }
-            } catch (Exception e) {
-                log.error("Batch: static analysis failed for repoId={}: {}", repositoryId, e.getMessage(), e);
-                syncStatusService.setFailed(userId, repositoryId, summarizeError(e));
-                try {
-                    codeIndexService.deleteByRepository(repo);
-                } catch (Exception cleanupEx) {
-                    log.warn("Batch: code index cleanup failed for repoId={}: {}",
-                            repositoryId, cleanupEx.getMessage());
-                }
-            } finally {
-                activeThreads.remove(key);
-                // 정적 분석 완료 후 clone 디렉터리 정리
-                // (BatchRepoSummaryGeneratorService.collectSingleRepoData가 clone 이후 읽으므로
-                //  ① 분석 실패한 repo만 여기서 정리. 성공한 repo는 generateAll 완료 후 정리됨.)
-                if (!analyzedRepos.contains(repo)) {
-                    repoCloneService.deleteRepo(userId, repositoryId);
-                }
-            }
-        }
+                    try {
+                        // ①②③ 실행. significance check 미달이면 false 반환 → 배치 AI 대상 제외
+                        boolean passed = runStaticAnalysisSteps(user, repo, userId, repositoryId);
+                        if (passed) {
+                            analyzedRepos.add(repo);
+                        }
+                    } catch (Exception e) {
+                        log.error("Batch: static analysis failed for repoId={}: {}", repositoryId, e.getMessage(), e);
+                        syncStatusService.setFailed(userId, repositoryId, summarizeError(e));
+                        try {
+                            codeIndexService.deleteByRepository(repo);
+                        } catch (Exception cleanupEx) {
+                            log.warn("Batch: code index cleanup failed for repoId={}: {}",
+                                    repositoryId, cleanupEx.getMessage());
+                        }
+                    } finally {
+                        activeThreads.remove(key);
+                        // 정적 분석 완료 후 clone 디렉터리 정리
+                        // (BatchRepoSummaryGeneratorService.collectSingleRepoData가 clone 이후 읽으므로
+                        //  분석 실패한 repo만 여기서 정리. 성공한 repo는 generateAll 완료 후 정리됨.)
+                        if (!analyzedRepos.contains(repo)) {
+                            repoCloneService.deleteRepo(userId, repositoryId);
+                        }
+                    }
+                }, parallelAnalysisExecutor))
+                .toList();
+
+        // 모든 repo의 ①②③이 끝날 때까지 대기
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
         if (analyzedRepos.isEmpty()) {
             log.warn("Batch: no repos passed static analysis. Batch AI call skipped. userId={}", userId);
