@@ -1,0 +1,82 @@
+[
+  {
+    "caseId": "project_brief_summary_guard",
+    "questionType": "PROJECT",
+    "answerText": "사내 결제 정산 화면을 다시 만드는 프로젝트가 있었고, 초기 운영팀 요청이 계속 들어와 범위가 자주 바뀌었습니다. 저는 백엔드 담당으로 조회 API와 배치 구조를 정리했습니다. 급한 요청을 먼저 붙이느라 일정은 맞췄지만 어떤 기준으로 우선순위를 정했는지와 실제 운영이 얼마나 안정화됐는지는 지금 설명하면 아직 추상적으로 들립니다.",
+    "expectedFinalAction": "USE_CANDIDATE",
+    "expectedPrimaryGap": "RESULT",
+    "expectedSecondaryGap": "REASON",
+    "expectedCandidateQuestionTypes": [
+      "PROJECT_APPROACH_REASON",
+      "PROJECT_RESULT_DETAIL"
+    ],
+    "expectedPresentSignals": [
+      "ROLE",
+      "ACTION"
+    ],
+    "expectedAbsentSignals": [
+      "RESULT",
+      "REASON",
+      "METRIC"
+    ]
+  },
+  {
+    "caseId": "tech_instead_keep_effect_candidate",
+    "questionType": "TECH",
+    "answerText": "초기 관리 콘솔은 MSA 대신 모놀리스를 유지했습니다. 서비스 수가 적어서 배포와 디버깅 비용을 먼저 줄이는 쪽이 낫다고 봤습니다. 대신 서비스 간 장애 격리가 약하다는 단점은 있었지만, 실제로 운영이 얼마나 쉬워졌는지는 더 설명이 필요합니다.",
+    "expectedFinalAction": "USE_CANDIDATE",
+    "expectedPrimaryGap": "RESULT",
+    "expectedSecondaryGap": null,
+    "expectedCandidateQuestionTypes": [
+      "TECH_EFFECT_AFTER_ADOPTION"
+    ],
+    "expectedPresentSignals": [
+      "ALTERNATIVE",
+      "REASON",
+      "TRADEOFF"
+    ],
+    "expectedAbsentSignals": [
+      "RESULT"
+    ]
+  },
+  {
+    "caseId": "collab_shared_evidence_without_hard_metric",
+    "questionType": "COLLABORATION",
+    "answerText": "정산 기준을 맞출 때 데이터팀과 해석 기준이 자주 달라 협업이 쉽지 않았습니다. 저는 차이가 나는 예시 로그를 한 문서로 정리했고, 그 문서를 기준으로 어떤 예외를 포함할지 합의했습니다. 이후 API 응답도 같은 정의로 고정했고 재오픈 이슈 없이 배포까지 갔습니다. 협업이 풀린 이유는 말로만 맞춘 게 아니라 같은 로그를 기준으로 맞췄기 때문입니다.",
+    "expectedFinalAction": "NO_FOLLOW_UP",
+    "expectedPrimaryGap": "METRIC",
+    "expectedSecondaryGap": null,
+    "expectedCandidateQuestionTypes": [],
+    "expectedPresentSignals": [
+      "ISSUE",
+      "ACTION",
+      "AGREEMENT",
+      "RESULT",
+      "REASON"
+    ],
+    "expectedAbsentSignals": [
+      "METRIC"
+    ]
+  },
+  {
+    "caseId": "problem_verification_without_prevention",
+    "questionType": "PROBLEM",
+    "answerText": "검색 캐시가 특정 조건에서 튀는 문제가 있었고, 분석해 보니 키 생성 규칙이 일부 요청을 같은 버킷으로 몰고 있었습니다. 저는 키 조합을 분리해 충돌을 줄였고 응답 시간도 다시 안정화됐습니다. 수정 후 회귀 테스트로 같은 요청 시나리오를 여러 번 다시 확인했습니다. 다만 운영 알람이나 체크리스트 같은 재발 방지 장치까지는 아직 붙이지 못했습니다.",
+    "expectedFinalAction": "USE_CANDIDATE",
+    "expectedPrimaryGap": "PREVENTION",
+    "expectedSecondaryGap": "METRIC",
+    "expectedCandidateQuestionTypes": [
+      "PROBLEM_PREVENTION_DETAIL"
+    ],
+    "expectedPresentSignals": [
+      "CAUSE",
+      "ACTION",
+      "RESULT",
+      "VERIFICATION"
+    ],
+    "expectedAbsentSignals": [
+      "PREVENTION",
+      "METRIC"
+    ]
+  }
+]
