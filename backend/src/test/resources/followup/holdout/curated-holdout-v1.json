@@ -63,6 +63,48 @@
     ]
   },
   {
+    "caseId": "project_brief_summary_guard_sentence_boundary_variant",
+    "questionType": "PROJECT",
+    "answerText": "사내 주문 정산 화면을 다시 만드는 프로젝트가 있었습니다. 기존 운영 요청이 자주 바뀌어서 범위를 계속 조정해야 했습니다. 저는 백엔드 담당으로 조회 API와 상태 저장 흐름을 정리했습니다. 일정은 맞췄지만 왜 그 순서로 정했는지와 운영이 실제로 얼마나 안정화됐는지는 지금 말하면 아직 조금 일반론적으로 들립니다.",
+    "expectedFinalAction": "USE_CANDIDATE",
+    "expectedPrimaryGap": "RESULT",
+    "expectedSecondaryGap": "REASON",
+    "expectedCandidateQuestionTypes": [
+      "PROJECT_APPROACH_REASON",
+      "PROJECT_RESULT_DETAIL"
+    ],
+    "expectedPresentSignals": [
+      "ROLE",
+      "ACTION"
+    ],
+    "expectedAbsentSignals": [
+      "RESULT",
+      "REASON",
+      "METRIC"
+    ]
+  },
+  {
+    "caseId": "project_brief_summary_guard_length_boundary_variant",
+    "questionType": "PROJECT",
+    "answerText": "사내 주문 정산 배치를 정리한 프로젝트였고 요청이 자주 바뀌었습니다. 저는 백엔드 담당으로 조회 API와 배치 흐름을 정리했습니다. 일정은 맞췄지만 왜 그렇게 나눴는지와 운영이 얼마나 안정화됐는지는 아직 좀 뭉뚱그려집니다.",
+    "expectedFinalAction": "USE_CANDIDATE",
+    "expectedPrimaryGap": "RESULT",
+    "expectedSecondaryGap": "REASON",
+    "expectedCandidateQuestionTypes": [
+      "PROJECT_APPROACH_REASON",
+      "PROJECT_RESULT_DETAIL"
+    ],
+    "expectedPresentSignals": [
+      "ROLE",
+      "ACTION"
+    ],
+    "expectedAbsentSignals": [
+      "RESULT",
+      "REASON",
+      "METRIC"
+    ]
+  },
+  {
     "caseId": "tech_instead_keep_effect_candidate",
     "questionType": "TECH",
     "answerText": "초기 관리 콘솔은 MSA 대신 모놀리스를 유지했습니다. 서비스 수가 적어서 배포와 디버깅 비용을 먼저 줄이는 쪽이 낫다고 봤습니다. 대신 서비스 간 장애 격리가 약하다는 단점은 있었지만, 실제로 운영이 얼마나 쉬워졌는지는 더 설명이 필요합니다.",
@@ -101,9 +143,44 @@
     ]
   },
   {
+    "caseId": "tech_instead_keep_effect_candidate_setup_time_variant",
+    "questionType": "TECH",
+    "answerText": "초기 사내 운영 도구는 서버리스 대신 스프링 배치를 유지했습니다. 실행 이력과 실패 재처리를 한 화면에서 보려면 그쪽이 더 단순하다고 봤습니다. 대신 새벽 작업이 길어질 수 있는 운영 부담은 남았지만, 실제 셋업 시간이 얼마나 줄었는지는 더 설명이 필요합니다.",
+    "expectedFinalAction": "USE_CANDIDATE",
+    "expectedPrimaryGap": "RESULT",
+    "expectedSecondaryGap": null,
+    "expectedCandidateQuestionTypes": [
+      "TECH_EFFECT_AFTER_ADOPTION"
+    ],
+    "expectedPresentSignals": [
+      "ALTERNATIVE",
+      "REASON",
+      "TRADEOFF"
+    ],
+    "expectedAbsentSignals": [
+      "RESULT"
+    ]
+  },
+  {
     "caseId": "tech_instead_keep_no_follow_up_with_effect",
     "questionType": "TECH",
     "answerText": "초기 로그 수집 환경에서는 Kubernetes 대신 Docker Compose를 썼습니다. 팀 규모가 작아서 로컬을 빨리 띄우는 편이 더 중요했습니다. 운영 환경은 별도 배포 파이프라인으로 가져가고 로컬만 Compose로 제한했습니다. 대신 기능이 늘면 다시 바꿔야 하는 운영 부담은 남았지만, 새 팀원이 환경을 맞추는 시간이 확실히 줄었습니다.",
+    "expectedFinalAction": "NO_FOLLOW_UP",
+    "expectedPrimaryGap": null,
+    "expectedSecondaryGap": null,
+    "expectedCandidateQuestionTypes": [],
+    "expectedPresentSignals": [
+      "ALTERNATIVE",
+      "REASON",
+      "TRADEOFF",
+      "RESULT"
+    ],
+    "expectedAbsentSignals": []
+  },
+  {
+    "caseId": "tech_instead_keep_no_follow_up_with_stabilization_variant",
+    "questionType": "TECH",
+    "answerText": "초기 개발 환경은 Kubernetes 대신 Docker Compose로 유지했습니다. 팀 규모가 작아서 로컬을 바로 띄우는 편이 더 중요했고, 운영 환경만 별도 파이프라인으로 분리했습니다. 대신 운영 스펙을 두 벌로 맞춰야 하는 부담은 남았지만, 새 팀원이 환경을 맞추는 시간이 눈에 띄게 줄었고 초기 배포 흐름도 다시 안정화됐습니다.",
     "expectedFinalAction": "NO_FOLLOW_UP",
     "expectedPrimaryGap": null,
     "expectedSecondaryGap": null,
@@ -174,6 +251,44 @@
     ]
   },
   {
+    "caseId": "collab_shared_evidence_without_hard_metric_viewpoint_drift_variant",
+    "questionType": "COLLABORATION",
+    "answerText": "정산 기준을 맞출 때 고객사 운영팀과 우리 팀의 관점 차이가 계속 어긋나서 논의가 길어졌습니다. 저는 서로 다르게 본 사례를 한 문서로 정리했고, 그 문서를 기준으로 어떤 예외를 포함할지 조율했습니다. 이후 응답 포맷도 같은 정의로 고정했고 재오픈 이슈 없이 배포까지 갔습니다. 협업이 정리된 이유는 말로만 합의한 게 아니라 같은 사례를 같이 보며 기준을 맞췄기 때문입니다.",
+    "expectedFinalAction": "NO_FOLLOW_UP",
+    "expectedPrimaryGap": "METRIC",
+    "expectedSecondaryGap": null,
+    "expectedCandidateQuestionTypes": [],
+    "expectedPresentSignals": [
+      "ISSUE",
+      "ACTION",
+      "AGREEMENT",
+      "RESULT",
+      "REASON"
+    ],
+    "expectedAbsentSignals": [
+      "METRIC"
+    ]
+  },
+  {
+    "caseId": "collab_shared_evidence_without_hard_metric_example_log_wording_variant",
+    "questionType": "COLLABORATION",
+    "answerText": "배포 판단 기준을 맞출 때 qa팀과 서비스팀의 해석 기준이 번번이 달라 논의가 길어졌습니다. 저는 예시 로그 8건을 한 표로 묶어 서로 다르게 본 지점을 정리했고, 그 표를 기준으로 어떤 조건에서 재오픈할지 합의했습니다. 이후 체크 항목도 같은 정의로 맞췄고 재오픈 이슈 없이 마무리했습니다. 실제 조회 빈도와 장애 대응 사례를 같이 본 덕분에 왜 그 기준으로 가는지 모두가 납득했습니다.",
+    "expectedFinalAction": "NO_FOLLOW_UP",
+    "expectedPrimaryGap": "METRIC",
+    "expectedSecondaryGap": null,
+    "expectedCandidateQuestionTypes": [],
+    "expectedPresentSignals": [
+      "ISSUE",
+      "ACTION",
+      "AGREEMENT",
+      "RESULT",
+      "REASON"
+    ],
+    "expectedAbsentSignals": [
+      "METRIC"
+    ]
+  },
+  {
     "caseId": "problem_verification_without_prevention",
     "questionType": "PROBLEM",
     "answerText": "검색 캐시가 특정 조건에서 튀는 문제가 있었고, 분석해 보니 키 생성 규칙이 일부 요청을 같은 버킷으로 몰고 있었습니다. 저는 키 조합을 분리해 충돌을 줄였고 응답 시간도 다시 안정화됐습니다. 수정 후 회귀 테스트로 같은 요청 시나리오를 여러 번 다시 확인했습니다. 다만 운영 알람이나 체크리스트 같은 재발 방지 장치까지는 아직 붙이지 못했습니다.",
@@ -216,9 +331,49 @@
     ]
   },
   {
+    "caseId": "problem_verification_without_prevention_log_recheck_variant",
+    "questionType": "PROBLEM",
+    "answerText": "정산 배치가 특정 시간대에 두 번씩 실행되는 문제가 있었고, 추적해 보니 락 키 계산 일부가 서로 겹치는 구조였습니다. 저는 락 키 조합을 다시 나눴고 배포 뒤에는 운영 로그와 대시보드를 다시 확인했습니다. 중복 실행은 재현되지 않았지만, 이후 비슷한 이슈를 먼저 막는 알람이나 체크리스트까지는 아직 붙이지 못했습니다.",
+    "expectedFinalAction": "USE_CANDIDATE",
+    "expectedPrimaryGap": "PREVENTION",
+    "expectedSecondaryGap": "METRIC",
+    "expectedCandidateQuestionTypes": [
+      "PROBLEM_PREVENTION_DETAIL"
+    ],
+    "expectedPresentSignals": [
+      "CAUSE",
+      "ACTION",
+      "RESULT",
+      "VERIFICATION"
+    ],
+    "expectedAbsentSignals": [
+      "PREVENTION",
+      "METRIC"
+    ]
+  },
+  {
     "caseId": "problem_prevention_and_verification_closed_with_alert",
     "questionType": "PROBLEM",
     "answerText": "회원 동기화 배치가 중복 실행되는 문제가 있었고, 분석해 보니 스케줄러 락 해제 시점이 겹치는 구조였습니다. 저는 락 키 계산을 바꾸고 수정 후 회귀 테스트와 운영 알람을 같이 확인했습니다. 배포 뒤에는 중복 실행이 재현되지 않았고, 같은 유형을 먼저 감지하려고 체크리스트도 추가했습니다.",
+    "expectedFinalAction": "NO_FOLLOW_UP",
+    "expectedPrimaryGap": "METRIC",
+    "expectedSecondaryGap": null,
+    "expectedCandidateQuestionTypes": [],
+    "expectedPresentSignals": [
+      "CAUSE",
+      "ACTION",
+      "RESULT",
+      "VERIFICATION",
+      "PREVENTION"
+    ],
+    "expectedAbsentSignals": [
+      "METRIC"
+    ]
+  },
+  {
+    "caseId": "problem_prevention_and_verification_closed_with_alert_observed_variant",
+    "questionType": "PROBLEM",
+    "answerText": "추천 배치가 특정 조건에서 두 번 실행되는 문제가 있었고, 분석해 보니 락 해제 타이밍이 겹치는 구조였습니다. 저는 락 키 계산을 다시 잡았고 수정 후 운영 로그와 알람 추이를 같이 확인했습니다. 배포 뒤에는 같은 문제가 재현되지 않았고, 이후 비슷한 패턴을 먼저 감지하려고 체크리스트도 추가했습니다.",
     "expectedFinalAction": "NO_FOLLOW_UP",
     "expectedPrimaryGap": "METRIC",
     "expectedSecondaryGap": null,
