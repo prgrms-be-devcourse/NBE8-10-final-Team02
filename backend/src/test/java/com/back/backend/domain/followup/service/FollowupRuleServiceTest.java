@@ -456,6 +456,26 @@ class FollowupRuleServiceTest {
     }
 
     @Test
+    void analyze_returnsUseDynamicForCollaborationWhenIssueAndActionAreClearButAgreementAndReasonAreMissing() {
+        FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
+                QuestionType.COLLABORATION,
+                "배포 판단 기준을 맞출 때 qa팀과 서비스팀의 관점 차이가 계속 어긋나서 논의가 길어졌습니다. "
+                        + "저는 실패 사례와 정상 사례를 한 문서로 정리하고 영향 범위를 같이 다시 확인했습니다. "
+                        + "재오픈 이슈 없이 배포까지 갔지만, 어떤 기준으로 최종안을 정했는지와 왜 그 기준이 맞다고 봤는지는 더 설명이 필요합니다."
+        ));
+
+        assertThat(response.signals()).containsEntry(GapType.ISSUE, true);
+        assertThat(response.signals()).containsEntry(GapType.ACTION, true);
+        assertThat(response.signals()).containsEntry(GapType.RESULT, true);
+        assertThat(response.signals()).containsEntry(GapType.AGREEMENT, false);
+        assertThat(response.signals()).containsEntry(GapType.REASON, false);
+        assertThat(response.finalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(response.primaryGap()).isEqualTo(GapType.AGREEMENT);
+        assertThat(response.secondaryGap()).isEqualTo(GapType.REASON);
+        assertThat(response.candidateQuestionTypes()).isEmpty();
+    }
+
+    @Test
     void analyze_returnsNoFollowUpForCollaborationWhenDefinitionMismatchIsResolvedWithSharedEvidence() {
         FollowupAnalyzeResponse response = followupRuleService.analyze(new FollowupAnalyzeRequest(
                 QuestionType.COLLABORATION,
