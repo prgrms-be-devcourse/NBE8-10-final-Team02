@@ -94,9 +94,18 @@ public class FinalActionDecider {
                 .filter(character -> character == '.' || character == '!' || character == '?')
                 .count();
 
-        return normalizedAnswerText.length() >= 160
+        boolean numericBriefWindow = normalizedAnswerText.length() >= 160
                 && normalizedAnswerText.length() < 220
                 && sentenceCount <= 3;
+
+        return numericBriefWindow || containsBriefProjectVaguenessMarker(normalizedAnswerText);
+    }
+
+    private boolean containsBriefProjectVaguenessMarker(String normalizedAnswerText) {
+        return normalizedAnswerText.contains("추상적")
+                || normalizedAnswerText.contains("일반론적")
+                || normalizedAnswerText.contains("뭉뚱그려")
+                || normalizedAnswerText.contains("두루뭉술");
     }
 
     private boolean matchesWhitelist(

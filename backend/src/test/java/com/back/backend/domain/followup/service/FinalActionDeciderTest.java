@@ -64,6 +64,46 @@ class FinalActionDeciderTest {
         assertThat(finalAction).isEqualTo(FinalAction.USE_DYNAMIC);
     }
 
+    @Test
+    void decide_returnsUseCandidateForSentenceBoundaryBriefProjectSummaryVariant() {
+        String normalizedAnswerText = "사내 주문 정산 화면을 다시 만드는 프로젝트가 있었습니다. "
+                + "기존 운영 요청이 자주 바뀌어서 범위를 계속 조정해야 했습니다. "
+                + "저는 백엔드 담당으로 조회 api와 상태 저장 흐름을 정리했습니다. "
+                + "일정은 맞췄지만 왜 그 순서로 정했는지와 운영이 실제로 얼마나 안정화됐는지는 "
+                + "지금 말하면 아직 조금 일반론적으로 들립니다.";
+
+        assertThat(normalizedAnswerText.length()).isEqualTo(175);
+        assertThat(normalizedAnswerText.chars().filter(character -> character == '.').count()).isEqualTo(4);
+
+        FinalAction finalAction = finalActionDecider.decide(
+                QuestionType.PROJECT,
+                projectWhitelistSignals(),
+                projectResultReasonResolution(),
+                normalizedAnswerText
+        );
+
+        assertThat(finalAction).isEqualTo(FinalAction.USE_CANDIDATE);
+    }
+
+    @Test
+    void decide_returnsUseCandidateForShorterBriefProjectSummaryVariant() {
+        String normalizedAnswerText = "사내 주문 정산 배치를 정리한 프로젝트였고 요청이 자주 바뀌었습니다. "
+                + "저는 백엔드 담당으로 조회 api와 배치 흐름을 정리했습니다. "
+                + "일정은 맞췄지만 왜 그렇게 나눴는지와 운영이 얼마나 안정화됐는지는 아직 좀 뭉뚱그려집니다.";
+
+        assertThat(normalizedAnswerText.length()).isEqualTo(124);
+        assertThat(normalizedAnswerText.chars().filter(character -> character == '.').count()).isEqualTo(3);
+
+        FinalAction finalAction = finalActionDecider.decide(
+                QuestionType.PROJECT,
+                projectWhitelistSignals(),
+                projectResultReasonResolution(),
+                normalizedAnswerText
+        );
+
+        assertThat(finalAction).isEqualTo(FinalAction.USE_CANDIDATE);
+    }
+
     private Map<GapType, Boolean> projectWhitelistSignals() {
         Map<GapType, Boolean> signals = new LinkedHashMap<>();
         for (GapType gapType : GapType.values()) {

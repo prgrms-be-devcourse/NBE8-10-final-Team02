@@ -82,9 +82,53 @@ class SignalExtractorTest {
     }
 
     @Test
+    void extract_recognizesReasonWhenTechChoiceIsSimplerToOperateInOnePlace() {
+        String normalizedAnswerText = textNormalizer.normalize(
+                "실행 이력과 실패 재처리를 한 화면에서 보려면 그쪽이 더 단순하다고 봤습니다."
+        );
+
+        Map<GapType, List<String>> matchedPatterns = signalExtractor.extractMatchedPatterns(normalizedAnswerText);
+
+        assertThat(matchedPatterns.get(GapType.REASON)).isNotEmpty();
+    }
+
+    @Test
+    void extract_recognizesReasonWhenLocalStartupIsMoreImportant() {
+        String normalizedAnswerText = textNormalizer.normalize(
+                "팀 규모가 작아서 로컬을 바로 띄우는 편이 더 중요했고, 운영 환경만 별도 파이프라인으로 분리했습니다."
+        );
+
+        Map<GapType, List<String>> matchedPatterns = signalExtractor.extractMatchedPatterns(normalizedAnswerText);
+
+        assertThat(matchedPatterns.get(GapType.REASON)).isNotEmpty();
+    }
+
+    @Test
+    void extract_recognizesTradeoffWhenDualOperationalSpecBurdenRemains() {
+        String normalizedAnswerText = textNormalizer.normalize(
+                "대신 운영 스펙을 두 벌로 맞춰야 하는 부담은 남았지만, 새 팀원이 환경을 맞추는 시간은 줄었습니다."
+        );
+
+        Map<GapType, List<String>> matchedPatterns = signalExtractor.extractMatchedPatterns(normalizedAnswerText);
+
+        assertThat(matchedPatterns.get(GapType.TRADEOFF)).isNotEmpty();
+    }
+
+    @Test
     void extract_recognizesViewpointDifferenceAsIssueSignalWhenDebateRepeats() {
         String normalizedAnswerText = textNormalizer.normalize(
                 "qa팀과 서비스팀의 관점 차이가 있어서 논쟁이 반복됐습니다."
+        );
+
+        Map<GapType, List<String>> matchedPatterns = signalExtractor.extractMatchedPatterns(normalizedAnswerText);
+
+        assertThat(matchedPatterns.get(GapType.ISSUE)).isNotEmpty();
+    }
+
+    @Test
+    void extract_recognizesViewpointDifferenceAsIssueSignalWhenPerspectivesKeepDiverging() {
+        String normalizedAnswerText = textNormalizer.normalize(
+                "고객사 운영팀과 우리 팀의 관점 차이가 계속 어긋나서 논의가 길어졌습니다."
         );
 
         Map<GapType, List<String>> matchedPatterns = signalExtractor.extractMatchedPatterns(normalizedAnswerText);
@@ -104,6 +148,28 @@ class SignalExtractorTest {
     }
 
     @Test
+    void extract_recognizesRepeatedDefinitionDriftAsIssueSignal() {
+        String normalizedAnswerText = textNormalizer.normalize(
+                "qa팀과 서비스팀의 해석 기준이 번번이 달라 논의가 길어졌습니다."
+        );
+
+        Map<GapType, List<String>> matchedPatterns = signalExtractor.extractMatchedPatterns(normalizedAnswerText);
+
+        assertThat(matchedPatterns.get(GapType.ISSUE)).isNotEmpty();
+    }
+
+    @Test
+    void extract_recognizesReasonWhenSharedEvidenceIsReviewedTogether() {
+        String normalizedAnswerText = textNormalizer.normalize(
+                "실제 조회 빈도와 장애 대응 사례를 같이 본 덕분에 왜 그 기준으로 가는지 모두가 납득했습니다."
+        );
+
+        Map<GapType, List<String>> matchedPatterns = signalExtractor.extractMatchedPatterns(normalizedAnswerText);
+
+        assertThat(matchedPatterns.get(GapType.REASON)).isNotEmpty();
+    }
+
+    @Test
     void extract_treatsRegressionTestCheckAsVerificationWithoutPrevention() {
         String normalizedAnswerText = textNormalizer.normalize(
                 "수정 후 회귀 테스트로 같은 요청 시나리오를 다시 확인했습니다."
@@ -113,5 +179,16 @@ class SignalExtractorTest {
 
         assertThat(matchedPatterns.get(GapType.VERIFICATION)).isNotEmpty();
         assertThat(matchedPatterns.get(GapType.PREVENTION)).isEmpty();
+    }
+
+    @Test
+    void extract_recognizesActionWhenLockKeyCombinationIsSplitAgain() {
+        String normalizedAnswerText = textNormalizer.normalize(
+                "저는 락 키 조합을 다시 나눴고 배포 뒤에는 운영 로그와 대시보드를 다시 확인했습니다."
+        );
+
+        Map<GapType, List<String>> matchedPatterns = signalExtractor.extractMatchedPatterns(normalizedAnswerText);
+
+        assertThat(matchedPatterns.get(GapType.ACTION)).isNotEmpty();
     }
 }
