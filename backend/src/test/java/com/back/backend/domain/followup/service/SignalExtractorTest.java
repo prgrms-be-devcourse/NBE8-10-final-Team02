@@ -47,4 +47,16 @@ class SignalExtractorTest {
 
         assertThat(matchedPatterns.get(GapType.METRIC)).isNotEmpty();
     }
+
+    @Test
+    void extract_treatsRegressionTestCheckAsVerificationWithoutPrevention() {
+        String normalizedAnswerText = textNormalizer.normalize(
+                "수정 후 회귀 테스트로 같은 요청 시나리오를 다시 확인했습니다."
+        );
+
+        Map<GapType, List<String>> matchedPatterns = signalExtractor.extractMatchedPatterns(normalizedAnswerText);
+
+        assertThat(matchedPatterns.get(GapType.VERIFICATION)).isNotEmpty();
+        assertThat(matchedPatterns.get(GapType.PREVENTION)).isEmpty();
+    }
 }
