@@ -12,6 +12,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.springframework.core.io.ClassPathResource;
 
@@ -43,6 +44,24 @@ class FollowupHoldoutRegressionTest {
                 new FinalActionDecider(properties),
                 new CandidateQuestionSelector(properties)
         );
+    }
+
+    @Test
+    void curatedHoldout_remainsFrozenUntilANewRealMissIsObserved() {
+        List<HoldoutCase> holdoutCases = loadHoldoutCases();
+
+        assertThat(holdoutCases).hasSize(20);
+        assertThat(holdoutCases)
+                .extracting(HoldoutCase::caseId)
+                .doesNotHaveDuplicates();
+    }
+
+    @Test
+    void curatedHoldout_keepsDynamicPositiveCoverageInServiceLevelRegressions() {
+        List<HoldoutCase> holdoutCases = loadHoldoutCases();
+
+        assertThat(holdoutCases)
+                .allMatch(holdoutCase -> holdoutCase.expectedFinalAction() != FinalAction.USE_DYNAMIC);
     }
 
     @TestFactory
