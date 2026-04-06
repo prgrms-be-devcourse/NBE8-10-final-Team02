@@ -115,12 +115,28 @@ class FollowupPilot40BacktestTest {
         writeReport(summary, backtestRows, reportPath, workbookPath);
 
         BacktestRow ps02 = requireRow(backtestRows, "PS02");
+        BacktestRow ps01 = requireRow(backtestRows, "PS01");
+        BacktestRow ps04 = requireRow(backtestRows, "PS04");
+        BacktestRow ps05 = requireRow(backtestRows, "PS05");
         BacktestRow ps06 = requireRow(backtestRows, "PS06");
         BacktestRow ps09 = requireRow(backtestRows, "PS09");
         BacktestRow ps03 = requireRow(backtestRows, "PS03");
-        BacktestRow ps04 = requireRow(backtestRows, "PS04");
         BacktestRow ps08 = requireRow(backtestRows, "PS08");
         BacktestRow ps10 = requireRow(backtestRows, "PS10");
+        BacktestRow pe06 = requireRow(backtestRows, "PE06");
+        BacktestRow pe08 = requireRow(backtestRows, "PE08");
+        BacktestRow tc05 = requireRow(backtestRows, "TC05");
+        BacktestRow tc10 = requireRow(backtestRows, "TC10");
+        BacktestRow co01 = requireRow(backtestRows, "CO01");
+        BacktestRow co02 = requireRow(backtestRows, "CO02");
+        BacktestRow co03 = requireRow(backtestRows, "CO03");
+        BacktestRow co04 = requireRow(backtestRows, "CO04");
+        BacktestRow co05 = requireRow(backtestRows, "CO05");
+        BacktestRow co06 = requireRow(backtestRows, "CO06");
+        BacktestRow co07 = requireRow(backtestRows, "CO07");
+        BacktestRow co08 = requireRow(backtestRows, "CO08");
+        BacktestRow co09 = requireRow(backtestRows, "CO09");
+        BacktestRow co10 = requireRow(backtestRows, "CO10");
 
         assertThat(Files.exists(csvPath)).isTrue();
         assertThat(Files.exists(reportPath)).isTrue();
@@ -138,6 +154,12 @@ class FollowupPilot40BacktestTest {
         assertThat(ps02.predictedPrimaryGap()).isEqualTo(GapType.VERIFICATION);
         assertThat(ps02.predictedSecondaryGap()).isEqualTo(GapType.PREVENTION);
 
+        assertThat(ps01.predictedFinalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+        assertThat(ps04.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(ps04.predictedCandidateQuestionTypes()).containsExactly(
+                CandidateQuestionType.PROBLEM_VERIFICATION_DETAIL
+        );
+        assertThat(ps05.predictedFinalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
         assertThat(ps06.predictedFinalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
         assertThat(ps06.predictedWhitelistHit()).isTrue();
         assertThat(ps06.predictedPrimaryGap()).isEqualTo(GapType.VERIFICATION);
@@ -149,9 +171,58 @@ class FollowupPilot40BacktestTest {
         assertThat(ps09.predictedSecondaryGap()).isEqualTo(GapType.PREVENTION);
 
         assertThat(ps03.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
-        assertThat(ps04.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
         assertThat(ps08.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
-        assertThat(ps10.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(ps10.predictedFinalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+
+        assertThat(pe06.predictedFinalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+        assertThat(pe08.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(pe08.predictedCandidateQuestionTypes()).containsExactly(
+                CandidateQuestionType.PROJECT_APPROACH_REASON,
+                CandidateQuestionType.PROJECT_RESULT_DETAIL
+        );
+
+        assertThat(tc05.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(tc05.predictedCandidateQuestionTypes()).containsExactly(
+                CandidateQuestionType.TECH_EFFECT_AFTER_ADOPTION
+        );
+        assertThat(tc10.predictedFinalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+
+        assertThat(co01.predictedFinalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+
+        assertThat(co02.predictedFinalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(co02.predictedPrimaryGap()).isEqualTo(GapType.AGREEMENT);
+        assertThat(co02.predictedSecondaryGap()).isEqualTo(GapType.REASON);
+
+        assertThat(co03.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(co03.predictedPrimaryGap()).isEqualTo(GapType.ISSUE);
+        assertThat(co03.predictedSecondaryGap()).isEqualTo(GapType.AGREEMENT);
+
+        assertThat(co04.predictedFinalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(co04.predictedPrimaryGap()).isEqualTo(GapType.AGREEMENT);
+        assertThat(co04.predictedSecondaryGap()).isEqualTo(GapType.REASON);
+
+        assertThat(co05.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(co05.predictedPrimaryGap()).isEqualTo(GapType.ISSUE);
+        assertThat(co05.predictedSecondaryGap()).isEqualTo(GapType.AGREEMENT);
+
+        assertThat(co06.predictedFinalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+        assertThat(co06.predictedPrimaryGap()).isEqualTo(GapType.METRIC);
+        assertThat(co06.predictedSecondaryGap()).isNull();
+        assertThat(co07.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(co07.predictedPrimaryGap()).isEqualTo(GapType.ISSUE);
+        assertThat(co07.predictedSecondaryGap()).isEqualTo(GapType.AGREEMENT);
+
+        assertThat(co08.predictedFinalAction()).isEqualTo(FinalAction.USE_CANDIDATE);
+        assertThat(co08.predictedPrimaryGap()).isEqualTo(GapType.AGREEMENT);
+        assertThat(co08.predictedSecondaryGap()).isEqualTo(GapType.METRIC);
+
+        assertThat(co09.predictedFinalAction()).isEqualTo(FinalAction.USE_DYNAMIC);
+        assertThat(co09.predictedPrimaryGap()).isEqualTo(GapType.AGREEMENT);
+        assertThat(co09.predictedSecondaryGap()).isEqualTo(GapType.RESULT);
+
+        assertThat(co10.predictedFinalAction()).isEqualTo(FinalAction.NO_FOLLOW_UP);
+        assertThat(co10.predictedPrimaryGap()).isEqualTo(GapType.METRIC);
+        assertThat(co10.predictedSecondaryGap()).isNull();
     }
 
     private BacktestRow requireRow(List<BacktestRow> rows, String sampleId) {
@@ -168,7 +239,12 @@ class FollowupPilot40BacktestTest {
         Map<GapType, List<String>> matchedRegexes = signalExtractor.extractMatchedPatterns(normalizedAnswerText);
         Map<GapType, Boolean> signals = toSignalMap(matchedRegexes);
         GapResolver.Resolution resolution = gapResolver.resolve(row.questionType(), signals);
-        FinalAction predictedFinalAction = finalActionDecider.decide(row.questionType(), signals, resolution);
+        FinalAction predictedFinalAction = finalActionDecider.decide(
+                row.questionType(),
+                signals,
+                resolution,
+                normalizedAnswerText
+        );
         List<CandidateQuestionType> predictedCandidateQuestionTypes = candidateQuestionSelector.select(
                 row.questionType(),
                 signals,
