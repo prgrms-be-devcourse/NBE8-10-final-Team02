@@ -57,3 +57,5 @@ docs/personal-design/
 .claude
 
 uploads
+
+!backend/src/main/resources/data/
