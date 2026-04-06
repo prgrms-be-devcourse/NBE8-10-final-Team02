@@ -7,6 +7,7 @@ import com.back.backend.domain.followup.model.FinalAction;
 import com.back.backend.domain.followup.model.QuestionType;
 import com.back.backend.domain.followup.service.FollowupRuleService;
 import com.back.backend.domain.interview.dto.request.StartInterviewSessionRequest;
+import com.back.backend.domain.interview.dto.response.InterviewSessionCompletionFollowupContextResponse;
 import com.back.backend.domain.interview.dto.response.InterviewResultResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionCompletionResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionDetailResponse;
@@ -145,10 +146,13 @@ public class InterviewSessionService {
         long answeredQuestionCount = interviewAnswerRepository.countBySessionId(session.getId());
         long remainingQuestionCount = Math.max(totalQuestionCount - answeredQuestionCount, 0);
         InterviewSessionQuestion currentQuestion = resolveCurrentQuestion(session, answeredQuestionCount, remainingQuestionCount);
+        InterviewSessionCompletionFollowupContextResponse completionFollowupContext =
+                buildCompletionFollowupContext(session, currentQuestion);
 
         return interviewResponseMapper.toInterviewSessionDetailResponse(
                 session,
                 currentQuestion,
+                completionFollowupContext,
                 totalQuestionCount,
                 answeredQuestionCount,
                 remainingQuestionCount,
@@ -623,6 +627,68 @@ public class InterviewSessionService {
                 ).stream()
                 .findFirst()
                 .orElse(null);
+    }
+
+    private InterviewSessionCompletionFollowupContextResponse buildCompletionFollowupContext(
+            InterviewSession session,
+            InterviewSessionQuestion currentQuestion
+    ) {
+        if (!isCurrentCompletionFollowup(session, currentQuestion)) {
+            return null;
+        }
+
+        InterviewSessionQuestion parentQuestion = currentQuestion.getParentSessionQuestion();
+        if (parentQuestion == null) {
+            return null;
+        }
+
+        InterviewSessionQuestion runtimeFollowupQuestion =
+                parentQuestion.getQuestionType() == InterviewQuestionType.FOLLOW_UP ? parentQuestion : null;
+        InterviewSessionQuestion rootQuestion = runtimeFollowupQuestion == null
+                ? parentQuestion
+                : runtimeFollowupQuestion.getParentSessionQuestion();
+
+        if (rootQuestion == null || rootQuestion.getQuestionType() == InterviewQuestionType.FOLLOW_UP) {
+            return null;
+        }
+
+        Map<Long, InterviewAnswer> answerByQuestionId = interviewAnswerRepository
+                .findAllWithSessionQuestionBySessionIdOrderByAnswerOrderAsc(session.getId())
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        answer -> answer.getSessionQuestion().getId(),
+                        answer -> answer
+                ));
+
+        InterviewAnswer rootAnswer = answerByQuestionId.get(rootQuestion.getId());
+        if (rootAnswer == null) {
+            return null;
+        }
+
+        InterviewAnswer runtimeFollowupAnswer = runtimeFollowupQuestion == null
+                ? null
+                : answerByQuestionId.get(runtimeFollowupQuestion.getId());
+        if (runtimeFollowupQuestion != null && runtimeFollowupAnswer == null) {
+            return null;
+        }
+
+        return interviewResponseMapper.toInterviewSessionCompletionFollowupContextResponse(
+                rootQuestion,
+                rootAnswer,
+                runtimeFollowupQuestion,
+                runtimeFollowupAnswer,
+                currentQuestion,
+                parentQuestion.getQuestionOrder()
+        );
+    }
+
+    private boolean isCurrentCompletionFollowup(
+            InterviewSession session,
+            InterviewSessionQuestion currentQuestion
+    ) {
+        return currentQuestion != null
+                && currentQuestion.getQuestionType() == InterviewQuestionType.FOLLOW_UP
+                && session.getCompletionFollowupReviewedAt() != null;
     }
 
     private void resolvePendingFollowupIfNeeded(long userId, long sessionId) {

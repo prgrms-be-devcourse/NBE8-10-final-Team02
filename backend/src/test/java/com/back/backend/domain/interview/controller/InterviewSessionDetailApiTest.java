@@ -105,6 +105,7 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.currentQuestion.questionOrder").value(1))
                 .andExpect(jsonPath("$.data.answeredQuestionCount").value(0))
                 .andExpect(jsonPath("$.data.remainingQuestionCount").value(3))
+                .andExpect(jsonPath("$.data.completionFollowupContext").value(nullValue()))
                 .andExpect(jsonPath("$.data.resumeAvailable").value(false));
     }
 
@@ -183,7 +184,8 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                         .value("그 선택 기준을 조금 더 구체적으로 설명해주실 수 있나요?"))
                 .andExpect(jsonPath("$.data.totalQuestionCount").value(4))
                 .andExpect(jsonPath("$.data.answeredQuestionCount").value(1))
-                .andExpect(jsonPath("$.data.remainingQuestionCount").value(3));
+                .andExpect(jsonPath("$.data.remainingQuestionCount").value(3))
+                .andExpect(jsonPath("$.data.completionFollowupContext").value(nullValue()));
 
         entityManager.flush();
         entityManager.clear();

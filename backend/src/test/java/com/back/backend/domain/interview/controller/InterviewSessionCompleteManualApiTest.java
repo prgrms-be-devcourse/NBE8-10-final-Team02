@@ -220,7 +220,13 @@ class InterviewSessionCompleteManualApiTest extends ApiTestBase {
                 .contains(insertedCompletionQuestion.getQuestionText())
                 .contains("\"totalQuestionCount\":9")
                 .contains("\"answeredQuestionCount\":8")
-                .contains("\"remainingQuestionCount\":1");
+                .contains("\"remainingQuestionCount\":1")
+                .contains("\"completionFollowupContext\"")
+                .contains("\"parentQuestionOrder\":8")
+                .contains(Q7)
+                .contains(Q8)
+                .contains(A7)
+                .contains(A8);
 
         then(interviewResultGenerationService).should(never())
                 .generate(

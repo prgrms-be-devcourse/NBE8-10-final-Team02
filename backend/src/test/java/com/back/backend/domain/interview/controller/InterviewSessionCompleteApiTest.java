@@ -252,6 +252,18 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.currentQuestion.questionOrder").value(3))
                 .andExpect(jsonPath("$.data.currentQuestion.questionType").value("follow_up"))
                 .andExpect(jsonPath("$.data.currentQuestion.questionText")
+                        .value("그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?"))
+                .andExpect(jsonPath("$.data.completionFollowupContext.parentQuestionOrder").value(2))
+                .andExpect(jsonPath("$.data.completionFollowupContext.rootQuestion.questionOrder").value(1))
+                .andExpect(jsonPath("$.data.completionFollowupContext.rootQuestion.questionText")
+                        .value("첫 번째 질문"))
+                .andExpect(jsonPath("$.data.completionFollowupContext.rootAnswer.answerOrder").value(1))
+                .andExpect(jsonPath("$.data.completionFollowupContext.runtimeFollowupQuestion.questionOrder").value(2))
+                .andExpect(jsonPath("$.data.completionFollowupContext.runtimeFollowupQuestion.questionText")
+                        .value("그 방식으로 접근한 이유를 조금 더 구체적으로 설명해주실 수 있나요?"))
+                .andExpect(jsonPath("$.data.completionFollowupContext.runtimeFollowupAnswer.answerOrder").value(2))
+                .andExpect(jsonPath("$.data.completionFollowupContext.completionFollowupQuestion.questionOrder").value(3))
+                .andExpect(jsonPath("$.data.completionFollowupContext.completionFollowupQuestion.questionText")
                         .value("그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?"));
     }
 
