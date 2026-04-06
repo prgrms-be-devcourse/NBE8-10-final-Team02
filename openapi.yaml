@@ -2021,6 +2021,148 @@ paths:
                       retryable: false
                       fieldErrors: []
                     meta: *id001
+  /portfolios/me/readiness:
+    get:
+      tags:
+      - Portfolio
+      summary: 준비 현황 대시보드 조회
+      description: |
+        현재 사용자의 포트폴리오 준비 상태를 집계해서 반환한다.
+        GitHub 연결 상태, 선택된 repository 수, 문서 수/추출 성공/실패,
+        다음 추천 행동, 최근 실패 작업 알림을 포함한다.
+        v1에서 아직 계산하지 않는 값(recentCollectedCommitCount, recentFailedJobs)은
+        status="not_ready"로 고정하고 가짜 숫자를 표시하지 않는다.
+      responses:
+        '200':
+          description: 준비 현황 조회 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      profile:
+                        type: object
+                        properties:
+                          userId:
+                            type: integer
+                            format: int64
+                          displayName:
+                            type: string
+                          email:
+                            type: string
+                            nullable: true
+                          profileImageUrl:
+                            type: string
+                            nullable: true
+                      github:
+                        type: object
+                        properties:
+                          connectionStatus:
+                            type: string
+                            enum: [connected, not_connected]
+                          scopeStatus:
+                            type: string
+                            nullable: true
+                            enum: [public_only, private_ready, insufficient, not_applicable]
+                          selectedRepositoryCount:
+                            type: integer
+                          recentCollectedCommitCount:
+                            type: object
+                            properties:
+                              status:
+                                type: string
+                                enum: [not_ready, ready]
+                              value:
+                                type: integer
+                                nullable: true
+                      documents:
+                        type: object
+                        properties:
+                          totalCount:
+                            type: integer
+                          extractSuccessCount:
+                            type: integer
+                          extractFailedCount:
+                            type: integer
+                      readiness:
+                        type: object
+                        properties:
+                          missingItems:
+                            type: array
+                            items:
+                              type: string
+                          nextRecommendedAction:
+                            type: string
+                            enum: [connect_github, select_repository, upload_document, retry_document_extraction, start_application]
+                          canStartApplication:
+                            type: boolean
+                      alerts:
+                        type: object
+                        properties:
+                          recentFailedJobs:
+                            type: object
+                            properties:
+                              status:
+                                type: string
+                                enum: [not_ready, ready]
+                              items:
+                                type: array
+                                nullable: true
+                                items:
+                                  type: object
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+              examples:
+                portfolioReadinessSuccess:
+                  value:
+                    success: true
+                    data:
+                      profile:
+                        userId: 1
+                        displayName: q q
+                        email: user@example.com
+                        profileImageUrl: https://avatars.githubusercontent.com/u/1?v=4
+                      github:
+                        connectionStatus: connected
+                        scopeStatus: public_only
+                        selectedRepositoryCount: 2
+                        recentCollectedCommitCount:
+                          status: not_ready
+                          value: null
+                      documents:
+                        totalCount: 3
+                        extractSuccessCount: 2
+                        extractFailedCount: 1
+                      readiness:
+                        missingItems: []
+                        nextRecommendedAction: start_application
+                        canStartApplication: true
+                      alerts:
+                        recentFailedJobs:
+                          status: not_ready
+                          items: null
+                    meta: *id001
+        '401':
+          description: 인증 필요
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                authRequired:
+                  value:
+                    success: false
+                    error:
+                      code: AUTH_REQUIRED
+                      message: 로그인이 필요합니다.
+                      retryable: false
+                    meta: *id001
   /documents:
     post:
       tags:
