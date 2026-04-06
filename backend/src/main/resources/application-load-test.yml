@@ -1,0 +1,29 @@
+spring:
+  config:
+    activate:
+      on-profile: load-test
+
+logging:
+  level:
+    com.back.backend.domain.ai: DEBUG   # stub 지연 로그 확인용
+
+server:
+  tomcat:
+    threads:
+      max: 10       # 스레드 풀을 좁혀 병목 임계점을 낮게 설정 (가상 스레드와 무관)
+      min-spare: 5
+
+# Rate limit 무제한 설정
+# Stub이 AiUsageRecorder를 통해 DB에 TokenUsage를 기록하므로,
+# 실제 한도값이 남아 있으면 AiStatusService가 DAILY_EXHAUSTED를 반환해 테스트가 막힘
+ai:
+  rate-limit:
+    gemini:
+      rpm: 2147483647
+      rpd: 2147483647
+      tpm: 2147483647
+      # tpd 미설정 → hasTpd()=false → 일간 토큰 체크 비활성화
+    groq:
+      rpm: 2147483647
+      rpd: 2147483647
+      tpm: 2147483647

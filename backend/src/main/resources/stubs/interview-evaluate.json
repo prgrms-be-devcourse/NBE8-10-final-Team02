@@ -1,0 +1,19 @@
+{
+  "totalScore": 72,
+  "summaryFeedback": "전반적으로 기술적 지식은 충분하나 구체적인 수치나 사례가 부족합니다. 경험 기반의 답변을 보강하면 더욱 설득력 있는 면접이 될 것입니다.",
+  "answers": [
+    {
+      "questionOrder": 1,
+      "score": 70,
+      "evaluationRationale": "개념 설명은 정확하나 실제 프로젝트에서의 적용 사례가 빠져 있습니다. 성능 개선 수치를 함께 언급하면 좋겠습니다.",
+      "tagNames": ["Java", "JVM"]
+    },
+    {
+      "questionOrder": 2,
+      "score": 75,
+      "evaluationRationale": "트랜잭션 전파 레벨에 대한 이해는 좋으나, 실제 버그 경험이나 해결 사례를 덧붙이면 더 인상적인 답변이 됩니다.",
+      "tagNames": ["Spring", "DB"]
+    }
+  ],
+  "qualityFlags": []
+}

@@ -1,0 +1,54 @@
+{
+  "project": {
+    "projectKey": "stub-project",
+    "projectName": "면접 준비 플랫폼 백엔드",
+    "summary": "Spring Boot 기반 REST API 서버로, 사용자의 자기소개서와 코드 분석 결과를 바탕으로 AI 면접 질문을 생성하는 서비스입니다.",
+    "role": "백엔드 개발 전담, API 설계 및 DB 모델링 주도",
+    "stack": ["Java 17", "Spring Boot 3", "JPA", "PostgreSQL", "Redis"],
+    "signals": [
+      "REST API 설계 경험",
+      "JPA 연관관계 매핑 및 N+1 해결 경험",
+      "Redis 기반 캐싱 도입"
+    ],
+    "evidenceBullets": [
+      {
+        "fact": "Hikari 커넥션 풀 튜닝으로 p95 응답시간 30% 단축",
+        "challengeRef": "ch_1"
+      },
+      {
+        "fact": "외부 AI API 호출 응답 대기 중 트랜잭션 점유 문제를 분리하여 DB 커넥션 사용률 개선",
+        "challengeRef": "ch_2"
+      }
+    ],
+    "challenges": [
+      {
+        "id": "ch_1",
+        "what": "고부하 시 DB 커넥션 고갈로 503 에러 발생",
+        "how": "Hikari pool size 조정 및 쿼리 최적화로 커넥션 점유 시간 단축",
+        "learning": "커넥션 풀 크기는 단순히 늘리는 것보다 점유 시간을 줄이는 게 핵심"
+      },
+      {
+        "id": "ch_2",
+        "what": "@Transactional 범위 내 외부 API 호출로 인한 커넥션 장시간 점유",
+        "how": "트랜잭션 경계를 AI 호출 전후로 분리",
+        "learning": "외부 I/O와 DB 트랜잭션은 반드시 분리해야 한다"
+      }
+    ],
+    "strengths": [
+      "명확한 레이어드 아키텍처와 책임 분리",
+      "실측 기반 성능 튜닝 경험"
+    ],
+    "risks": [
+      "단일 인스턴스 구성으로 수평 확장 시 세션 관리 재검토 필요"
+    ],
+    "techDecisions": [
+      {
+        "decision": "Redis 캐싱 도입",
+        "reason": "AI 상태 조회 API의 중복 DB 쿼리 제거 목적",
+        "tradeOff": "캐시 TTL 동안 실시간성 일부 포기"
+      }
+    ],
+    "sourceRefs": ["doc_1"],
+    "qualityFlags": []
+  }
+}

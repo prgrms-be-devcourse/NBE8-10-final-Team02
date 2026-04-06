@@ -16,13 +16,13 @@ export const ENDPOINTS = {
   me: `${BASE_URL}/api/v1/users/me`,
 
   // ── Application (자소서) ─────────────────────────────────────────────
-  applications:       `${BASE_URL}/api/v1/applications`,
-  application:        (id) => `${BASE_URL}/api/v1/applications/${id}`,
-  generateCoverLetter: (id) => `${BASE_URL}/api/v1/applications/${id}/cover-letters/generate`,
+  applications:           `${BASE_URL}/api/v1/applications`,
+  application:            (id) => `${BASE_URL}/api/v1/applications/${id}`,
+  applicationQuestions:   (id) => `${BASE_URL}/api/v1/applications/${id}/questions`,
+  generateAnswers:        (id) => `${BASE_URL}/api/v1/applications/${id}/questions/generate-answers`,
 
   // ── 면접 질문 세트 ────────────────────────────────────────────────────
-  questionSets:       `${BASE_URL}/api/v1/interview-question-sets`,
-  generateQuestions:  (appId) => `${BASE_URL}/api/v1/applications/${appId}/interview-question-sets/generate`,
+  questionSets:       `${BASE_URL}/api/v1/interview/question-sets`,
 
   // ── 면접 세션 ─────────────────────────────────────────────────────────
   sessions:           `${BASE_URL}/api/v1/interview-sessions`,
