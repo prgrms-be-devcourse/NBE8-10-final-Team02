@@ -104,6 +104,24 @@ class FinalActionDeciderTest {
         assertThat(finalAction).isEqualTo(FinalAction.USE_CANDIDATE);
     }
 
+    @Test
+    void decide_returnsUseCandidateForShortNaturalProjectSummaryWithRequirementDrift() {
+        String normalizedAnswerText = "사내 정산 어드민을 다시 만드는 프로젝트였고 운영 요청이 자주 바뀌어서 급한 화면부터 열어야 했습니다. "
+                + "저는 백엔드 담당으로 조회 api와 상태 저장 구조를 정리했습니다.";
+
+        assertThat(normalizedAnswerText.length()).isEqualTo(95);
+        assertThat(normalizedAnswerText.chars().filter(character -> character == '.').count()).isEqualTo(2);
+
+        FinalAction finalAction = finalActionDecider.decide(
+                QuestionType.PROJECT,
+                projectWhitelistSignals(),
+                projectResultReasonResolution(),
+                normalizedAnswerText
+        );
+
+        assertThat(finalAction).isEqualTo(FinalAction.USE_CANDIDATE);
+    }
+
     private Map<GapType, Boolean> projectWhitelistSignals() {
         Map<GapType, Boolean> signals = new LinkedHashMap<>();
         for (GapType gapType : GapType.values()) {
