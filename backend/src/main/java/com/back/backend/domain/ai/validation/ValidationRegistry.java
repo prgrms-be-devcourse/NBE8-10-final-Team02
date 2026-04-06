@@ -33,7 +33,7 @@ public class ValidationRegistry {
     }
 
     /**
-     * 6개 기본 검증기가 모두 등록된 불변 레지스트리를 생성
+     * 기본 검증기가 모두 등록된 불변 레지스트리를 생성
      */
     public static ValidationRegistry createDefault(JsonSchemaValidator jsonSchemaValidator) {
         Map<String, AiResponseValidator> map = new HashMap<>();
@@ -43,6 +43,7 @@ public class ValidationRegistry {
             new SelfIntroGenerateValidator(jsonSchemaValidator),
             new InterviewQuestionsGenerateValidator(jsonSchemaValidator),
             new InterviewFollowupGenerateValidator(jsonSchemaValidator),
+            new InterviewCompletionFollowupValidator(jsonSchemaValidator),
             new InterviewEvaluateValidator(jsonSchemaValidator),
             new InterviewSummaryValidator(jsonSchemaValidator),
             // Batch 포트폴리오 요약 검증기 — BatchRepoSummaryGeneratorService에서 사용

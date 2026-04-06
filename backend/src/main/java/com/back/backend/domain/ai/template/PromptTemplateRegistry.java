@@ -5,7 +5,7 @@ import java.util.Map;
 
 /**
  * 프롬프트 템플릿 레지스트리
- * 6개 템플릿을 등록하고 templateId로 조회
+ * 기본 템플릿을 등록하고 templateId로 조회
  * 생성 후 불변 — 외부에서 추가/수정 불가
  */
 public class PromptTemplateRegistry {
@@ -25,7 +25,7 @@ public class PromptTemplateRegistry {
     }
 
     /**
-     * 6개 기본 템플릿이 모두 등록된 불변 레지스트리를 생성
+     * 기본 템플릿이 모두 등록된 불변 레지스트리를 생성
      */
     public static PromptTemplateRegistry createDefault() {
         Map<String, PromptTemplate> map = new HashMap<>();
@@ -63,6 +63,15 @@ public class PromptTemplateRegistry {
             "developer/ai.interview.followup.generate.v1.txt",
             "schema/interview-followup-generate.schema.json",
             0.5, 1000,
+            new PromptTemplate.RetryPolicy(1, false)
+        ));
+
+        map.put("ai.interview.followup.complete.v1", new PromptTemplate(
+            "ai.interview.followup.complete.v1", "v1", "interview_followup_completion",
+            "system/common-system.txt",
+            "developer/ai.interview.followup.complete.v1.txt",
+            "schema/interview-followup-complete.schema.json",
+            0.4, 1000,
             new PromptTemplate.RetryPolicy(1, false)
         ));
 

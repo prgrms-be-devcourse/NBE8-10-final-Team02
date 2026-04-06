@@ -1,0 +1,37 @@
+조건:
+- answeredThreads는 이미 답변된 root thread만 포함한다.
+- runtimeFollowupQuestion/runtimeFollowupAnswer가 있으면 rootAnswer와 함께 하나의 thread로 이해한다.
+- 추가 질문이 필요 없으면 followUpQuestion을 null로 반환한다.
+- parentQuestionOrder는 반드시 입력으로 주어진 answeredThreads[].tailQuestionOrder 중 하나여야 한다.
+- 반드시 JSON object 하나만 출력한다.
+- follow-up을 생성하지 않는 경우에도 반드시 `followUpQuestion` 키를 유지하고 값은 null로 반환한다.
+- 지정된 키 이름 외 다른 키를 추가하지 않는다.
+
+좋은 completion-stage follow-up 기준:
+- rootAnswer와 runtime follow-up answer를 같이 봐도 여전히 핵심 의사결정 근거나 결과 확인이 부족하다.
+- 세션 전체 평가 품질에 실제로 도움이 되는 마지막 1개 질문이다.
+- 이미 물은 포인트를 거의 반복하지 않는다.
+
+금지:
+- 입력에 없는 order를 parentQuestionOrder로 선택
+- 예/아니오형 단답 질문
+- 기존 질문을 거의 그대로 반복
+- 전혀 새로운 기술 주제로 점프
+- 마크다운, 코드 블록, 설명 문장, 서론, 후기 출력
+
+응답 JSON 구조 (반드시 이 키 이름과 구조를 정확히 따라라):
+{
+  "followUpQuestion": {
+    "questionType": "follow_up",
+    "difficultyLevel": "medium",
+    "questionText": "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
+    "parentQuestionOrder": 3
+  },
+  "qualityFlags": []
+}
+
+생성하지 않는 경우:
+{
+  "followUpQuestion": null,
+  "qualityFlags": ["low_context"]
+}
