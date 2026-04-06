@@ -11,7 +11,13 @@ import {
   resumeSession,
   submitSessionAnswer,
 } from '@/api/interview';
+import {
+  shouldAutoCompleteAfterAnswer,
+  shouldRequireManualCompleteAfterAnswer,
+  shouldShowCompletionFollowupMode,
+} from '@/lib/interview-session-flow';
 import type {
+  CompletionFollowupAnswerSummary,
   InterviewQuestionType,
   InterviewSessionCurrentQuestion,
   InterviewSessionDetail,
@@ -164,6 +170,14 @@ function createSystemMessage(text: string, tone: ChatMessageTone = 'default'): C
   };
 }
 
+function formatSummaryAnswerText(answer: CompletionFollowupAnswerSummary) {
+  if (answer.isSkipped) {
+    return '이 질문은 건너뛰었습니다.';
+  }
+
+  return answer.answerText?.trim() || '답변 내용이 없습니다.';
+}
+
 function getChatStorageKey(sessionId: number) {
   return `${CHAT_STORAGE_PREFIX}:${sessionId}`;
 }
@@ -263,6 +277,7 @@ export default function InterviewSessionPage() {
   const router = useRouter();
   const sessionId = Number(params.sessionId);
   const skipNextDraftPersistRef = useRef(false);
+  const previousCompletionModeRef = useRef(false);
 
   const [session, setSession] = useState<InterviewSessionDetail | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredMessages(sessionId));
@@ -276,7 +291,12 @@ export default function InterviewSessionPage() {
   const [transitionMode, setTransitionMode] = useState<'pause' | 'resume' | null>(null);
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [completingSession, setCompletingSession] = useState(false);
+  const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
+  const [needsManualCompleteAfterCompletionAnswer, setNeedsManualCompleteAfterCompletionAnswer] =
+    useState(false);
   const currentQuestionId = session?.currentQuestion?.id ?? null;
+  const completionFollowupContext = session?.completionFollowupContext ?? null;
+  const isCompletionFollowupMode = !!completionFollowupContext;
 
   useEffect(() => {
     setMessages(readStoredMessages(sessionId));
@@ -377,6 +397,18 @@ export default function InterviewSessionPage() {
     void loadSession();
   }, [loadSession]);
 
+  useEffect(() => {
+    if (isCompletionFollowupMode && !previousCompletionModeRef.current) {
+      setTranscriptCollapsed(true);
+    }
+
+    if (!isCompletionFollowupMode && previousCompletionModeRef.current) {
+      setTranscriptCollapsed(false);
+    }
+
+    previousCompletionModeRef.current = isCompletionFollowupMode;
+  }, [isCompletionFollowupMode]);
+
   function formatApiError(err: unknown, fallbackMessage: string) {
     if (err instanceof InterviewApiError) {
       const fieldHint = err.fieldErrors[0];
@@ -402,6 +434,62 @@ export default function InterviewSessionPage() {
     return null;
   }
 
+  async function attemptSessionComplete(options?: { autoTriggered?: boolean }) {
+    if (!session) {
+      return;
+    }
+
+    setCompletingSession(true);
+    setCompleteError(null);
+    setSubmitError(null);
+    setTransitionError(null);
+    setNeedsManualCompleteAfterCompletionAnswer(false);
+
+    try {
+      await completeSession(session.id);
+      router.push(`/interview/sessions/${session.id}/result`);
+    } catch (err) {
+      if (
+        err instanceof InterviewApiError &&
+        (err.retryable || err.code === 'INTERVIEW_SESSION_ALREADY_COMPLETED')
+      ) {
+        router.push(`/interview/sessions/${session.id}/result`);
+        return;
+      }
+
+      if (err instanceof InterviewApiError && err.code === 'INTERVIEW_SESSION_STATUS_CONFLICT') {
+        await loadSession({ showPageLoading: false });
+        return;
+      }
+
+      if (err instanceof InterviewApiError) {
+        const refreshed = await loadSession({ showPageLoading: false });
+        if (
+          shouldShowCompletionFollowupMode({
+            errorCode: err.code,
+            fieldErrors: err.fieldErrors,
+            refreshedSession: refreshed,
+          })
+        ) {
+          setMessages((previousMessages) => [
+            ...previousMessages,
+            createSystemMessage(
+              options?.autoTriggered
+                ? '마지막 보완 질문이 추가되었습니다. 이어서 답변을 제출해주세요.'
+                : '보완 질문이 추가되었습니다. 이어서 답변을 제출해주세요.',
+              'warning',
+            ),
+          ]);
+          return;
+        }
+      }
+
+      setCompleteError(formatApiError(err, '세션을 종료하지 못했습니다.'));
+    } finally {
+      setCompletingSession(false);
+    }
+  }
+
   async function handleSubmitAnswer(isSkipped: boolean) {
     if (!session?.currentQuestion) {
       setSubmitError('현재 제출 가능한 질문이 없습니다.');
@@ -422,6 +510,9 @@ export default function InterviewSessionPage() {
     }
 
     const currentQuestion = session.currentQuestion;
+    const wasCompletionFollowup =
+      !!completionFollowupContext
+      && completionFollowupContext.completionFollowupQuestion.id === currentQuestion.id;
     const nextAnswerOrder = session.answeredQuestionCount + 1;
     const pendingMessageId = `answer-${Date.now()}`;
     const pendingMessage = createAnswerMessage({
@@ -437,6 +528,7 @@ export default function InterviewSessionPage() {
     setSubmitError(null);
     setTransitionError(null);
     setCompleteError(null);
+    setNeedsManualCompleteAfterCompletionAnswer(false);
     setMessages((previousMessages) => [...previousMessages, pendingMessage]);
 
     try {
@@ -463,7 +555,29 @@ export default function InterviewSessionPage() {
         });
       }));
 
-      await loadSession({ resetAnswerText: true, showPageLoading: false });
+      const refreshed = await loadSession({ resetAnswerText: true, showPageLoading: false });
+      if (
+        shouldAutoCompleteAfterAnswer({
+          wasCompletionFollowup,
+          refreshedSession: refreshed,
+        })
+      ) {
+        await attemptSessionComplete({ autoTriggered: true });
+        return;
+      }
+
+      if (
+        shouldRequireManualCompleteAfterAnswer({
+          wasCompletionFollowup,
+          refreshedSession: refreshed,
+        })
+      ) {
+        setNeedsManualCompleteAfterCompletionAnswer(true);
+        setMessages((previousMessages) => [
+          ...previousMessages,
+          createSystemMessage('마지막 보완 질문 답변이 저장되었습니다. 세션 종료를 다시 눌러 결과를 생성하세요.', 'warning'),
+        ]);
+      }
     } catch (err) {
       setMessages((previousMessages) =>
         previousMessages.filter((message) => message.id !== pendingMessageId),
@@ -520,35 +634,7 @@ export default function InterviewSessionPage() {
   }
 
   async function handleCompleteSession() {
-    if (!session) {
-      return;
-    }
-
-    setCompletingSession(true);
-    setCompleteError(null);
-    setSubmitError(null);
-    setTransitionError(null);
-
-    try {
-      await completeSession(session.id);
-      router.push(`/interview/sessions/${session.id}/result`);
-    } catch (err) {
-      if (
-        err instanceof InterviewApiError &&
-        (err.retryable || err.code === 'INTERVIEW_SESSION_ALREADY_COMPLETED')
-      ) {
-        router.push(`/interview/sessions/${session.id}/result`);
-        return;
-      }
-
-      if (err instanceof InterviewApiError && err.code === 'INTERVIEW_SESSION_STATUS_CONFLICT') {
-        await loadSession({ showPageLoading: false });
-      }
-
-      setCompleteError(formatApiError(err, '세션을 종료하지 못했습니다.'));
-    } finally {
-      setCompletingSession(false);
-    }
+    await attemptSessionComplete({ autoTriggered: false });
   }
 
   const answerLength = answerText.trim().length;
@@ -577,6 +663,11 @@ export default function InterviewSessionPage() {
     session.remainingQuestionCount === 0 &&
     (session.status === 'in_progress' || session.status === 'paused') &&
     !actionBusy;
+  const completeButtonDescription = needsManualCompleteAfterCompletionAnswer
+    ? '보완 질문 답변이 끝났습니다. 종료 버튼을 다시 눌러 결과를 생성합니다.'
+    : isCompletionFollowupMode
+    ? '보완 질문 답변 후 다시 종료를 눌러 결과를 생성합니다.'
+    : '질문이 모두 끝나면 자동으로 마지막 보완 검토가 시작될 수 있습니다.';
 
   if (loading) {
     return (
@@ -614,7 +705,7 @@ export default function InterviewSessionPage() {
         </Link>
         <h1 className="mt-2 text-2xl font-semibold text-zinc-900">텍스트 모의 면접</h1>
         <p className="mt-2 text-sm text-zinc-500">
-          다음 질문은 항상 서버가 내려주는 currentQuestion 기준으로 이어집니다. 답변 저장 후 세션 상세를 다시 조회해 꼬리질문 또는 다음 기본 질문을 그대로 붙입니다.
+          다음 질문은 항상 서버가 내려주는 currentQuestion 기준으로 이어집니다. 마지막 일반 답변 제출 뒤에는 세션 상세 재조회 결과에 따라 자동 종료 검토 또는 마지막 보완 질문 흐름으로 이어집니다.
         </p>
       </div>
 
@@ -675,82 +766,152 @@ export default function InterviewSessionPage() {
                 질문은 left bubble, 답변은 right bubble, 상태 안내는 system bubble로 표시합니다.
               </p>
             </div>
-            {session.currentQuestion && (
-              <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm">
-                현재 Q{session.currentQuestion.questionOrder}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {isCompletionFollowupMode && (
+                <button
+                  type="button"
+                  onClick={() => setTranscriptCollapsed((current) => !current)}
+                  className="rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm"
+                >
+                  {transcriptCollapsed ? '기존 채팅 펼치기' : '기존 채팅 접기'}
+                </button>
+              )}
+              {session.currentQuestion && (
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm">
+                  현재 Q{session.currentQuestion.questionOrder}
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="mt-4 max-h-[34rem] space-y-3 overflow-y-auto rounded-3xl bg-white px-3 py-4">
-            {messages.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500">
-                현재 질문을 불러오면 여기서 채팅처럼 이어집니다.
-              </div>
-            )}
+          {transcriptCollapsed ? (
+            <div className="mt-4 rounded-3xl border border-dashed border-zinc-200 bg-white px-4 py-5 text-sm text-zinc-500">
+              기존 질문/답변 기록은 접혀 있습니다. 필요하면 위 버튼으로 다시 펼쳐 확인할 수 있습니다.
+            </div>
+          ) : (
+            <div className="mt-4 max-h-[34rem] space-y-3 overflow-y-auto rounded-3xl bg-white px-3 py-4">
+              {messages.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500">
+                  현재 질문을 불러오면 여기서 채팅처럼 이어집니다.
+                </div>
+              )}
 
-            {messages.map((message) => {
-              if (message.role === 'system') {
-                const toneClass = message.tone === 'success'
-                  ? 'border-green-200 bg-green-50 text-green-700'
-                  : message.tone === 'warning'
-                    ? 'border-amber-200 bg-amber-50 text-amber-800'
-                    : 'border-zinc-200 bg-zinc-50 text-zinc-600';
+              {messages.map((message) => {
+                if (message.role === 'system') {
+                  const toneClass = message.tone === 'success'
+                    ? 'border-green-200 bg-green-50 text-green-700'
+                    : message.tone === 'warning'
+                      ? 'border-amber-200 bg-amber-50 text-amber-800'
+                      : 'border-zinc-200 bg-zinc-50 text-zinc-600';
 
-                return (
-                  <div key={message.id} className="flex justify-center">
-                    <div className={`max-w-xl rounded-full border px-4 py-2 text-xs ${toneClass}`}>
-                      {message.text}
+                  return (
+                    <div key={message.id} className="flex justify-center">
+                      <div className={`max-w-xl rounded-full border px-4 py-2 text-xs ${toneClass}`}>
+                        {message.text}
+                      </div>
                     </div>
-                  </div>
-                );
-              }
+                  );
+                }
 
-              if (message.role === 'answer') {
+                if (message.role === 'answer') {
+                  return (
+                    <div key={message.id} className="flex justify-end">
+                      <div className="max-w-2xl rounded-3xl bg-zinc-900 px-4 py-3 text-sm leading-6 text-white shadow-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[11px] font-medium text-zinc-300">
+                            {message.isSkipped ? '건너뛴 답변' : `답변 ${message.answerOrder ?? ''}`.trim()}
+                          </span>
+                          {message.pending && (
+                            <span className="text-[11px] text-zinc-400">저장 중...</span>
+                          )}
+                        </div>
+                        <p className="mt-2 whitespace-pre-wrap">{message.text}</p>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
-                  <div key={message.id} className="flex justify-end">
-                    <div className="max-w-2xl rounded-3xl bg-zinc-900 px-4 py-3 text-sm leading-6 text-white shadow-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[11px] font-medium text-zinc-300">
-                          {message.isSkipped ? '건너뛴 답변' : `답변 ${message.answerOrder ?? ''}`.trim()}
-                        </span>
-                        {message.pending && (
-                          <span className="text-[11px] text-zinc-400">저장 중...</span>
+                  <div key={message.id} className="flex justify-start">
+                    <div className="max-w-2xl rounded-3xl border border-zinc-200 bg-white px-4 py-3 text-sm leading-6 text-zinc-900 shadow-sm">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                        {typeof message.questionOrder === 'number' && (
+                          <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium text-zinc-700">
+                            Q{message.questionOrder}
+                          </span>
+                        )}
+                        {message.questionType && (
+                          <span className="rounded-full bg-zinc-100 px-2 py-0.5">
+                            {QUESTION_TYPE_LABEL[message.questionType]}
+                          </span>
+                        )}
+                        {message.difficultyLevel && (
+                          <span className="rounded-full bg-zinc-100 px-2 py-0.5">
+                            {DIFFICULTY_LABEL[message.difficultyLevel] ?? message.difficultyLevel}
+                          </span>
                         )}
                       </div>
                       <p className="mt-2 whitespace-pre-wrap">{message.text}</p>
                     </div>
                   </div>
                 );
-              }
+              })}
+            </div>
+          )}
+        </div>
 
-              return (
-                <div key={message.id} className="flex justify-start">
-                  <div className="max-w-2xl rounded-3xl border border-zinc-200 bg-white px-4 py-3 text-sm leading-6 text-zinc-900 shadow-sm">
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                      {typeof message.questionOrder === 'number' && (
-                        <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium text-zinc-700">
-                          Q{message.questionOrder}
-                        </span>
-                      )}
-                      {message.questionType && (
-                        <span className="rounded-full bg-zinc-100 px-2 py-0.5">
-                          {QUESTION_TYPE_LABEL[message.questionType]}
-                        </span>
-                      )}
-                      {message.difficultyLevel && (
-                        <span className="rounded-full bg-zinc-100 px-2 py-0.5">
-                          {DIFFICULTY_LABEL[message.difficultyLevel] ?? message.difficultyLevel}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-2 whitespace-pre-wrap">{message.text}</p>
+        {completionFollowupContext && (
+          <div className="mt-6 rounded-3xl border border-blue-200 bg-blue-50 px-4 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-blue-900">마지막 보완 질문</p>
+                <p className="mt-1 text-xs text-blue-700">
+                  기존 thread 문맥을 먼저 확인한 뒤 아래 질문에 이어서 답변해주세요.
+                </p>
+              </div>
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-blue-700 shadow-sm">
+                parent Q{completionFollowupContext.parentQuestionOrder}
+              </span>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div className="rounded-2xl border border-blue-100 bg-white px-4 py-3">
+                <p className="text-[11px] font-medium text-blue-700">
+                  Root Q{completionFollowupContext.rootQuestion.questionOrder}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-zinc-900">
+                  {completionFollowupContext.rootQuestion.questionText}
+                </p>
+                <div className="mt-3 rounded-2xl bg-zinc-50 px-3 py-3 text-sm leading-6 text-zinc-700">
+                  {formatSummaryAnswerText(completionFollowupContext.rootAnswer)}
+                </div>
+              </div>
+
+              {completionFollowupContext.runtimeFollowupQuestion && completionFollowupContext.runtimeFollowupAnswer && (
+                <div className="rounded-2xl border border-blue-100 bg-white px-4 py-3">
+                  <p className="text-[11px] font-medium text-blue-700">
+                    Runtime Follow-up Q{completionFollowupContext.runtimeFollowupQuestion.questionOrder}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-zinc-900">
+                    {completionFollowupContext.runtimeFollowupQuestion.questionText}
+                  </p>
+                  <div className="mt-3 rounded-2xl bg-zinc-50 px-3 py-3 text-sm leading-6 text-zinc-700">
+                    {formatSummaryAnswerText(completionFollowupContext.runtimeFollowupAnswer)}
                   </div>
                 </div>
-              );
-            })}
+              )}
+
+              <div className="rounded-2xl border border-blue-200 bg-white px-4 py-3">
+                <p className="text-[11px] font-medium text-blue-700">
+                  Completion Follow-up Q{completionFollowupContext.completionFollowupQuestion.questionOrder}
+                </p>
+                <p className="mt-2 text-sm font-medium leading-6 text-zinc-900">
+                  {completionFollowupContext.completionFollowupQuestion.questionText}
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr),19rem]">
           <div className="rounded-3xl border border-zinc-200 px-4 py-4">
@@ -809,6 +970,12 @@ export default function InterviewSessionPage() {
             {completeError && (
               <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {completeError}
+              </div>
+            )}
+
+            {needsManualCompleteAfterCompletionAnswer && (
+              <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                세션 종료를 다시 눌러 결과를 생성하세요.
               </div>
             )}
 
@@ -872,7 +1039,7 @@ export default function InterviewSessionPage() {
             <div className="rounded-3xl border border-zinc-200 px-4 py-4">
               <p className="text-sm font-semibold text-zinc-900">세션 종료</p>
               <p className="mt-1 text-xs text-zinc-500">
-                남은 질문이 0개가 되면 결과 리포트로 이동할 수 있습니다.
+                {completeButtonDescription}
               </p>
 
               <div className="mt-4 flex flex-wrap gap-3">
@@ -902,6 +1069,12 @@ export default function InterviewSessionPage() {
                     남은 질문이 {session.remainingQuestionCount}개라서 아직 세션을 종료할 수 없습니다.
                   </p>
                 )}
+
+              {needsManualCompleteAfterCompletionAnswer && (
+                <p className="mt-3 text-sm text-blue-700">
+                  마지막 보완 질문 답변이 저장되었습니다. 종료 버튼으로 결과 생성을 마무리하세요.
+                </p>
+              )}
 
               {session.status === 'completed' && (
                 <p className="mt-3 text-sm text-zinc-600">
