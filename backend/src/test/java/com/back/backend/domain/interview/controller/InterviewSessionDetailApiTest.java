@@ -205,11 +205,10 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
     }
 
     @Test
-    void getSessionDetail_skipsImmediateAiWhenRuleReturnsCandidate() throws Exception {
+    void getSessionDetail_insertsCandidateFollowupAndSkipsImmediateAi() throws Exception {
         User user = persistUser("detail-followup-candidate@example.com", "detail-followup-candidate");
         InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
         InterviewSessionQuestion firstQuestion = findSessionQuestion(entityManager, session, 1);
-        InterviewSessionQuestion secondQuestion = findSessionQuestion(entityManager, session, 2);
         InterviewAnswer answer = persistAnswer(
                 session,
                 firstQuestion,
@@ -225,17 +224,35 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
         mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
                         .with(authenticated(user.getId())))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.currentQuestion.id").value(secondQuestion.getId()))
+                .andExpect(jsonPath("$.data.currentQuestion.questionType").value("follow_up"))
                 .andExpect(jsonPath("$.data.currentQuestion.questionOrder").value(2))
-                .andExpect(jsonPath("$.data.totalQuestionCount").value(3))
+                .andExpect(jsonPath("$.data.currentQuestion.questionText")
+                        .value("그 방식으로 접근한 이유를 조금 더 구체적으로 설명해주실 수 있나요?"))
+                .andExpect(jsonPath("$.data.totalQuestionCount").value(4))
                 .andExpect(jsonPath("$.data.answeredQuestionCount").value(1))
-                .andExpect(jsonPath("$.data.remainingQuestionCount").value(2));
+                .andExpect(jsonPath("$.data.remainingQuestionCount").value(3));
 
         entityManager.flush();
         entityManager.clear();
 
         InterviewAnswer refreshedAnswer = entityManager.find(InterviewAnswer.class, answer.getId());
+        InterviewSessionQuestion generatedFollowupQuestion = entityManager.createQuery(
+                        """
+                                select q
+                                from InterviewSessionQuestion q
+                                where q.session.id = :sessionId
+                                  and q.parentSessionQuestion.id = :parentQuestionId
+                                """,
+                        InterviewSessionQuestion.class
+                )
+                .setParameter("sessionId", session.getId())
+                .setParameter("parentQuestionId", firstQuestion.getId())
+                .getSingleResult();
         assertThat(refreshedAnswer.getFollowupResolvedAt()).isNotNull();
+        assertThat(generatedFollowupQuestion.getQuestionOrder()).isEqualTo(2);
+        assertThat(generatedFollowupQuestion.getQuestionType()).isEqualTo(InterviewQuestionType.FOLLOW_UP);
+        assertThat(generatedFollowupQuestion.getQuestionText())
+                .isEqualTo("그 방식으로 접근한 이유를 조금 더 구체적으로 설명해주실 수 있나요?");
         then(aiPipeline).shouldHaveNoInteractions();
     }
 
@@ -325,7 +342,7 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
     }
 
     @Test
-    void getSessionDetail_allowsOnlyOneRuntimeDynamicFollowupPerSession() throws Exception {
+    void getSessionDetail_candidateFollowupDoesNotConsumeRuntimeDynamicBudget() throws Exception {
         User user = persistUser("detail-followup-budget@example.com", "detail-followup-budget");
         InterviewSession session = persistSession(user, InterviewSessionStatus.IN_PROGRESS, FIXED_NOW);
         InterviewSessionQuestion firstQuestion = findSessionQuestion(entityManager, session, 1);
@@ -335,22 +352,13 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 firstQuestion,
                 1,
                 false,
-                "제가 맡아서 조회 API를 분리하고 배치 구조를 수정했습니다.",
+                "사내 재고 관리 시스템을 만드는 프로젝트가 있었는데, 기존 엑셀 작업을 옮겨오는 성격이라 요구사항이 자주 바뀌었습니다. "
+                        + "저는 백엔드 쪽 기본 CRUD와 배치 작업을 맡아 필요한 기능을 우선 붙였습니다. "
+                        + "일정은 맞췄지만 어떤 기준으로 우선순위를 잡았는지나 결과가 얼마나 안정화됐는지는 "
+                        + "지금 설명하면 조금 일반론적으로 들릴 수 있습니다.",
                 false
         );
-        InterviewAnswer secondAnswer = persistAnswer(
-                session,
-                secondQuestion,
-                2,
-                false,
-                "사내 정산 리포트 자동화 프로젝트를 맡은 적이 있습니다. "
-                        + "이전에는 운영팀이 월말마다 SQL 결과를 손으로 정리해서 리포트를 만들었고, "
-                        + "저는 백엔드에서 데이터 추출 배치와 리포트 생성 API를 설계했습니다. "
-                        + "특히 컬럼 정의가 자주 바뀌어서 템플릿 엔진을 붙이고, 배치 실행 이력도 남기도록 만들었습니다. "
-                        + "다만 당시에는 일정상 우선 자동 생성까지 열어두는 데 집중했고, "
-                        + "어떤 범위까지 자동화할지나 운영팀 업무가 실제로 얼마나 줄었는지는 뒤에서 충분히 정리하지 못했습니다.",
-                false
-        );
+        InterviewAnswer secondAnswer;
 
         given(aiPipeline.execute(eq(FOLLOWUP_TEMPLATE_ID), anyString()))
                 .willReturn(OBJECT_MAPPER.readTree("""
@@ -359,7 +367,7 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                             "questionType": "follow_up",
                             "difficultyLevel": "medium",
                             "questionText": "그 선택 기준을 조금 더 구체적으로 설명해주실 수 있나요?",
-                            "parentQuestionOrder": 2
+                            "parentQuestionOrder": 3
                           },
                           "qualityFlags": []
                         }
@@ -371,11 +379,56 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.currentQuestion.questionType").value("follow_up"))
                 .andExpect(jsonPath("$.data.totalQuestionCount").value(4));
 
+        entityManager.flush();
+        entityManager.clear();
+
+        InterviewSession refreshedSession = entityManager.find(InterviewSession.class, session.getId());
+        InterviewSessionQuestion refreshedFirstQuestion = findSessionQuestion(entityManager, session, 1);
+        InterviewSessionQuestion candidateFollowupQuestion = entityManager.createQuery(
+                        """
+                                select q
+                                from InterviewSessionQuestion q
+                                where q.session.id = :sessionId
+                                  and q.parentSessionQuestion.id = :parentQuestionId
+                                """,
+                        InterviewSessionQuestion.class
+                )
+                .setParameter("sessionId", session.getId())
+                .setParameter("parentQuestionId", refreshedFirstQuestion.getId())
+                .getSingleResult();
+        InterviewSessionQuestion shiftedSecondQuestion = findSessionQuestion(entityManager, session, 3);
+
+        persistAnswer(
+                refreshedSession,
+                candidateFollowupQuestion,
+                2,
+                false,
+                "우선순위는 운영 영향도와 변경 범위를 같이 보고 정했습니다.",
+                true
+        );
+        assertThat(shiftedSecondQuestion.getId()).isEqualTo(secondQuestion.getId());
+        secondAnswer = persistAnswer(
+                refreshedSession,
+                shiftedSecondQuestion,
+                3,
+                false,
+                "사내 정산 리포트 자동화 프로젝트를 맡은 적이 있습니다. "
+                        + "이전에는 운영팀이 월말마다 SQL 결과를 손으로 정리해서 리포트를 만들었고, "
+                        + "저는 백엔드에서 데이터 추출 배치와 리포트 생성 API를 설계했습니다. "
+                        + "특히 컬럼 정의가 자주 바뀌어서 템플릿 엔진을 붙이고, 배치 실행 이력도 남기도록 만들었습니다. "
+                        + "다만 당시에는 일정상 우선 자동 생성까지 열어두는 데 집중했고, "
+                        + "어떤 범위까지 자동화할지나 운영팀 업무가 실제로 얼마나 줄었는지는 뒤에서 충분히 정리하지 못했습니다.",
+                false
+        );
+
         mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
                         .with(authenticated(user.getId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.currentQuestion.questionType").value("follow_up"))
-                .andExpect(jsonPath("$.data.totalQuestionCount").value(4));
+                .andExpect(jsonPath("$.data.currentQuestion.questionOrder").value(4))
+                .andExpect(jsonPath("$.data.currentQuestion.questionText")
+                        .value("그 선택 기준을 조금 더 구체적으로 설명해주실 수 있나요?"))
+                .andExpect(jsonPath("$.data.totalQuestionCount").value(5));
 
         entityManager.flush();
         entityManager.clear();
@@ -389,7 +442,7 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                         Long.class
                 )
                 .setParameter("sessionId", session.getId())
-                .getSingleResult()).isEqualTo(4L);
+                .getSingleResult()).isEqualTo(5L);
         then(aiPipeline).should().execute(eq(FOLLOWUP_TEMPLATE_ID), anyString());
     }
 

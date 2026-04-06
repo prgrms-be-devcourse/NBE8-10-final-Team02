@@ -59,6 +59,15 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String VALID_ANSWER =
             "장애 원인을 추적할 때 로그와 메트릭을 비교하고, 사용자 영향 범위를 수치로 확인한 뒤 복구 순서를 정했습니다.";
+    private static final String NO_FOLLOW_UP_PROJECT_ANSWER =
+            "반려동물 병원 예약 서비스를 출시한 경험이 있습니다. "
+                    + "초기에는 전화 예약 비중이 높아서 예약 누락이 많았고, "
+                    + "저는 백엔드 담당으로 예약 상태 머신과 알림 스케줄러를 맡았습니다. "
+                    + "병원별 영업시간이 달라 예외 처리가 많았는데, 예약 가능 슬롯을 미리 계산하는 구조로 바꾸고 "
+                    + "예약·취소·노쇼 상태를 이벤트 기반으로 관리했습니다. "
+                    + "QA 단계에서는 실제 병원 운영팀과 시나리오를 돌려 보면서 예외 케이스를 계속 보완했고, "
+                    + "출시 첫 달에 온라인 예약 비중이 20%대에서 60% 가까이 올라갔습니다. "
+                    + "중복 예약 문의도 눈에 띄게 줄어서 이후 추가 지점 확장 때 같은 구조를 재사용했습니다.";
 
     @Autowired
     private EntityManager entityManager;
@@ -183,6 +192,42 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         assertThat(refreshedAnswers)
                 .extracting(InterviewAnswer::getScore)
                 .containsExactly(80, 84, 86, 88);
+    }
+
+    @Test
+    void completeSession_candidateRuntimeFollowupDoesNotTriggerCompletionReviewAgain() throws Exception {
+        UserFixture fixture = persistAnsweredSessionWithCandidateRuntimeFollowup("complete-candidate-runtime-success");
+        InterviewSession session = fixture.session();
+
+        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
+                .willReturn(new InterviewResultGenerationService.GeneratedInterviewResult(
+                        85,
+                        "runtime candidate follow-up를 포함해 결과를 생성했습니다.",
+                        List.of(
+                                new InterviewResultGenerationService.GeneratedInterviewAnswerResult(1, 80, "첫 번째 평가", List.of("근거 부족")),
+                                new InterviewResultGenerationService.GeneratedInterviewAnswerResult(2, 84, "candidate follow-up 평가", List.of()),
+                                new InterviewResultGenerationService.GeneratedInterviewAnswerResult(3, 86, "세 번째 평가", List.of()),
+                                new InterviewResultGenerationService.GeneratedInterviewAnswerResult(4, 90, "네 번째 평가", List.of("선택 근거 부족"))
+                        )
+                ));
+
+        mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("feedback_completed"))
+                .andExpect(jsonPath("$.data.totalScore").value(85))
+                .andExpect(jsonPath("$.data.summaryFeedback").value("runtime candidate follow-up를 포함해 결과를 생성했습니다."));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        InterviewSession refreshedSession = interviewSessionRepository.findById(session.getId()).orElseThrow();
+        List<InterviewAnswer> refreshedAnswers = interviewAnswerRepository.findAllBySessionIdOrderByAnswerOrderAsc(session.getId());
+
+        assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.FEEDBACK_COMPLETED);
+        assertThat(refreshedSession.getCompletionFollowupReviewedAt()).isNotNull();
+        assertThat(refreshedAnswers).hasSize(4);
+        then(aiPipeline).shouldHaveNoInteractions();
     }
 
     @Test
@@ -667,12 +712,77 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                         session,
                         thirdSessionQuestion,
                         3,
-                        "사내 재고 관리 시스템을 만드는 프로젝트가 있었는데, 기존 엑셀 작업을 옮겨오는 성격이라 요구사항이 자주 바뀌었습니다. "
-                                + "저는 백엔드 쪽 기본 CRUD와 배치 작업을 맡아 필요한 기능을 우선 붙였습니다. "
-                                + "일정은 맞췄지만 어떤 기준으로 우선순위를 잡았는지나 결과가 얼마나 안정화됐는지는 "
-                                + "지금 설명하면 조금 일반론적으로 들릴 수 있습니다."
+                        "사내 정산 리포트 자동화 프로젝트를 맡은 적이 있습니다. "
+                                + "이전에는 운영팀이 월말마다 SQL 결과를 손으로 정리해서 리포트를 만들었고, "
+                                + "저는 백엔드에서 데이터 추출 배치와 리포트 생성 API를 설계했습니다. "
+                                + "특히 컬럼 정의가 자주 바뀌어서 템플릿 엔진을 붙이고, 배치 실행 이력도 남기도록 만들었습니다. "
+                                + "다만 당시에는 일정상 우선 자동 생성까지 열어두는 데 집중했고, "
+                                + "어떤 범위까지 자동화할지나 운영팀 업무가 실제로 얼마나 줄었는지는 뒤에서 충분히 정리하지 못했습니다."
                 )
         );
+        return new UserFixture(user, questionSet, session, answers);
+    }
+
+    private UserFixture persistAnsweredSessionWithCandidateRuntimeFollowup(String prefix) {
+        com.back.backend.domain.user.entity.User user = persistUserFixture(prefix).user();
+        Application application = persistApplication(user, prefix + "-application");
+        InterviewQuestionSet questionSet = persistQuestionSet(user, application);
+        InterviewQuestion firstQuestion = persistQuestion(questionSet, 1, "첫 번째 질문");
+        InterviewQuestion secondQuestion = persistQuestion(questionSet, 2, "두 번째 질문");
+        InterviewQuestion thirdQuestion = persistQuestion(questionSet, 3, "세 번째 질문");
+        InterviewSession session = persistSessionWithoutSnapshot(user, questionSet, InterviewSessionStatus.IN_PROGRESS);
+        InterviewSessionQuestion firstSessionQuestion = persistSessionQuestion(
+                session,
+                firstQuestion,
+                null,
+                1,
+                InterviewQuestionType.PROJECT,
+                "첫 번째 질문"
+        );
+        InterviewSessionQuestion candidateFollowupQuestion = persistSessionQuestion(
+                session,
+                null,
+                firstSessionQuestion,
+                2,
+                InterviewQuestionType.FOLLOW_UP,
+                "그 방식으로 접근한 이유를 조금 더 구체적으로 설명해주실 수 있나요?"
+        );
+        InterviewSessionQuestion secondSessionQuestion = persistSessionQuestion(
+                session,
+                secondQuestion,
+                null,
+                3,
+                InterviewQuestionType.PROJECT,
+                "두 번째 질문"
+        );
+        InterviewSessionQuestion thirdSessionQuestion = persistSessionQuestion(
+                session,
+                thirdQuestion,
+                null,
+                4,
+                InterviewQuestionType.PROJECT,
+                "세 번째 질문"
+        );
+
+        InterviewAnswer parentAnswer = persistAnswer(
+                session,
+                firstSessionQuestion,
+                1,
+                "사내 재고 관리 시스템을 만드는 프로젝트가 있었는데, 기존 엑셀 작업을 옮겨오는 성격이라 요구사항이 자주 바뀌었습니다. "
+                        + "저는 백엔드 쪽 기본 CRUD와 배치 작업을 맡아 필요한 기능을 우선 붙였습니다. "
+                        + "일정은 맞췄지만 어떤 기준으로 우선순위를 잡았는지나 결과가 얼마나 안정화됐는지는 "
+                        + "지금 설명하면 조금 일반론적으로 들릴 수 있습니다."
+        );
+        parentAnswer.markFollowupResolved(FIXED_NOW);
+
+        List<InterviewAnswer> answers = List.of(
+                parentAnswer,
+                persistAnswer(session, candidateFollowupQuestion, 2, VALID_ANSWER + " candidate follow-up"),
+                persistAnswer(session, secondSessionQuestion, 3, NO_FOLLOW_UP_PROJECT_ANSWER),
+                persistAnswer(session, thirdSessionQuestion, 4, NO_FOLLOW_UP_PROJECT_ANSWER)
+        );
+        entityManager.flush();
+
         return new UserFixture(user, questionSet, session, answers);
     }
 
