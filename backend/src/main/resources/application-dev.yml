@@ -52,7 +52,7 @@ analysis:
 
 logging:
   level:
-    root: debug
+    root: info
     com.back.backend: debug
 
 # 개발 환경 JWT 설정
