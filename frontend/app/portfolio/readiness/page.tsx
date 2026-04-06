@@ -280,16 +280,37 @@ export default function PortfolioReadinessPage() {
 
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-zinc-900">최근 실패 작업 알림</h2>
-          <div className="mt-4 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-4 py-6 text-center">
-            <p className="text-sm font-medium text-zinc-900">
-              {dashboard.alerts.recentFailedJobs.status === 'not_ready'
-                ? '준비 중'
-                : `${dashboard.alerts.recentFailedJobs.items?.length ?? 0}건`}
-            </p>
-            <p className="mt-1 text-sm text-zinc-500">
-              최근 실패 작업 통합 집계는 이번 v1 범위에서 아직 제공하지 않습니다.
-            </p>
-          </div>
+          {dashboard.alerts.recentFailedJobs.status === 'not_ready' ? (
+            <div className="mt-4 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-4 py-6 text-center">
+              <p className="text-sm text-zinc-400">준비 중</p>
+            </div>
+          ) : !dashboard.alerts.recentFailedJobs.items?.length ? (
+            <div className="mt-4 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-4 py-6 text-center">
+              <p className="text-sm text-zinc-500">최근 7일간 실패한 작업이 없습니다.</p>
+            </div>
+          ) : (
+            <ul className="mt-4 flex flex-col gap-2">
+              {dashboard.alerts.recentFailedJobs.items.map((item, i) => (
+                <li
+                  key={i}
+                  className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-medium text-red-800">{item.message}</p>
+                    <span className="shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-mono text-red-600">
+                      {item.code}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-red-400">
+                    {new Date(item.occurredAt).toLocaleString('ko-KR', {
+                      month: 'long', day: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </div>
 
