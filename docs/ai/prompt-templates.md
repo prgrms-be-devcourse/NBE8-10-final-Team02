@@ -140,7 +140,7 @@ applies_to: ai-prompt-io-contract
 | ai.self_intro.generate.v1 | 자소서 문항 답변 생성 | 품질 우선 | 0.5 | 중간 |
 | ai.interview.questions.generate.v1 | 면접 질문 세트 생성 | 품질 우선 | 0.6 | 중간 |
 | ai.interview.followup.generate.v1 | runtime 꼬리 질문 1개 생성 | 균형형 | 0.5 | 짧게 |
-| ai.interview.followup.complete.v1 | complete 직전 최종 보완 질문 1개 판단/생성 | 안정형 | 0.4 | 짧게 |
+| ai.interview.followup.complete.v1 | complete 직전 thread별 최종 보완 질문 batch 판단/생성 | 안정형 | 0.4 | 짧게 |
 | ai.interview.evaluate.v1 | 질문별 점수/근거/태그 평가 | 안정형, JSON 준수 우선 | 0.2 | 중간 |
 | ai.interview.summary.v1 | 세션 요약 피드백 생성 | 안정형 | 0.3 | 짧게 |
 
@@ -719,7 +719,8 @@ applies_to: ai-prompt-io-contract
 
 ### 6.4.11.1 목적
 
-- `POST /interview/sessions/{sessionId}/complete` 직전 answered question thread 전체를 보고 최종 보완 follow-up 질문 1개를 판단/생성한다.
+- `POST /interview/sessions/{sessionId}/complete` 직전 answered question thread 전체를 보고 thread별 최종 보완 follow-up 질문을 batch로 판단/생성한다.
+- 각 answered thread에는 completion-stage follow-up을 최대 1개까지 생성할 수 있다.
 - runtime `finalAction`은 참고 입력일 수 있지만, 이 템플릿에서 thread 선택의 hard gate로 쓰지 않는다.
 
 ### 6.4.11.2 입력 변수
@@ -793,7 +794,8 @@ applies_to: ai-prompt-io-contract
 
 ```text
 당신은 텍스트 기반 모의 면접의 세션 종료 직전 최종 보완 질문 생성 엔진이다.
-세션 전체 answered thread를 보고, 정말 필요한 경우에만 후속 질문 1개를 생성하라.
+세션 전체 answered thread를 보고, 정말 필요한 thread에만 후속 질문을 생성하라.
+각 thread에는 completion-stage follow-up을 최대 1개까지만 생성할 수 있다.
 지정된 tailQuestionOrder 중 하나를 parentQuestionOrder로 선택해야 하며, 새로운 주제로 이탈하지 말라.
 반드시 JSON object 하나만 출력하라.
 ```
@@ -801,34 +803,58 @@ applies_to: ai-prompt-io-contract
 ### 6.4.11.5 Developer Prompt
 
 ```text
+목표:
+- answeredThreads 전체를 보고 각 thread별로 추가 질문이 필요한지 판단한다.
+- 필요한 thread에만 completion-stage follow-up을 생성한다.
+- thread당 completion-stage follow-up은 최대 1개다.
+- 전체 follow-up 수는 answeredThreads 길이를 초과하면 안 된다.
+
+질문 생성 시 다음 단계를 내부적으로 따른다 (사고 과정은 출력하지 말 것):
+  1단계: 각 thread의 rootQuestion/rootAnswer/runtimeFollowupQuestion/runtimeFollowupAnswer를 함께 읽고 정보 부족 여부를 판단한다.
+  2단계: 추가 질문이 필요한 thread만 후보로 선택한다.
+  3단계: 각 후보 thread마다 completion-stage follow-up 1개만 작성한다.
+  4단계: 중복 parentQuestionOrder 제거, 상한 검증, parentQuestionOrder 오름차순 정렬을 확인한 뒤 출력한다.
+
 조건:
 - answeredThreads는 이미 답변된 root thread만 포함한다.
 - runtimeFollowupQuestion/runtimeFollowupAnswer가 있으면 rootAnswer와 함께 하나의 thread로 이해한다.
-- 추가 질문이 필요 없으면 followUpQuestion을 null로 반환한다.
+- runtimeFollowupQuestion/runtimeFollowupAnswer가 있어도 해당 thread는 계속 평가 대상이다.
+- runtime follow-up까지 답변을 봤는데도 핵심 근거나 결과가 부족하면 completion-stage follow-up을 1개 더 생성할 수 있다.
+- 이미 runtime follow-up이 있었던 thread라고 해서 자동 제외하지 않는다.
+- 추가 질문이 필요 없는 경우에는 해당 thread를 출력 배열에 포함하지 않는다.
+- 생성하지 않는 경우에도 반드시 `followUpQuestions` 키를 유지하고 빈 배열 []을 반환한다.
 - parentQuestionOrder는 반드시 입력으로 주어진 answeredThreads[].tailQuestionOrder 중 하나여야 한다.
+- 같은 parentQuestionOrder를 배열에 두 번 이상 넣지 않는다.
+- 출력 배열은 parentQuestionOrder 오름차순으로 정렬한다.
+- 반드시 JSON object 하나만 출력한다.
+- 지정된 키 이름 외 다른 키를 추가하지 않는다.
 
 좋은 completion-stage follow-up 기준:
 - root 답변과 runtime follow-up 답변을 합쳐 봐도 여전히 핵심 의사결정 근거나 결과 확인이 비어 있다.
-- 세션 전체 평가 품질에 실제로 도움이 되는 마지막 1개 질문이다.
+- 세션 전체 평가 품질에 실제로 도움이 되는 질문이다.
 - 이미 물은 포인트를 거의 반복하지 않는다.
 
 금지:
 - 입력에 없는 order를 parentQuestionOrder로 선택
+- 같은 thread에 completion-stage follow-up을 2개 이상 생성
 - 예/아니오형 단답 질문
 - 기존 질문을 거의 그대로 반복
 - 전혀 새로운 기술 주제로 점프
+- 마크다운, 코드 블록, 설명 문장, 서론, 후기 출력
 ```
 
 ### 6.4.11.6 출력 스키마
 
 ```json
 {
-  "followUpQuestion": {
-    "questionType": "follow_up",
-    "difficultyLevel": "medium",
-    "questionText": "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
-    "parentQuestionOrder": 3
-  },
+  "followUpQuestions": [
+    {
+      "questionType": "follow_up",
+      "difficultyLevel": "medium",
+      "questionText": "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
+      "parentQuestionOrder": 3
+    }
+  ],
   "qualityFlags": []
 }
 ```
@@ -837,30 +863,32 @@ applies_to: ai-prompt-io-contract
 
 ```json
 {
-  "followUpQuestion": null,
+  "followUpQuestions": [],
   "qualityFlags": ["low_context"]
 }
 ```
 
 ### 6.4.11.7 후처리 검증
 
-- `followUpQuestion`이 null이면 저장 생략 가능
-- `questionType`은 반드시 `follow_up`
-- `parentQuestionOrder`는 입력으로 준 `answeredThreads[].tailQuestionOrder` 중 하나와 일치해야 함
+- `followUpQuestions`가 빈 배열이면 저장 생략 가능
+- 각 item의 `questionType`은 반드시 `follow_up`
+- 각 item의 `parentQuestionOrder`는 입력으로 준 `answeredThreads[].tailQuestionOrder` 중 하나와 일치해야 함
+- 같은 `parentQuestionOrder`가 중복되면 안 됨
 
 ### 6.4.11.8 저장 매핑
 
-- `followUpQuestion`이 null이면 저장하지 않는다.
+- `followUpQuestions`가 빈 배열이면 저장하지 않는다.
 - completion-stage supplement도 `interview_session_questions`에 저장한다.
 - 선택된 thread에 runtime follow-up이 없으면 root question 뒤에, answered runtime follow-up이 있으면 thread의 마지막 질문 뒤에 붙인다.
+- thread당 completion-stage follow-up은 최대 1개만 저장한다.
 
 ### 6.4.11.9 호출 시점과 소비 규칙
 
-- `POST /interview/sessions/{sessionId}/complete` 직전 마지막 전체 보완은 answered root thread 전체를 보고 AI가 최종 보완 질문 1개를 직접 판단하는 용도로 쓴다.
+- `POST /interview/sessions/{sessionId}/complete` 직전 마지막 전체 보완은 answered root thread 전체를 보고 AI가 thread별 최종 보완 질문을 batch로 판단하는 용도로 쓴다.
 - review 대상은 runtime `NO_FOLLOW_UP`, `USE_CANDIDATE`, `USE_DYNAMIC` 여부와 무관한 answered root thread다.
 - runtime follow-up이 이미 있던 thread도 review 대상이 될 수 있다.
-- 마지막 전체 보완에서 추가 follow-up이 생성되면 `complete`는 종료 대신 기존 `remainingQuestionCount=incomplete` 400 응답을 반환하고, 클라이언트는 세션 상세를 재조회해 추가 질문을 이어서 답변한다.
-- `followUpQuestion=null`, timeout, schema 오류, invalid `parentQuestionOrder`면 질문 삽입 없이 그대로 종료/결과 생성으로 진행한다.
+- 마지막 전체 보완에서 추가 follow-up이 1개 이상 생성되면 `complete`는 종료 대신 기존 `remainingQuestionCount=incomplete` 400 응답을 반환하고, 클라이언트는 세션 상세를 재조회해 추가 질문을 이어서 답변한다.
+- `followUpQuestions=[]`, timeout, schema 오류, invalid `parentQuestionOrder`만 반환되면 질문 삽입 없이 그대로 종료/결과 생성으로 진행한다.
 
 ### 6.4.11.10 재시도 규칙
 

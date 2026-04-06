@@ -12,8 +12,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 @Service
@@ -25,9 +27,9 @@ public class InterviewCompletionFollowupGenerationService {
     private final AiPipeline aiPipeline;
     private final InterviewCompletionFollowupPayloadBuilder payloadBuilder;
 
-    public CompletionFollowupDecision generate(CompletionFollowupGenerationRequest request) {
+    public List<CompletionFollowupDecision> generate(CompletionFollowupGenerationRequest request) {
         if (request.answeredThreads().isEmpty()) {
-            return null;
+            return List.of();
         }
 
         try {
@@ -39,7 +41,7 @@ public class InterviewCompletionFollowupGenerationService {
                             request.answeredThreads()
                     )
             );
-            return mapGeneratedFollowup(responseNode, request.allowedParentQuestionOrders());
+            return mapGeneratedFollowups(responseNode, request.allowedParentQuestionOrders());
         } catch (AiClientException exception) {
             throw new ServiceException(
                     ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
@@ -58,23 +60,34 @@ public class InterviewCompletionFollowupGenerationService {
         }
     }
 
-    private CompletionFollowupDecision mapGeneratedFollowup(JsonNode responseNode, Set<Integer> allowedParentQuestionOrders) {
-        JsonNode followUpQuestion = responseNode.path("followUpQuestion");
-        if (followUpQuestion.isMissingNode() || followUpQuestion.isNull()) {
-            return null;
+    private List<CompletionFollowupDecision> mapGeneratedFollowups(
+            JsonNode responseNode,
+            Set<Integer> allowedParentQuestionOrders
+    ) {
+        JsonNode followUpQuestions = responseNode.path("followUpQuestions");
+        if (followUpQuestions.isMissingNode() || !followUpQuestions.isArray() || followUpQuestions.isEmpty()) {
+            return List.of();
         }
 
-        int parentQuestionOrder = followUpQuestion.path("parentQuestionOrder").asInt(-1);
-        if (!allowedParentQuestionOrders.contains(parentQuestionOrder)) {
-            return null;
-        }
+        List<CompletionFollowupDecision> decisions = new ArrayList<>();
+        Set<Integer> acceptedParentQuestionOrders = new LinkedHashSet<>();
+        for (JsonNode followUpQuestion : followUpQuestions) {
+            int parentQuestionOrder = followUpQuestion.path("parentQuestionOrder").asInt(-1);
+            if (!allowedParentQuestionOrders.contains(parentQuestionOrder)) {
+                continue;
+            }
+            if (!acceptedParentQuestionOrders.add(parentQuestionOrder)) {
+                continue;
+            }
 
-        FollowupQuestionDraft followupDraft = new FollowupQuestionDraft(
-                parseQuestionType(followUpQuestion.path("questionType").asText()),
-                parseDifficultyLevel(followUpQuestion.path("difficultyLevel").asText()),
-                followUpQuestion.path("questionText").asText()
-        );
-        return new CompletionFollowupDecision(parentQuestionOrder, followupDraft);
+            FollowupQuestionDraft followupDraft = new FollowupQuestionDraft(
+                    parseQuestionType(followUpQuestion.path("questionType").asText()),
+                    parseDifficultyLevel(followUpQuestion.path("difficultyLevel").asText()),
+                    followUpQuestion.path("questionText").asText()
+            );
+            decisions.add(new CompletionFollowupDecision(parentQuestionOrder, followupDraft));
+        }
+        return decisions;
     }
 
     private InterviewQuestionType parseQuestionType(String value) {

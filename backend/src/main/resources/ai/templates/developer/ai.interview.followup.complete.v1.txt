@@ -1,19 +1,37 @@
+목표:
+- answeredThreads 전체를 보고 각 thread별로 추가 질문이 필요한지 판단한다.
+- 필요한 thread에만 completion-stage follow-up을 생성한다.
+- thread당 completion-stage follow-up은 최대 1개다.
+- 전체 follow-up 수는 answeredThreads 길이를 초과하면 안 된다.
+
+질문 생성 시 다음 단계를 내부적으로 따른다 (사고 과정은 출력하지 말 것):
+  1단계: 각 thread의 rootQuestion/rootAnswer/runtimeFollowupQuestion/runtimeFollowupAnswer를 함께 읽고 정보 부족 여부를 판단한다.
+  2단계: 추가 질문이 필요한 thread만 후보로 선택한다.
+  3단계: 각 후보 thread마다 completion-stage follow-up 1개만 작성한다.
+  4단계: 중복 parentQuestionOrder 제거, 상한 검증, parentQuestionOrder 오름차순 정렬을 확인한 뒤 출력한다.
+
 조건:
 - answeredThreads는 이미 답변된 root thread만 포함한다.
 - runtimeFollowupQuestion/runtimeFollowupAnswer가 있으면 rootAnswer와 함께 하나의 thread로 이해한다.
-- 추가 질문이 필요 없으면 followUpQuestion을 null로 반환한다.
+- runtimeFollowupQuestion/runtimeFollowupAnswer가 있어도 해당 thread는 계속 평가 대상이다.
+- runtime follow-up까지 답변을 봤는데도 핵심 근거나 결과가 부족하면 completion-stage follow-up을 1개 더 생성할 수 있다.
+- 이미 runtime follow-up이 있었던 thread라고 해서 자동 제외하지 않는다.
+- 추가 질문이 필요 없는 경우에는 해당 thread를 출력 배열에 포함하지 않는다.
+- 생성하지 않는 경우에도 반드시 `followUpQuestions` 키를 유지하고 빈 배열 []을 반환한다.
 - parentQuestionOrder는 반드시 입력으로 주어진 answeredThreads[].tailQuestionOrder 중 하나여야 한다.
+- 같은 parentQuestionOrder를 배열에 두 번 이상 넣지 않는다.
+- 출력 배열은 parentQuestionOrder 오름차순으로 정렬한다.
 - 반드시 JSON object 하나만 출력한다.
-- follow-up을 생성하지 않는 경우에도 반드시 `followUpQuestion` 키를 유지하고 값은 null로 반환한다.
 - 지정된 키 이름 외 다른 키를 추가하지 않는다.
 
 좋은 completion-stage follow-up 기준:
 - rootAnswer와 runtime follow-up answer를 같이 봐도 여전히 핵심 의사결정 근거나 결과 확인이 부족하다.
-- 세션 전체 평가 품질에 실제로 도움이 되는 마지막 1개 질문이다.
+- 세션 전체 평가 품질에 실제로 도움이 되는 질문이다.
 - 이미 물은 포인트를 거의 반복하지 않는다.
 
 금지:
 - 입력에 없는 order를 parentQuestionOrder로 선택
+- 같은 thread에 completion-stage follow-up을 2개 이상 생성
 - 예/아니오형 단답 질문
 - 기존 질문을 거의 그대로 반복
 - 전혀 새로운 기술 주제로 점프
@@ -21,17 +39,19 @@
 
 응답 JSON 구조 (반드시 이 키 이름과 구조를 정확히 따라라):
 {
-  "followUpQuestion": {
-    "questionType": "follow_up",
-    "difficultyLevel": "medium",
-    "questionText": "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
-    "parentQuestionOrder": 3
-  },
+  "followUpQuestions": [
+    {
+      "questionType": "follow_up",
+      "difficultyLevel": "medium",
+      "questionText": "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
+      "parentQuestionOrder": 3
+    }
+  ],
   "qualityFlags": []
 }
 
 생성하지 않는 경우:
 {
-  "followUpQuestion": null,
+  "followUpQuestions": [],
   "qualityFlags": ["low_context"]
 }

@@ -3,7 +3,9 @@ package com.back.backend.domain.ai.validation;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * complete 직전 최종 보완 follow-up AI 응답 검증기 (템플릿: ai.interview.followup.complete.v1).
@@ -36,11 +38,17 @@ public class InterviewCompletionFollowupValidator implements AiResponseValidator
 
         List<String> errors = new ArrayList<>();
 
-        JsonNode followUpQuestion = responseNode.get("followUpQuestion");
-        if (followUpQuestion != null && !followUpQuestion.isNull()) {
+        JsonNode followUpQuestions = responseNode.path("followUpQuestions");
+        Set<Integer> seenParentQuestionOrders = new HashSet<>();
+        for (JsonNode followUpQuestion : followUpQuestions) {
             JsonNode questionText = followUpQuestion.get("questionText");
             if (questionText == null || questionText.asText().isBlank()) {
                 errors.add("questionText가 비어있습니다.");
+            }
+
+            int parentQuestionOrder = followUpQuestion.path("parentQuestionOrder").asInt(-1);
+            if (!seenParentQuestionOrders.add(parentQuestionOrder)) {
+                errors.add("parentQuestionOrder가 중복되었습니다: " + parentQuestionOrder);
             }
         }
 

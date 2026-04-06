@@ -331,19 +331,20 @@ public class InterviewSessionService {
             return CompletionFollowupReviewOutcome.notInserted();
         }
 
-        InterviewCompletionFollowupGenerationService.CompletionFollowupDecision completionDecision;
+        List<InterviewCompletionFollowupGenerationService.CompletionFollowupDecision> completionDecisions;
         try {
-            completionDecision = interviewCompletionFollowupGenerationService.generate(completionReviewPreparation.request());
+            completionDecisions = interviewCompletionFollowupGenerationService.generate(completionReviewPreparation.request());
         } catch (ServiceException exception) {
-            completionDecision = null;
+            completionDecisions = List.of();
         } catch (RuntimeException exception) {
-            completionDecision = null;
+            completionDecisions = List.of();
         }
 
         try {
-            InterviewCompletionFollowupGenerationService.CompletionFollowupDecision finalCompletionDecision = completionDecision;
+            List<InterviewCompletionFollowupGenerationService.CompletionFollowupDecision> finalCompletionDecisions =
+                    completionDecisions;
             return executeInTransaction(
-                    () -> finalizeCompletionFollowupReview(completionReviewPreparation, finalCompletionDecision)
+                    () -> finalizeCompletionFollowupReview(completionReviewPreparation, finalCompletionDecisions)
             );
         } finally {
             completionFollowupReviewInFlight.remove(completionReviewPreparation.sessionId());
@@ -352,7 +353,7 @@ public class InterviewSessionService {
 
     private CompletionFollowupReviewOutcome finalizeCompletionFollowupReview(
             CompletionFollowupReviewPreparation completionReviewPreparation,
-            InterviewCompletionFollowupGenerationService.CompletionFollowupDecision completionDecision
+            List<InterviewCompletionFollowupGenerationService.CompletionFollowupDecision> completionDecisions
     ) {
         InterviewSession session = interviewSessionRepository.findById(completionReviewPreparation.sessionId())
                 .orElse(null);
@@ -366,20 +367,28 @@ public class InterviewSessionService {
 
         Instant reviewedAt = clock.instant();
         boolean inserted = false;
-        if (completionDecision != null) {
+        for (InterviewCompletionFollowupGenerationService.CompletionFollowupDecision completionDecision : completionDecisions
+                .stream()
+                .sorted(Comparator.comparingInt(
+                        InterviewCompletionFollowupGenerationService.CompletionFollowupDecision::parentQuestionOrder
+                ).reversed())
+                .toList()) {
             InterviewSessionQuestion parentQuestion = interviewSessionQuestionRepository.findBySessionIdAndQuestionOrder(
-                            session.getId(),
-                            completionDecision.parentQuestionOrder()
-                    )
-                    .orElse(null);
-            if (parentQuestion != null
-                    && !interviewSessionQuestionRepository.existsBySessionIdAndParentSessionQuestionId(
-                            session.getId(),
-                            parentQuestion.getId()
-                    )) {
-                insertFollowupQuestionDraft(parentQuestion, completionDecision.followupDraft());
-                inserted = true;
+                    session.getId(),
+                    completionDecision.parentQuestionOrder()
+            ).orElse(null);
+            if (parentQuestion == null) {
+                continue;
             }
+            if (interviewSessionQuestionRepository.existsBySessionIdAndParentSessionQuestionId(
+                    session.getId(),
+                    parentQuestion.getId()
+            )) {
+                continue;
+            }
+
+            insertFollowupQuestionDraft(parentQuestion, completionDecision.followupDraft());
+            inserted = true;
         }
 
         InterviewSession managedSession = interviewSessionRepository.findById(session.getId()).orElse(null);
