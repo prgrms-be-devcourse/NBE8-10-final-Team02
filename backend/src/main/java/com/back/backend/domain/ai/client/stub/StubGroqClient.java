@@ -78,6 +78,7 @@ public class StubGroqClient implements AiClient {
         if (developerPrompt.contains("relevance") && developerPrompt.contains("평가 축")) return "interview-evaluate";
         if (developerPrompt.contains("isSkipped"))                  return "interview-followup-generate";
         if (developerPrompt.contains("strengths") && developerPrompt.contains("nextActions")) return "interview-summary";
+        if (developerPrompt.contains("복수의 repository"))           return "portfolio-summary-batch";
         if (developerPrompt.contains("evidence pack"))              return "portfolio-summary";
         return "default";
     }
