@@ -695,10 +695,15 @@ applies_to: ai-prompt-io-contract
 ### 6.4.9 호출 시점과 소비 규칙
 
 - `POST /interview/sessions/{sessionId}/answers`는 답변 저장까지만 담당한다.
-- follow-up 생성 시도는 답변 저장 직후의 `GET /interview/sessions/{sessionId}` 재조회 경로에서 best-effort로 1회 수행한다.
+- 답변 저장 직후의 `GET /interview/sessions/{sessionId}` 재조회에서는 로컬 follow-up rule을 먼저 해석한다.
+- runtime 즉시 AI follow-up 생성은 rule 결과가 `USE_DYNAMIC`인 경우에만 수행한다.
+- runtime 즉시 생성은 세션당 최대 1회만 허용한다.
 - 같은 부모 답변에 대한 follow-up 생성 결과는 최대 1개만 확정한다.
 - 부모 세션 질문에 child 세션 질문이 이미 있으면 추가 dynamic follow-up 생성은 생략한다.
-- `followUpQuestion=null`, timeout, schema 오류면 세션은 멈추지 않고 다음 기본 질문으로 진행한다.
+- `USE_CANDIDATE`와 runtime에서 보수적으로 넘긴 positive는 `POST /interview/sessions/{sessionId}/complete` 직전 세션 전체 보완 1회에서 다시 검토할 수 있다.
+- 마지막 전체 보완은 세션 전체 답변에서 대상 부모 질문/답변 1개를 다시 고른 뒤 같은 템플릿으로 follow-up 1개를 best-effort 생성한다.
+- 마지막 전체 보완에서 추가 follow-up이 생성되면 `complete`는 종료 대신 기존 `remainingQuestionCount=incomplete` 400 응답을 반환하고, 클라이언트는 세션 상세를 재조회해 추가 질문을 이어서 답변한다.
+- `followUpQuestion=null`, timeout, schema 오류면 세션은 멈추지 않고 runtime에서는 다음 기본 질문으로 진행하며, complete 단계에서는 그대로 종료/결과 생성으로 진행한다.
 
 ### 6.4.10 재시도 규칙
 
