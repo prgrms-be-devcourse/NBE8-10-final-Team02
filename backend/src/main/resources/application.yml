@@ -3,6 +3,9 @@ spring:
     name: backend
   profiles:
     active: dev
+  threads:
+    virtual:
+      enabled: false
   data:
     redis:
       host: localhost
