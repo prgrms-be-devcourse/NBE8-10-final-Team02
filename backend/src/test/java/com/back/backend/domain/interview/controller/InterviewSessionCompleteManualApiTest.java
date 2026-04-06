@@ -42,14 +42,13 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.fail;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -61,7 +60,6 @@ class InterviewSessionCompleteManualApiTest extends ApiTestBase {
     private static final Instant FIXED_NOW = Instant.parse("2026-04-07T00:00:00Z");
     private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
     private static final String GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
-    private static final String EXPECTED_COMPLETION_QUESTION = "성과를 어떤 지표로 확인했는지 설명해주실 수 있나요?";
     private static final String TEST_MODEL = "gemini-2.5-flash";
 
     private static final String Q1 =
@@ -135,6 +133,7 @@ class InterviewSessionCompleteManualApiTest extends ApiTestBase {
     void completeSession_insertsCompletionFollowupInRealApiFlow() throws Exception {
         UserFixture fixture = persistManualCompleteFlowSession("manual-complete-api");
         InterviewSession session = fixture.session();
+        Set<String> existingRuntimeFollowupQuestions = Set.of(Q4, Q6, Q8);
 
         System.out.println("=== REAL COMPLETE PAYLOAD ===");
         System.out.println(buildCompletionFollowupPayload(session, fixture.user().getId()));
@@ -167,6 +166,11 @@ class InterviewSessionCompleteManualApiTest extends ApiTestBase {
         System.out.println("=== COMPLETE API BODY ===");
         System.out.println(completeResult.getResponse().getContentAsString());
 
+        assertThat(completeResult.getResponse().getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+        assertThat(completeResult.getResponse().getContentAsString())
+                .contains(ErrorCode.REQUEST_VALIDATION_FAILED.name())
+                .contains("remainingQuestionCount");
+
         entityManager.flush();
         entityManager.clear();
 
@@ -178,52 +182,53 @@ class InterviewSessionCompleteManualApiTest extends ApiTestBase {
                 .setParameter("sessionId", session.getId())
                 .getSingleResult();
 
-        if (completeResult.getResponse().getStatus() == HttpStatus.BAD_REQUEST.value()) {
-            assertThat(completeResult.getResponse().getContentAsString())
-                    .contains(ErrorCode.REQUEST_VALIDATION_FAILED.name())
-                    .contains("remainingQuestionCount");
-            assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.IN_PROGRESS);
-            assertThat(refreshedSession.getCompletionFollowupReviewedAt()).isNotNull();
-            assertThat(totalQuestionCount).isEqualTo(9L);
+        assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.IN_PROGRESS);
+        assertThat(refreshedSession.getCompletionFollowupReviewedAt()).isNotNull();
+        assertThat(totalQuestionCount).isEqualTo(9L);
 
-            MvcResult detailResult = mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
-                            .with(authenticated(fixture.user().getId())))
-                    .andReturn();
+        List<InterviewSessionQuestion> followupQuestions = entityManager.createQuery(
+                        """
+                                select q
+                                from InterviewSessionQuestion q
+                                where q.session.id = :sessionId
+                                  and q.questionType = :questionType
+                                order by q.questionOrder asc
+                                """,
+                        InterviewSessionQuestion.class
+                )
+                .setParameter("sessionId", session.getId())
+                .setParameter("questionType", InterviewQuestionType.FOLLOW_UP)
+                .getResultList();
 
-            System.out.println("=== SESSION DETAIL BODY ===");
-            System.out.println(detailResult.getResponse().getContentAsString());
+        assertThat(followupQuestions).hasSize(4);
+        InterviewSessionQuestion insertedCompletionQuestion = followupQuestions.stream()
+                .filter(question -> !existingRuntimeFollowupQuestions.contains(question.getQuestionText()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(existingRuntimeFollowupQuestions).doesNotContain(insertedCompletionQuestion.getQuestionText());
 
-            assertThat(detailResult.getResponse().getStatus()).isEqualTo(HttpStatus.OK.value());
-            assertThat(detailResult.getResponse().getContentAsString())
-                    .contains("\"questionOrder\":7")
-                    .contains("\"questionType\":\"follow_up\"")
-                    .contains(EXPECTED_COMPLETION_QUESTION);
+        MvcResult detailResult = mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andReturn();
 
-            then(interviewResultGenerationService).should(never())
-                    .generate(
-                            org.mockito.ArgumentMatchers.anyLong(),
-                            org.mockito.ArgumentMatchers.anyLong(),
-                            org.mockito.ArgumentMatchers.anyList(),
-                            org.mockito.ArgumentMatchers.anyString()
-                    );
-            return;
-        }
+        System.out.println("=== SESSION DETAIL BODY ===");
+        System.out.println(detailResult.getResponse().getContentAsString());
 
-        if (completeResult.getResponse().getStatus() == HttpStatus.OK.value()) {
-            assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.FEEDBACK_COMPLETED);
-            assertThat(refreshedSession.getCompletionFollowupReviewedAt()).isNotNull();
-            assertThat(totalQuestionCount).isEqualTo(8L);
-            then(interviewResultGenerationService).should(times(1))
-                    .generate(
-                            org.mockito.ArgumentMatchers.anyLong(),
-                            org.mockito.ArgumentMatchers.anyLong(),
-                            org.mockito.ArgumentMatchers.anyList(),
-                            org.mockito.ArgumentMatchers.anyString()
-                    );
-            return;
-        }
+        assertThat(detailResult.getResponse().getStatus()).isEqualTo(HttpStatus.OK.value());
+        assertThat(detailResult.getResponse().getContentAsString())
+                .contains("\"questionType\":\"follow_up\"")
+                .contains(insertedCompletionQuestion.getQuestionText())
+                .contains("\"totalQuestionCount\":9")
+                .contains("\"answeredQuestionCount\":8")
+                .contains("\"remainingQuestionCount\":1");
 
-        fail("예상하지 못한 complete 응답 상태입니다: " + completeResult.getResponse().getStatus());
+        then(interviewResultGenerationService).should(never())
+                .generate(
+                        org.mockito.ArgumentMatchers.anyLong(),
+                        org.mockito.ArgumentMatchers.anyLong(),
+                        org.mockito.ArgumentMatchers.anyList(),
+                        org.mockito.ArgumentMatchers.anyString()
+                );
     }
 
     @SuppressWarnings("unchecked")
