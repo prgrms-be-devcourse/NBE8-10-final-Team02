@@ -1,41 +1,65 @@
-목표:
-- answeredThreads 전체를 보고 정말 필요한 경우에만 completion-stage follow-up을 생성한다.
-- follow-up은 0개 또는 1개를 기본값으로 하고, 정말 필요한 경우에만 2개까지 허용한다.
-- 애매하면 생성하지 않고 빈 배열 []을 반환한다.
+TEMPLATE_MARKER: COMPLETE_FOLLOWUP
 
-판단 규칙:
-- 각 thread의 rootQuestion, rootAnswer, runtimeFollowupQuestion, runtimeFollowupAnswer를 함께 읽는다.
-- rootAnswer와 runtimeFollowupAnswer까지 봐도 핵심 이유, 결과, 판단 기준 중 하나가 여전히 부족할 때만 생성한다.
-- runtimeFollowupQuestion/runtimeFollowupAnswer가 있으면 rootAnswer와 함께 하나의 thread로 이해한다.
-- 이미 물은 포인트를 거의 반복하게 되면 생성하지 않는다.
-- 전혀 새로운 기술 주제로 점프하지 않는다.
-- parentQuestionOrder는 반드시 answeredThreads[].tailQuestionOrder 중 하나만 사용한다.
-- 같은 parentQuestionOrder를 두 번 이상 사용하지 않는다.
-- 출력 배열은 parentQuestionOrder 오름차순으로 정렬한다.
+역할:
+- 너는 completion-stage follow-up 생성기다.
+- answeredThreads 전체를 보고 runtime follow-up 이후에도 남아 있는 핵심 gap을 메우는 마지막 질문 1개만 고른다.
+
+선택 규칙:
+- runtimeRuleSummary가 있는 thread를 먼저 본다.
+- runtimeRuleSummary.finalAction이 `USE_DYNAMIC` 또는 `USE_CANDIDATE`이면 이 thread를 강한 후보로 본다.
+- rootAnswer와 runtimeFollowupAnswer를 함께 읽고, primaryGap가 아직 해소되지 않았으면 follow-up 생성 우선순위 1순위로 본다.
+- primaryGap가 해소되었더라도 secondaryGap가 아직 해소되지 않았으면 follow-up 생성 우선순위 2순위로 본다.
+- runtime follow-up이 이미 있었다는 이유만으로 후보에서 제외하지 않는다.
+- 여러 후보가 있으면 다음 순서로 1개를 고른다:
+  1. unresolved primaryGap가 있는 thread
+  2. 같은 조건이면 tailQuestionOrder가 더 큰 thread
+- 모든 thread의 gap이 충분히 해소된 경우에만 빈 배열 []을 반환한다.
+
+질문 생성 규칙:
+- parentQuestionOrder는 선택한 thread의 tailQuestionOrder를 사용한다.
+- questionType은 항상 `follow_up`이다.
+- difficultyLevel은 항상 `medium`이다.
+- questionText는 아래 고정 문장 중 하나만 그대로 사용한다.
+- candidateQuestionTypes가 있으면 candidateQuestionTypes 우선 문장을 사용한다.
+- candidateQuestionTypes로 고르기 어렵다면 gap fallback 문장을 사용한다.
+- 새로운 문장을 만들지 말라.
+
+candidateQuestionTypes 우선 문장:
+- `TECH_ALTERNATIVE_COMPARE` -> `다른 대안과 비교한 기준을 설명해주실 수 있나요?`
+- `TECH_TRADEOFF_DETAIL` -> `선택한 기술의 trade-off를 설명해주실 수 있나요?`
+- `PROJECT_RESULT_METRIC` -> `성과를 어떤 지표로 확인했는지 설명해주실 수 있나요?`
+- `PROJECT_RESULT_DETAIL` -> `그 결과가 실제로 어떻게 개선됐는지 설명해주실 수 있나요?`
+- `PROJECT_APPROACH_REASON` -> `그 방식을 선택한 이유를 설명해주실 수 있나요?`
+- `PROBLEM_CAUSE_DETAIL` -> `문제의 근본 원인을 어떻게 파악했는지 설명해주실 수 있나요?`
+- `PROBLEM_VERIFICATION_DETAIL` -> `원인을 어떻게 검증했는지 설명해주실 수 있나요?`
+- `PROBLEM_PREVENTION_DETAIL` -> `재발 방지를 위해 무엇을 했는지 설명해주실 수 있나요?`
+- `COLLAB_AGREEMENT_CRITERIA` -> `합의 기준을 어떻게 맞췄는지 설명해주실 수 있나요?`
+- `COLLAB_RESULT_IMPACT` -> `그 합의가 팀에 어떤 영향을 줬는지 설명해주실 수 있나요?`
+- `COLLAB_DECISION_REASON` -> `그 판단 근거를 설명해주실 수 있나요?`
+
+gap fallback 문장:
+- `ROLE` -> `당시 맡은 역할을 더 구체적으로 설명해주실 수 있나요?`
+- `ACTION` -> `실제로 어떤 행동을 했는지 설명해주실 수 있나요?`
+- `RESULT` -> `그 결과가 어떻게 달라졌는지 설명해주실 수 있나요?`
+- `REASON` -> `그렇게 판단한 이유를 설명해주실 수 있나요?`
+- `METRIC` -> `성과를 어떤 지표로 확인했는지 설명해주실 수 있나요?`
+- `CAUSE` -> `문제의 근본 원인을 어떻게 파악했는지 설명해주실 수 있나요?`
+- `VERIFICATION` -> `그 원인을 어떻게 검증했는지 설명해주실 수 있나요?`
+- `PREVENTION` -> `재발 방지를 위해 무엇을 했는지 설명해주실 수 있나요?`
+- `ALTERNATIVE` -> `다른 대안과 비교한 기준을 설명해주실 수 있나요?`
+- `TRADEOFF` -> `선택한 방식의 trade-off를 설명해주실 수 있나요?`
+- `AGREEMENT` -> `합의 기준을 어떻게 맞췄는지 설명해주실 수 있나요?`
+
+빈 배열 규칙:
+- runtimeRuleSummary.finalAction이 `USE_DYNAMIC` 또는 `USE_CANDIDATE`인 thread에서 unresolved gap이 남아 있으면 빈 배열을 반환하지 말라.
+- 모든 thread의 gap이 해소되었고 새로운 정보가 더 이상 없을 때만 빈 배열을 반환하라.
 
 출력 규칙:
 - 반드시 JSON object 하나만 출력한다.
-- 줄바꿈과 들여쓰기는 허용하지만, 유효한 JSON object만 출력한다.
-- 생성하지 않는 경우에도 반드시 `followUpQuestions` 키를 유지하고 빈 배열 []을 반환한다.
-- `followUpQuestions`는 0개, 1개, 또는 정말 필요한 경우의 2개만 허용한다.
-- 각 item의 `questionType`은 항상 `follow_up`이다.
-- 각 item의 `difficultyLevel`은 항상 `medium`이다.
-- `questionText`는 한 문장만 작성한다.
-- `questionText`는 최대 60자 이내로 유지한다.
-- 배경 설명, 완곡한 서론, 부연 설명 없이 바로 질문만 쓴다.
-- `qualityFlags`는 [] 또는 ["low_context"]만 사용한다.
-- 지정된 키 이름 외 다른 키를 추가하지 않는다.
-
-금지:
-- 입력에 없는 order를 parentQuestionOrder로 선택
-- 같은 thread에 completion-stage follow-up을 2개 이상 생성
-- 예/아니오형 단답 질문
-- 기존 질문을 거의 그대로 반복
-- 전혀 새로운 기술 주제로 점프
-- 마크다운, 코드 블록, 설명 문장, 서론, 후기 출력
-
-아래 JSON 예시처럼 여러 줄 JSON으로 출력해도 된다.
-단, JSON 바깥의 텍스트를 추가하면 안 된다.
+- `followUpQuestions` 길이는 0 또는 1만 허용한다.
+- `qualityFlags`는 [] 또는 ["low_context"]만 허용한다.
+- 지정된 키 외 다른 키를 추가하지 않는다.
+- JSON 바깥의 텍스트를 출력하지 않는다.
 
 응답 JSON 구조:
 {
@@ -43,87 +67,14 @@
     {
       "questionType": "follow_up",
       "difficultyLevel": "medium",
-      "questionText": "그 판단 기준을 예시와 함께 설명해주실 수 있나요?",
-      "parentQuestionOrder": 3
-    }
-  ],
-  "qualityFlags": []
-}
-
-생성하지 않는 경우:
-{
-  "followUpQuestions": [],
-  "qualityFlags": ["low_context"]
-}
-
-생성 예시:
-입력:
-{
-  "jobRole": "Backend Developer",
-  "companyName": "Example Corp",
-  "answeredThreads": [
-    {
-      "tailQuestionOrder": 2,
-      "rootQuestion": {
-        "questionOrder": 1,
-        "questionType": "project",
-        "questionText": "프로젝트에서 어떤 기준으로 접근 방식을 선택하셨나요?",
-        "difficultyLevel": "medium"
-      },
-      "rootAnswer": {
-        "answerText": "일정과 운영 편의성을 같이 보고 선택했습니다.",
-        "isSkipped": false
-      },
-      "runtimeFollowupQuestion": {
-        "questionOrder": 2,
-        "questionType": "follow_up",
-        "questionText": "그 접근 방식을 선택한 이유를 조금 더 구체적으로 설명해주실 수 있나요?",
-        "difficultyLevel": "medium"
-      },
-      "runtimeFollowupAnswer": {
-        "answerText": "운영팀 적응 비용도 고려했습니다.",
-        "isSkipped": false
-      }
-    }
-  ]
-}
-
-출력:
-{
-  "followUpQuestions": [
-    {
-      "questionType": "follow_up",
-      "difficultyLevel": "medium",
-      "questionText": "그 판단 기준을 예시와 함께 설명해주실 수 있나요?",
-      "parentQuestionOrder": 2
+      "questionText": "성과를 어떤 지표로 확인했는지 설명해주실 수 있나요?",
+      "parentQuestionOrder": 6
     }
   ],
   "qualityFlags": []
 }
 
 빈 배열 예시:
-입력:
-{
-  "jobRole": "Backend Developer",
-  "companyName": "Example Corp",
-  "answeredThreads": [
-    {
-      "tailQuestionOrder": 4,
-      "rootQuestion": {
-        "questionOrder": 4,
-        "questionType": "project",
-        "questionText": "성과를 어떻게 확인했나요?",
-        "difficultyLevel": "medium"
-      },
-      "rootAnswer": {
-        "answerText": "예약 전환율과 취소율을 함께 봤고 출시 후 예약 비중이 크게 올랐습니다.",
-        "isSkipped": false
-      }
-    }
-  ]
-}
-
-출력:
 {
   "followUpQuestions": [],
   "qualityFlags": []

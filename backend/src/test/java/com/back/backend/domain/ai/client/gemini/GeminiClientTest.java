@@ -5,6 +5,7 @@ import com.back.backend.domain.ai.client.AiRequest;
 import com.back.backend.domain.ai.client.AiResponse;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -141,6 +142,68 @@ class GeminiClientTest {
         // then
         assertThat(response.content()).isEqualTo("{\"key\":\"value\"}");
         assertThat(response.tokenUsage().totalTokens()).isZero();
+    }
+
+    @Test
+    @DisplayName("다중 parts 응답은 모두 이어 붙여 반환한다")
+    void call_mergesAllResponseParts() {
+        mockWebServer.enqueue(new MockResponse()
+            .addHeader("Content-Type", "application/json")
+            .setBody("""
+                {
+                  "candidates": [{
+                    "content": {
+                      "parts": [
+                        {"text": "{\\"followUpQuestions\\":"},
+                        {"text": "[{\\"questionType\\":\\"follow_up\\"}]}"}
+                      ],
+                      "role": "model"
+                    }
+                  }]
+                }
+                """));
+
+        AiResponse response = geminiClient.call(new AiRequest("system", "developer", "user", 0.5, 1000));
+
+        assertThat(response.content()).isEqualTo("{\"followUpQuestions\":[{\"questionType\":\"follow_up\"}]}");
+    }
+
+    @Test
+    @DisplayName("기본 요청은 developerPrompt와 userMessage를 단순 결합해 전송한다")
+    void call_sendsDeveloperPromptAndPayloadAsCombinedUserText() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+            .addHeader("Content-Type", "application/json")
+            .setBody(successResponseBody()));
+
+        geminiClient.call(new AiRequest("system prompt", "developer prompt", "{\"key\":\"value\"}", 0.5, 1000));
+
+        RecordedRequest recordedRequest = mockWebServer.takeRequest();
+        String requestBody = recordedRequest.getBody().readUtf8();
+
+        assertThat(requestBody).contains("\"parts\":[{\"text\":\"developer prompt\\n\\n{\\\"key\\\":\\\"value\\\"}\"}]");
+        assertThat(requestBody).doesNotContain("\"responseJsonSchema\"");
+        assertThat(requestBody).doesNotContain("\"thinkingConfig\"");
+    }
+
+    @Test
+    @DisplayName("complete 프롬프트에는 responseJsonSchema를 첨부한다")
+    void call_attachesResponseJsonSchemaForCompletePrompt() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+            .addHeader("Content-Type", "application/json")
+            .setBody(successResponseBody()));
+
+        String completePrompt = "TEMPLATE_MARKER: COMPLETE_FOLLOWUP\ncompletion-stage follow-up을 생성하라";
+        geminiClient.call(new AiRequest("system prompt", completePrompt, "{\"key\":\"value\"}", 0.0, 300));
+
+        RecordedRequest recordedRequest = mockWebServer.takeRequest();
+        String requestBody = recordedRequest.getBody().readUtf8();
+
+        assertThat(requestBody).contains("\"parts\":[{\"text\":\"TEMPLATE_MARKER: COMPLETE_FOLLOWUP\\ncompletion-stage follow-up을 생성하라\\n\\n{\\\"key\\\":\\\"value\\\"}\"}]");
+        assertThat(requestBody).contains("\"responseMimeType\":\"application/json\"");
+        assertThat(requestBody).contains("\"responseJsonSchema\"");
+        assertThat(requestBody).contains("\"propertyOrdering\":[\"followUpQuestions\",\"qualityFlags\"]");
+        assertThat(requestBody).contains("\"difficultyLevel\":{\"type\":\"string\",\"enum\":[\"medium\"]}");
+        assertThat(requestBody).contains("\"thinkingConfig\":{\"thinkingBudget\":0}");
     }
 
     // --- test fixtures ---

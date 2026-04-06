@@ -71,7 +71,7 @@ public class PromptTemplateRegistry {
             "system/common-system.txt",
             "developer/ai.interview.followup.complete.v1.txt",
             "schema/interview-followup-complete.schema.json",
-            0.4, 1000,
+            0.0, 300, // completion follow-up은 고정된 짧은 JSON 1개만 필요하므로 최대한 결정적으로 생성
             new PromptTemplate.RetryPolicy(1, false)
         ));
 

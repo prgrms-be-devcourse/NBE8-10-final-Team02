@@ -174,8 +174,9 @@ public class GeminiClient implements AiClient {
 
         String merged = combinedText.toString();
         log.debug(
-            "[Gemini] 응답 요약: candidates={}, parts={}, partLengths={}, mergedLength={}, head=\"{}\", tail=\"{}\", lastPartTail=\"{}\"",
+            "[Gemini] 응답 요약: candidates={}, finishReason={}, parts={}, partLengths={}, mergedLength={}, head=\"{}\", tail=\"{}\", lastPartTail=\"{}\"",
             candidateCount,
+            firstCandidate != null ? firstCandidate.finishReason() : null,
             partsCount,
             partLengths,
             merged.length(),
