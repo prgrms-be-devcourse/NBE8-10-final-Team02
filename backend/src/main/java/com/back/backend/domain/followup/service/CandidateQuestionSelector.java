@@ -7,6 +7,7 @@ import com.back.backend.domain.followup.model.GapType;
 import com.back.backend.domain.followup.model.QuestionType;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +42,7 @@ public class CandidateQuestionSelector {
             }
         }
 
-        for (GapType gapType : resolution.orderedMissingGaps()) {
+        for (GapType gapType : prioritizeMissingGaps(questionType, signals, resolution)) {
             CandidateQuestionType mapped = typeRule.getCandidateMap().get(gapType);
             if (mapped != null) {
                 selected.add(mapped);
@@ -56,5 +57,29 @@ public class CandidateQuestionSelector {
         return selected.stream()
                 .limit(properties.getRuntime().getMaxCandidateQuestionTypes())
                 .toList();
+    }
+
+    private List<GapType> prioritizeMissingGaps(
+            QuestionType questionType,
+            Map<GapType, Boolean> signals,
+            GapResolver.Resolution resolution
+    ) {
+        if (questionType != QuestionType.PROJECT) {
+            return resolution.orderedMissingGaps();
+        }
+
+        if (Boolean.TRUE.equals(signals.get(GapType.SCOPE_MIXED))) {
+            return resolution.orderedMissingGaps();
+        }
+
+        if (!resolution.exactMainGapSet().equals(Set.of(GapType.RESULT, GapType.REASON))) {
+            return resolution.orderedMissingGaps();
+        }
+
+        List<GapType> reordered = new ArrayList<>(resolution.orderedMissingGaps());
+        if (reordered.remove(GapType.REASON)) {
+            reordered.add(0, GapType.REASON);
+        }
+        return reordered;
     }
 }

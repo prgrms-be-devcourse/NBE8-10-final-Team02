@@ -52,7 +52,7 @@ dependencies {
 
   compileOnly("org.projectlombok:lombok")
   developmentOnly("org.springframework.boot:spring-boot-devtools")
-  runtimeOnly("com.h2database:h2")
+  developmentOnly("com.h2database:h2")
   annotationProcessor("org.projectlombok:lombok")
   runtimeOnly("org.postgresql:postgresql")
 

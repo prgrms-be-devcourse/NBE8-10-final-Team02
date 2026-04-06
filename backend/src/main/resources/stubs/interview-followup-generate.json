@@ -1,0 +1,9 @@
+{
+  "followUpQuestion": {
+    "questionType": "follow_up",
+    "difficultyLevel": "medium",
+    "questionText": "방금 말씀하신 낙관적 락 적용 사례에서, 충돌이 빈번하게 발생했을 때는 어떻게 대응하셨나요?",
+    "parentQuestionOrder": 1
+  },
+  "qualityFlags": []
+}

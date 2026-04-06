@@ -5,6 +5,7 @@ import com.back.backend.domain.followup.dto.response.FollowupAnalyzeResponse;
 import com.back.backend.domain.followup.model.CandidateQuestionType;
 import com.back.backend.domain.followup.model.FinalAction;
 import com.back.backend.domain.followup.model.GapType;
+import com.back.backend.domain.followup.model.QuestionType;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -34,19 +35,28 @@ public class FollowupRuleService {
     }
 
     public FollowupAnalyzeResponse analyze(FollowupAnalyzeRequest request) {
-        String normalizedAnswerText = textNormalizer.normalize(request.answerText());
+        return analyze(request.questionType(), request.answerText());
+    }
+
+    public FollowupAnalyzeResponse analyze(QuestionType questionType, String answerText) {
+        String normalizedAnswerText = textNormalizer.normalize(answerText);
         Map<GapType, Boolean> signals = signalExtractor.extract(normalizedAnswerText);
-        GapResolver.Resolution resolution = gapResolver.resolve(request.questionType(), signals);
-        FinalAction finalAction = finalActionDecider.decide(request.questionType(), signals, resolution);
+        GapResolver.Resolution resolution = gapResolver.resolve(questionType, signals);
+        FinalAction finalAction = finalActionDecider.decide(
+                questionType,
+                signals,
+                resolution,
+                normalizedAnswerText
+        );
         List<CandidateQuestionType> candidateQuestionTypes = candidateQuestionSelector.select(
-                request.questionType(),
+                questionType,
                 signals,
                 resolution,
                 finalAction
         );
 
         return new FollowupAnalyzeResponse(
-                request.questionType(),
+                questionType,
                 signals,
                 resolution.orderedMissingGaps(),
                 resolution.primaryGap(),

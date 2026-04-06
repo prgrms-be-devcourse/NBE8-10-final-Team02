@@ -7,6 +7,7 @@ import com.back.backend.domain.github.entity.GithubConnection;
 import com.back.backend.domain.github.repository.GithubConnectionRepository;
 import com.back.backend.domain.github.repository.GithubRepositoryRepository;
 import com.back.backend.domain.portfolio.dto.response.PortfolioReadinessResponse;
+import com.back.backend.domain.portfolio.dto.response.PortfolioReadinessResponse.AlertItem;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.global.exception.ErrorCode;
@@ -50,16 +51,22 @@ public class PortfolioReadinessService {
     private final GithubConnectionRepository githubConnectionRepository;
     private final GithubRepositoryRepository githubRepositoryRepository;
     private final DocumentRepository documentRepository;
+    private final FailedJobRedisStore failedJobRedisStore;
 
     public PortfolioReadinessResponse getReadiness(Long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ServiceException(
-                        ErrorCode.USER_NOT_FOUND,
-                        HttpStatus.NOT_FOUND,
-                        "사용자를 찾을 수 없습니다."
-                ));
+        // findByUserIdWithUser: JOIN FETCH로 connection과 user를 한 번에 조회 (trip 절감)
+        GithubConnection connection = githubConnectionRepository.findByUserIdWithUser(userId).orElse(null);
 
-        GithubConnection connection = githubConnectionRepository.findByUser(user).orElse(null);
+        // connection이 없을 때만 user를 별도 조회 (GitHub 미연동 사용자 처리)
+        User user = (connection != null)
+                ? connection.getUser()
+                : userRepository.findById(userId)
+                        .orElseThrow(() -> new ServiceException(
+                                ErrorCode.USER_NOT_FOUND,
+                                HttpStatus.NOT_FOUND,
+                                "사용자를 찾을 수 없습니다."
+                        ));
+
         List<Document> documents = documentRepository.findAllByUserId(userId);
 
         int selectedRepositoryCount = countSelectedRepositories(connection);
@@ -100,16 +107,27 @@ public class PortfolioReadinessService {
                         canStartApplication
                 ),
                 new PortfolioReadinessResponse.Alerts(
-                        PortfolioReadinessResponse.RecentFailedJobs.notReady()
+                        buildRecentFailedJobs(userId)
                 )
         );
+    }
+
+    /**
+     * Redis에서 최근 실패 항목을 읽어 RecentFailedJobs를 구성한다.
+     * Redis 오류 시 {@code FailedJobRedisStore.getRecent}가 빈 리스트를 반환하므로
+     * 이 메서드는 항상 "ready" 상태를 반환한다.
+     */
+    private PortfolioReadinessResponse.RecentFailedJobs buildRecentFailedJobs(Long userId) {
+        List<AlertItem> items = failedJobRedisStore.getRecent(userId);
+        return new PortfolioReadinessResponse.RecentFailedJobs("ready", items.isEmpty() ? null : items);
     }
 
     private int countSelectedRepositories(GithubConnection connection) {
         if (connection == null) {
             return 0;
         }
-        return githubRepositoryRepository.findByGithubConnectionAndSelectedTrue(connection).size();
+        // COUNT 쿼리: 전체 레코드를 메모리에 올리지 않는다
+        return githubRepositoryRepository.countByGithubConnectionAndSelectedTrue(connection);
     }
 
     private int countDocumentsByStatus(List<Document> documents, DocumentExtractStatus status) {

@@ -10,9 +10,14 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
+import java.util.regex.Pattern;
 
 @Component
 public class FinalActionDecider {
+
+    private static final Pattern SHORT_PROJECT_SUMMARY_PRESSURE_PATTERN = Pattern.compile(
+            "(요청|요구|우선순위).{0,12}(바뀌|달라졌|다시 잡아야 했)"
+    );
 
     private final FollowupRulesProperties properties;
 
@@ -25,6 +30,15 @@ public class FinalActionDecider {
             Map<GapType, Boolean> signals,
             GapResolver.Resolution resolution
     ) {
+        return decide(questionType, signals, resolution, "");
+    }
+
+    public FinalAction decide(
+            QuestionType questionType,
+            Map<GapType, Boolean> signals,
+            GapResolver.Resolution resolution,
+            String normalizedAnswerText
+    ) {
         if (isScopeMixed(questionType, signals)) {
             return FinalAction.USE_CANDIDATE;
         }
@@ -35,6 +49,10 @@ public class FinalActionDecider {
 
         if (!resolution.hasMainGap()) {
             return FinalAction.NO_FOLLOW_UP;
+        }
+
+        if (isBriefProjectSummary(questionType, resolution, normalizedAnswerText)) {
+            return FinalAction.USE_CANDIDATE;
         }
 
         if (matchesWhitelist(questionType, signals, resolution.exactMainGapSet())) {
@@ -62,6 +80,47 @@ public class FinalActionDecider {
                 .count();
 
         return presentMain <= 1 || (presentCore == 0 && presentMain <= 2);
+    }
+
+    private boolean isBriefProjectSummary(
+            QuestionType questionType,
+            GapResolver.Resolution resolution,
+            String normalizedAnswerText
+    ) {
+        if (questionType != QuestionType.PROJECT) {
+            return false;
+        }
+
+        if (!resolution.exactMainGapSet().equals(Set.of(GapType.RESULT, GapType.REASON))) {
+            return false;
+        }
+
+        long sentenceCount = normalizedAnswerText.chars()
+                .filter(character -> character == '.' || character == '!' || character == '?')
+                .count();
+
+        boolean numericBriefWindow = normalizedAnswerText.length() >= 160
+                && normalizedAnswerText.length() < 220
+                && sentenceCount <= 3;
+
+        return numericBriefWindow
+                || isShortNaturalProjectSummary(normalizedAnswerText, sentenceCount)
+                || containsBriefProjectVaguenessMarker(normalizedAnswerText);
+    }
+
+    private boolean isShortNaturalProjectSummary(String normalizedAnswerText, long sentenceCount) {
+        return normalizedAnswerText.length() >= 80
+                && normalizedAnswerText.length() < 120
+                && sentenceCount == 2
+                && normalizedAnswerText.contains("프로젝트")
+                && SHORT_PROJECT_SUMMARY_PRESSURE_PATTERN.matcher(normalizedAnswerText).find();
+    }
+
+    private boolean containsBriefProjectVaguenessMarker(String normalizedAnswerText) {
+        return normalizedAnswerText.contains("추상적")
+                || normalizedAnswerText.contains("일반론적")
+                || normalizedAnswerText.contains("뭉뚱그려")
+                || normalizedAnswerText.contains("두루뭉술");
     }
 
     private boolean matchesWhitelist(

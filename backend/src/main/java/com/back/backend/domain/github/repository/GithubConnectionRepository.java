@@ -3,6 +3,8 @@ package com.back.backend.domain.github.repository;
 import com.back.backend.domain.github.entity.GithubConnection;
 import com.back.backend.domain.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
@@ -15,4 +17,8 @@ public interface GithubConnectionRepository extends JpaRepository<GithubConnecti
 
     // GitHub 계정 ID로 연결 조회 — 다른 app 사용자가 같은 GitHub 계정을 이미 연동했는지 확인하는 데 사용
     Optional<GithubConnection> findByGithubUserId(Long githubUserId);
+
+    // 준비 현황 대시보드: JOIN FETCH user로 연결과 사용자를 한 번에 조회 (별도 User 로딩 불필요)
+    @Query("SELECT gc FROM GithubConnection gc JOIN FETCH gc.user WHERE gc.user.id = :userId")
+    Optional<GithubConnection> findByUserIdWithUser(@Param("userId") Long userId);
 }

@@ -3,6 +3,7 @@ package com.back.backend.domain.ai.client.gemini;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
@@ -13,6 +14,7 @@ import org.springframework.web.client.RestClient;
  * 나중에 OpenAI 추가 시 OpenAiClientConfig를 동일 구조로 만들면 됨
  */
 @Configuration
+@Profile("!load-test")
 @EnableConfigurationProperties(GeminiClientProperties.class) // GeminiClientProperties 활성화
 public class GeminiClientConfig {
 
