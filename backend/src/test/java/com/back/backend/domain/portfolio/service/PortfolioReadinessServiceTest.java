@@ -5,9 +5,7 @@ import com.back.backend.domain.document.entity.DocumentExtractStatus;
 import com.back.backend.domain.document.entity.DocumentType;
 import com.back.backend.domain.document.repository.DocumentRepository;
 import com.back.backend.domain.github.entity.GithubConnection;
-import com.back.backend.domain.github.entity.GithubRepository;
 import com.back.backend.domain.github.entity.GithubSyncStatus;
-import com.back.backend.domain.github.entity.RepositoryVisibility;
 import com.back.backend.domain.github.repository.GithubConnectionRepository;
 import com.back.backend.domain.github.repository.GithubRepositoryRepository;
 import com.back.backend.domain.portfolio.dto.response.PortfolioReadinessResponse;
@@ -55,8 +53,8 @@ class PortfolioReadinessServiceTest {
     @Test
     void getReadiness_returnsEmptyStateForBlankUser() {
         User user = user(1L);
+        given(githubConnectionRepository.findByUserIdWithUser(1L)).willReturn(Optional.empty());
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
-        given(githubConnectionRepository.findByUser(user)).willReturn(Optional.empty());
         given(documentRepository.findAllByUserId(1L)).willReturn(List.of());
 
         PortfolioReadinessResponse result = portfolioReadinessService.getReadiness(1L);
@@ -75,10 +73,8 @@ class PortfolioReadinessServiceTest {
     void getReadiness_returnsGithubOnlyState() {
         User user = user(1L);
         GithubConnection connection = connection(user, null);
-        given(userRepository.findById(1L)).willReturn(Optional.of(user));
-        given(githubConnectionRepository.findByUser(user)).willReturn(Optional.of(connection));
-        given(githubRepositoryRepository.findByGithubConnectionAndSelectedTrue(connection))
-                .willReturn(List.of(repository(connection, "repo-a"), repository(connection, "repo-b")));
+        given(githubConnectionRepository.findByUserIdWithUser(1L)).willReturn(Optional.of(connection));
+        given(githubRepositoryRepository.countByGithubConnectionAndSelectedTrue(connection)).willReturn(2);
         given(documentRepository.findAllByUserId(1L)).willReturn(List.of());
 
         PortfolioReadinessResponse result = portfolioReadinessService.getReadiness(1L);
@@ -94,8 +90,8 @@ class PortfolioReadinessServiceTest {
     @Test
     void getReadiness_returnsDocumentOnlyState() {
         User user = user(1L);
+        given(githubConnectionRepository.findByUserIdWithUser(1L)).willReturn(Optional.empty());
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
-        given(githubConnectionRepository.findByUser(user)).willReturn(Optional.empty());
         given(documentRepository.findAllByUserId(1L))
                 .willReturn(List.of(document(user, "resume.pdf", DocumentExtractStatus.SUCCESS)));
 
@@ -113,10 +109,8 @@ class PortfolioReadinessServiceTest {
     void getReadiness_returnsReadyStateWhenGithubAndDocumentsExist() {
         User user = user(1L);
         GithubConnection connection = connection(user, "read:user repo");
-        given(userRepository.findById(1L)).willReturn(Optional.of(user));
-        given(githubConnectionRepository.findByUser(user)).willReturn(Optional.of(connection));
-        given(githubRepositoryRepository.findByGithubConnectionAndSelectedTrue(connection))
-                .willReturn(List.of(repository(connection, "repo-a")));
+        given(githubConnectionRepository.findByUserIdWithUser(1L)).willReturn(Optional.of(connection));
+        given(githubRepositoryRepository.countByGithubConnectionAndSelectedTrue(connection)).willReturn(1);
         given(documentRepository.findAllByUserId(1L))
                 .willReturn(List.of(
                         document(user, "resume.pdf", DocumentExtractStatus.SUCCESS),
@@ -137,8 +131,8 @@ class PortfolioReadinessServiceTest {
     @Test
     void getReadiness_returnsNotReadyPlaceholdersForDeferredFields() {
         User user = user(1L);
+        given(githubConnectionRepository.findByUserIdWithUser(1L)).willReturn(Optional.empty());
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
-        given(githubConnectionRepository.findByUser(user)).willReturn(Optional.empty());
         given(documentRepository.findAllByUserId(1L)).willReturn(List.of());
 
         PortfolioReadinessResponse result = portfolioReadinessService.getReadiness(1L);
@@ -155,8 +149,8 @@ class PortfolioReadinessServiceTest {
     void getReadiness_returnsFailedJobsFromRedis() {
         User user = user(1L);
         AlertItem alert = new AlertItem("GITHUB_COMMIT_SYNC_FAILED", "[GITHUB_SYNC] 동기화 실패", FIXED_NOW);
+        given(githubConnectionRepository.findByUserIdWithUser(1L)).willReturn(Optional.empty());
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
-        given(githubConnectionRepository.findByUser(user)).willReturn(Optional.empty());
         given(documentRepository.findAllByUserId(1L)).willReturn(List.of());
         given(failedJobRedisStore.getRecent(1L)).willReturn(List.of(alert));
 
@@ -172,9 +166,8 @@ class PortfolioReadinessServiceTest {
     void getReadiness_recommendsRepositorySelectionBeforeRetryingDocuments() {
         User user = user(1L);
         GithubConnection connection = connection(user, "read:user");
-        given(userRepository.findById(1L)).willReturn(Optional.of(user));
-        given(githubConnectionRepository.findByUser(user)).willReturn(Optional.of(connection));
-        given(githubRepositoryRepository.findByGithubConnectionAndSelectedTrue(connection)).willReturn(List.of());
+        given(githubConnectionRepository.findByUserIdWithUser(1L)).willReturn(Optional.of(connection));
+        given(githubRepositoryRepository.countByGithubConnectionAndSelectedTrue(connection)).willReturn(0);
         given(documentRepository.findAllByUserId(1L))
                 .willReturn(List.of(document(user, "scan.pdf", DocumentExtractStatus.FAILED)));
 
@@ -207,20 +200,6 @@ class PortfolioReadinessServiceTest {
                 .syncStatus(GithubSyncStatus.SUCCESS)
                 .connectedAt(FIXED_NOW)
                 .lastSyncedAt(FIXED_NOW)
-                .build();
-    }
-
-    private GithubRepository repository(GithubConnection connection, String name) {
-        return GithubRepository.builder()
-                .githubConnection(connection)
-                .githubRepoId((long) name.hashCode())
-                .ownerLogin("octocat")
-                .repoName(name)
-                .fullName("octocat/" + name)
-                .htmlUrl("https://github.com/octocat/" + name)
-                .visibility(RepositoryVisibility.PUBLIC)
-                .selected(true)
-                .syncedAt(FIXED_NOW)
                 .build();
     }
 

@@ -54,14 +54,19 @@ public class PortfolioReadinessService {
     private final FailedJobRedisStore failedJobRedisStore;
 
     public PortfolioReadinessResponse getReadiness(Long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ServiceException(
-                        ErrorCode.USER_NOT_FOUND,
-                        HttpStatus.NOT_FOUND,
-                        "사용자를 찾을 수 없습니다."
-                ));
+        // findByUserIdWithUser: JOIN FETCH로 connection과 user를 한 번에 조회 (trip 절감)
+        GithubConnection connection = githubConnectionRepository.findByUserIdWithUser(userId).orElse(null);
 
-        GithubConnection connection = githubConnectionRepository.findByUser(user).orElse(null);
+        // connection이 없을 때만 user를 별도 조회 (GitHub 미연동 사용자 처리)
+        User user = (connection != null)
+                ? connection.getUser()
+                : userRepository.findById(userId)
+                        .orElseThrow(() -> new ServiceException(
+                                ErrorCode.USER_NOT_FOUND,
+                                HttpStatus.NOT_FOUND,
+                                "사용자를 찾을 수 없습니다."
+                        ));
+
         List<Document> documents = documentRepository.findAllByUserId(userId);
 
         int selectedRepositoryCount = countSelectedRepositories(connection);
@@ -121,7 +126,8 @@ public class PortfolioReadinessService {
         if (connection == null) {
             return 0;
         }
-        return githubRepositoryRepository.findByGithubConnectionAndSelectedTrue(connection).size();
+        // COUNT 쿼리: 전체 레코드를 메모리에 올리지 않는다
+        return githubRepositoryRepository.countByGithubConnectionAndSelectedTrue(connection);
     }
 
     private int countDocumentsByStatus(List<Document> documents, DocumentExtractStatus status) {
