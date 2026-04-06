@@ -190,6 +190,19 @@ export default function PortfolioReadinessWidget() {
         </div>
       </dl>
 
+      {/* 최근 실패 작업 요약 — ready 상태이고 실패 항목이 있을 때만 표시 */}
+      {dashboard.alerts.recentFailedJobs.status === 'ready' &&
+        !!dashboard.alerts.recentFailedJobs.items?.length && (
+          <div className="mt-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm">
+            <p className="font-medium text-red-800">
+              최근 실패 {dashboard.alerts.recentFailedJobs.items.length}건
+            </p>
+            <p className="mt-0.5 text-xs text-red-500 truncate">
+              {dashboard.alerts.recentFailedJobs.items[0].message}
+            </p>
+          </div>
+        )}
+
       <div className="mt-4 rounded-xl border border-zinc-200 px-3 py-3">
         <p className="text-xs font-medium text-zinc-500">부족한 항목</p>
         <p className="mt-1 text-sm text-zinc-700">{formatMissingItems(dashboard.readiness.missingItems)}</p>

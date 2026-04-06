@@ -37,6 +37,7 @@ import static com.back.backend.domain.interview.support.InterviewSessionQuestion
 import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.persistSessionQuestionSnapshot;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -127,6 +128,7 @@ class InterviewSessionResultApiTest extends ApiTestBase {
         ResultFixture fixture = persistCompletedFixture("result-retry-success");
 
         given(interviewResultGenerationService.generate(
+                anyLong(),
                 eq(fixture.session().getId()),
                 eq(fixture.questionSet().getId()),
                 anyList(),
@@ -208,6 +210,7 @@ class InterviewSessionResultApiTest extends ApiTestBase {
         ResultFixture fixture = persistCompletedFixture("result-incomplete");
 
         given(interviewResultGenerationService.generate(
+                anyLong(),
                 eq(fixture.session().getId()),
                 eq(fixture.questionSet().getId()),
                 anyList(),

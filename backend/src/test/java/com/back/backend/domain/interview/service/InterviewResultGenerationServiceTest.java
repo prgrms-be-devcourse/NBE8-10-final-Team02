@@ -4,6 +4,7 @@ import com.back.backend.domain.ai.client.AiClientException;
 import com.back.backend.domain.ai.client.AiProvider;
 import com.back.backend.domain.ai.pipeline.AiPipeline;
 import com.back.backend.domain.interview.entity.DifficultyLevel;
+import com.back.backend.domain.portfolio.service.FailedJobRedisStore;
 import com.back.backend.domain.interview.entity.FeedbackTag;
 import com.back.backend.domain.interview.entity.FeedbackTagCategory;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
@@ -44,12 +45,15 @@ class InterviewResultGenerationServiceTest {
     @Mock
     private FeedbackTagRepository feedbackTagRepository;
 
+    @Mock
+    private FailedJobRedisStore failedJobRedisStore;
+
     private InterviewResultGenerationService interviewResultGenerationService;
 
     @BeforeEach
     void setUp() {
         interviewResultGenerationService =
-                new InterviewResultGenerationService(aiPipeline, feedbackTagRepository);
+                new InterviewResultGenerationService(aiPipeline, feedbackTagRepository, failedJobRedisStore);
     }
 
     @Test
@@ -89,7 +93,7 @@ class InterviewResultGenerationServiceTest {
                         """));
 
         InterviewResultGenerationService.GeneratedInterviewResult result =
-                interviewResultGenerationService.generate(901L, 301L, answers, "백엔드 개발자");
+                interviewResultGenerationService.generate(1L, 901L, 301L, answers, "백엔드 개발자");
 
         assertThat(result.totalScore()).isEqualTo(84);
         assertThat(result.summaryFeedback()).isEqualTo("근거 제시는 좋았지만 일부 답변은 더 구체화가 필요합니다.");
@@ -132,7 +136,7 @@ class InterviewResultGenerationServiceTest {
                         }
                         """));
 
-        assertThatThrownBy(() -> interviewResultGenerationService.generate(901L, 301L, answers, "백엔드 개발자"))
+        assertThatThrownBy(() -> interviewResultGenerationService.generate(1L, 901L, 301L, answers, "백엔드 개발자"))
                 .isInstanceOf(ServiceException.class)
                 .satisfies(exception -> assertThat(((ServiceException) exception).getErrorCode())
                         .isEqualTo(ErrorCode.INTERVIEW_RESULT_INCOMPLETE));
@@ -161,7 +165,7 @@ class InterviewResultGenerationServiceTest {
                         }
                         """));
 
-        assertThatThrownBy(() -> interviewResultGenerationService.generate(901L, 301L, answers, "백엔드 개발자"))
+        assertThatThrownBy(() -> interviewResultGenerationService.generate(1L, 901L, 301L, answers, "백엔드 개발자"))
                 .isInstanceOf(ServiceException.class)
                 .satisfies(exception -> assertThat(((ServiceException) exception).getErrorCode())
                         .isEqualTo(ErrorCode.INTERVIEW_RESULT_INCOMPLETE));
@@ -180,7 +184,7 @@ class InterviewResultGenerationServiceTest {
                         "AI provider unavailable"
                 ));
 
-        assertThatThrownBy(() -> interviewResultGenerationService.generate(901L, 301L, answers, "백엔드 개발자"))
+        assertThatThrownBy(() -> interviewResultGenerationService.generate(1L, 901L, 301L, answers, "백엔드 개발자"))
                 .isInstanceOf(ServiceException.class)
                 .satisfies(exception -> {
                     ServiceException serviceException = (ServiceException) exception;
@@ -194,7 +198,7 @@ class InterviewResultGenerationServiceTest {
     void generate_throwsGenerationFailedWhenTagMasterIsMissing() {
         given(feedbackTagRepository.findAllByOrderByIdAsc()).willReturn(List.of());
 
-        assertThatThrownBy(() -> interviewResultGenerationService.generate(901L, 301L, List.of(), "백엔드 개발자"))
+        assertThatThrownBy(() -> interviewResultGenerationService.generate(1L, 901L, 301L, List.of(), "백엔드 개발자"))
                 .isInstanceOf(ServiceException.class)
                 .satisfies(exception -> assertThat(((ServiceException) exception).getErrorCode())
                         .isEqualTo(ErrorCode.INTERVIEW_RESULT_GENERATION_FAILED));
@@ -233,7 +237,7 @@ class InterviewResultGenerationServiceTest {
                         """));
 
         InterviewResultGenerationService.GeneratedInterviewResult result =
-                interviewResultGenerationService.generate(901L, 301L, answers, "백엔드 개발자");
+                interviewResultGenerationService.generate(1L, 901L, 301L, answers, "백엔드 개발자");
 
         assertThat(result.answers()).hasSize(2);
         then(aiPipeline).should().execute(eq("ai.interview.evaluate.v1"), argThat(payload ->

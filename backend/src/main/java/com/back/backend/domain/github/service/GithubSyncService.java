@@ -6,6 +6,7 @@ import com.back.backend.domain.github.entity.GithubRepository;
 import com.back.backend.domain.github.repository.GithubCommitRepository;
 import com.back.backend.domain.github.repository.GithubConnectionRepository;
 import com.back.backend.domain.github.repository.GithubRepositoryRepository;
+import com.back.backend.domain.portfolio.service.FailedJobRedisStore;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.global.exception.ErrorCode;
@@ -40,6 +41,7 @@ public class GithubSyncService {
     private final GithubConnectionRepository connectionRepository;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final FailedJobRedisStore failedJobRedisStore;
 
     public GithubSyncService(
             GithubApiClient githubApiClient,
@@ -47,7 +49,8 @@ public class GithubSyncService {
             GithubCommitRepository commitRepository,
             GithubConnectionRepository connectionRepository,
             UserRepository userRepository,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            FailedJobRedisStore failedJobRedisStore
     ) {
         this.githubApiClient = githubApiClient;
         this.repositoryRepository = repositoryRepository;
@@ -55,6 +58,7 @@ public class GithubSyncService {
         this.connectionRepository = connectionRepository;
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
+        this.failedJobRedisStore = failedJobRedisStore;
     }
 
     /**
@@ -85,18 +89,29 @@ public class GithubSyncService {
 
         log.info("Starting commit sync for repositoryId={}, repo={}", repositoryId, repository.getFullName());
 
-        // 3. GitHub API 호출 — 트랜잭션 밖에서 수행
-        String[] parts = repository.getFullName().split("/");  // "owner/repo" 형식
-        String owner = parts[0];
-        String repo = parts[1];
+        try {
+            // 3. GitHub API 호출 — 트랜잭션 밖에서 수행
+            String[] parts = repository.getFullName().split("/");  // "owner/repo" 형식
+            String owner = parts[0];
+            String repo = parts[1];
 
-        List<GithubApiClient.GithubCommitInfo> commits = githubApiClient.getCommits(
-                owner, repo, connection.getGithubLogin(), connection.getAccessToken());
+            List<GithubApiClient.GithubCommitInfo> commits = githubApiClient.getCommits(
+                    owner, repo, connection.getGithubLogin(), connection.getAccessToken());
 
-        log.info("Fetched {} commits from GitHub for repo={}", commits.size(), repository.getFullName());
+            log.info("Fetched {} commits from GitHub for repo={}", commits.size(), repository.getFullName());
 
-        // 4. DB 저장 — GitHub API 결과를 받은 뒤 트랜잭션 시작
-        saveCommits(repository, commits, connection.getGithubLogin());
+            // 4. DB 저장 — GitHub API 결과를 받은 뒤 트랜잭션 시작
+            saveCommits(repository, commits, connection.getGithubLogin());
+        } catch (Exception e) {
+            // API 호출 or DB 저장 실패 — 실패 로그를 Redis에 기록하고 예외를 다시 던진다
+            failedJobRedisStore.push(
+                    userId,
+                    FailedJobRedisStore.JobType.GITHUB_SYNC,
+                    ErrorCode.GITHUB_COMMIT_SYNC_FAILED.name(),
+                    e.getMessage() != null ? e.getMessage() : "커밋 동기화 중 오류가 발생했습니다."
+            );
+            throw e;
+        }
     }
 
     // ─────────────────────────────────────────────────

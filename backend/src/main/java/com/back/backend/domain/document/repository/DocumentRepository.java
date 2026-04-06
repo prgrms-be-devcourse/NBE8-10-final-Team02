@@ -2,6 +2,7 @@ package com.back.backend.domain.document.repository;
 
 
 import com.back.backend.domain.document.entity.Document;
+import com.back.backend.domain.document.entity.DocumentExtractStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -32,5 +33,8 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
     // userId 조건으로 다른 사용자 문서를 연결하는 것을 방지한다
     // 호출 전 ids가 비어 있으면 빈 리스트를 반환해야 한다 (빈 IN절 방지)
     List<Document> findAllByIdInAndUserId(Collection<Long> ids, Long userId);
+
+    // 준비 현황 대시보드: 특정 추출 상태인 문서 수 집계
+    int countByUserIdAndExtractStatus(Long userId, DocumentExtractStatus extractStatus);
 
 }
