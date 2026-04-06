@@ -39,6 +39,7 @@ export default function Navbar() {
       <div className="flex items-center gap-4 text-sm">
         <Link href="/portfolio">포트폴리오</Link>
         <Link href="/applications">지원 준비</Link>
+        <Link href="/practice">문제 연습</Link>
         <Link href="/interview/history">면접 히스토리</Link>
         <Link href="/activity">활동</Link>
         <StreakBadge streak={streak} />
