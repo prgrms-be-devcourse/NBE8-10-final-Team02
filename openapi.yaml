@@ -3789,8 +3789,10 @@ paths:
                     meta: *id001
       description: 세션을 종료하고 피드백 결과 생성을 시작한다. 피드백이 즉시 생성되면 feedback_completed 상태로 응답할
         수 있다. `complete`는 `in_progress`, `paused` 상태에서만 허용하며, 미답변 질문이 남아 있으면 400을 반환한다.
-        결과 생성 전에 세션 전체 답변을 기준으로 마지막 follow-up 보완 1회를 best-effort로 검토할 수 있다. 이 보완은 runtime에서
-        follow-up으로 확정되지 못한 positive 또는 FN 회수 경로이며 세션당 최대 1회만 수행한다. 추가 follow-up이 생성되면 세션은
+        결과 생성 전에 answered root thread 전체를 기준으로 마지막 follow-up 보완 1회를 best-effort로 검토할 수 있다.
+        각 thread는 기본 질문/답변과, 이미 존재하면 runtime follow-up 질문/답변까지 함께 본다. 이 마지막 보완은 runtime
+        `finalAction`을 hard gate로 쓰지 않으므로 runtime `NO_FOLLOW_UP` 답변이나 runtime follow-up이 이미 있던 thread도
+        검토 대상이 될 수 있다. 추가 follow-up이 생성되면 선택된 thread의 마지막 질문 뒤에 세션 질문으로 이어 붙이고, 세션은
         종료하지 않고 기존 `remainingQuestionCount=incomplete` 400 응답을 반환한다. 마지막 보완이 null 또는 실패여도 완료
         흐름은 계속 진행한다. 답변된 follow-up은 일반 세션 질문과 동일하게 미답변 검증과 결과 생성 입력에 포함한다.
   /interview/sessions/{sessionId}/result:
@@ -3857,9 +3859,10 @@ paths:
       tags:
       - Followup
       summary: follow-up rules 분석
-      description: questionType과 answerText만으로 P0 로컬 follow-up 규칙을 분석한다. 면접 세션 runtime gate와 complete 직전
-        마지막 보완 검토가 같은 로컬 rule engine을 사용하며, `finalAction=USE_CANDIDATE`일 때 `candidateQuestionTypes`는
-        runtime local deterministic follow-up 템플릿 선택 우선순위로 해석한다. 이 endpoint는 그 결과를 독립적으로 확인하기
+      description: questionType과 answerText만으로 P0 로컬 follow-up 규칙을 분석한다. 면접 세션 runtime gate가 같은 로컬
+        rule engine을 사용하며, `finalAction=USE_CANDIDATE`일 때 `candidateQuestionTypes`는 runtime local deterministic
+        follow-up 템플릿 선택 우선순위로 해석한다. complete 직전 마지막 보완 검토에서는 이 로컬 rule 결과를 optional runtime
+        summary 입력으로 사용할 수 있지만, thread 선택의 hard gate로는 쓰지 않는다. 이 endpoint는 그 결과를 독립적으로 확인하기
         위한 분석 경로다.
       requestBody:
         required: true

@@ -41,6 +41,7 @@ applies_to: ai-prompt-io-contract
 - `ai.self_intro.generate.v1`
 - `ai.interview.questions.generate.v1`
 - `ai.interview.followup.generate.v1`
+- `ai.interview.followup.complete.v1`
 - `ai.interview.evaluate.v1`
 - `ai.interview.summary.v1`
 
@@ -138,7 +139,8 @@ applies_to: ai-prompt-io-contract
 | ai.portfolio.summary.v1 | GitHub/문서 evidence 압축 | 저비용 또는 중간급 | 0.2 | 짧게 |
 | ai.self_intro.generate.v1 | 자소서 문항 답변 생성 | 품질 우선 | 0.5 | 중간 |
 | ai.interview.questions.generate.v1 | 면접 질문 세트 생성 | 품질 우선 | 0.6 | 중간 |
-| ai.interview.followup.generate.v1 | 꼬리 질문 1개 생성 | 균형형 | 0.5 | 짧게 |
+| ai.interview.followup.generate.v1 | runtime 꼬리 질문 1개 생성 | 균형형 | 0.5 | 짧게 |
+| ai.interview.followup.complete.v1 | complete 직전 최종 보완 질문 1개 판단/생성 | 안정형 | 0.4 | 짧게 |
 | ai.interview.evaluate.v1 | 질문별 점수/근거/태그 평가 | 안정형, JSON 준수 우선 | 0.2 | 중간 |
 | ai.interview.summary.v1 | 세션 요약 피드백 생성 | 안정형 | 0.3 | 짧게 |
 
@@ -589,7 +591,7 @@ applies_to: ai-prompt-io-contract
 ### 6.4.1 목적
 
 - 현재 질문과 직전 답변을 바탕으로 AI follow-up 질문 1개를 생성한다.
-- 이 템플릿은 runtime `USE_DYNAMIC` 경로와 `POST /interview/sessions/{sessionId}/complete` 직전 마지막 보완 검토에서만 사용한다.
+- 이 템플릿은 runtime `USE_DYNAMIC` 경로에서만 사용한다.
 - runtime `USE_CANDIDATE` 경로는 `candidateQuestionTypes` 기반 로컬 deterministic 템플릿을 사용하며 이 AI 템플릿을 호출하지 않는다.
 
 ### 6.4.2 입력 변수
@@ -704,16 +706,167 @@ applies_to: ai-prompt-io-contract
 - runtime 즉시 AI 생성은 세션당 최대 1회만 허용한다.
 - 같은 부모 답변에 대한 follow-up 생성 결과는 최대 1개만 확정한다.
 - 부모 세션 질문에 child 세션 질문이 이미 있으면 추가 runtime follow-up 생성은 생략한다.
-- `POST /interview/sessions/{sessionId}/complete` 직전 마지막 전체 보완은 runtime에서 follow-up으로 확정되지 못한 positive나 FN을 다시 검토하는 용도로 쓴다.
-- 마지막 전체 보완은 세션 전체 답변에서 대상 부모 질문/답변 1개를 다시 고른 뒤 같은 템플릿으로 follow-up 1개를 best-effort 생성한다.
-- 마지막 전체 보완에서 추가 follow-up이 생성되면 `complete`는 종료 대신 기존 `remainingQuestionCount=incomplete` 400 응답을 반환하고, 클라이언트는 세션 상세를 재조회해 추가 질문을 이어서 답변한다.
-- `USE_CANDIDATE` 템플릿 매핑 부재, `followUpQuestion=null`, timeout, schema 오류면 세션은 멈추지 않고 runtime에서는 다음 기본 질문으로 진행하며, complete 단계에서는 그대로 종료/결과 생성으로 진행한다.
+- complete 직전 마지막 전체 보완은 별도 템플릿 `ai.interview.followup.complete.v1`로 분리한다.
+- `USE_CANDIDATE` 템플릿 매핑 부재, `followUpQuestion=null`, timeout, schema 오류면 세션은 멈추지 않고 runtime에서는 다음 기본 질문으로 진행한다.
 
 ### 6.4.10 재시도 규칙
 
 - malformed JSON 1회 재시도
 - 품질 미달 시 재시도보다 null 반환을 우선
 - 실시간 UX 고려해 최대 1회 재시도
+
+## 6.4.11 ai.interview.followup.complete.v1
+
+### 6.4.11.1 목적
+
+- `POST /interview/sessions/{sessionId}/complete` 직전 answered question thread 전체를 보고 최종 보완 follow-up 질문 1개를 판단/생성한다.
+- runtime `finalAction`은 참고 입력일 수 있지만, 이 템플릿에서 thread 선택의 hard gate로 쓰지 않는다.
+
+### 6.4.11.2 입력 변수
+
+- `jobRole`
+- `companyName`
+- `answeredThreads`
+
+### 6.4.11.3 입력 예시
+
+```json
+{
+  "jobRole": "Backend Developer",
+  "companyName": "OpenAI Korea",
+  "answeredThreads": [
+    {
+      "tailQuestionOrder": 3,
+      "rootQuestion": {
+        "questionOrder": 2,
+        "questionType": "project",
+        "questionText": "가장 기억에 남는 프로젝트를 설명해주세요.",
+        "difficultyLevel": "medium"
+      },
+      "rootAnswer": {
+        "answerText": "정산 리포트 자동화 프로젝트를 맡았습니다.",
+        "isSkipped": false
+      },
+      "runtimeRuleSummary": {
+        "finalAction": "USE_CANDIDATE",
+        "primaryGap": "REASON",
+        "secondaryGap": "RESULT",
+        "candidateQuestionTypes": [
+          "PROJECT_APPROACH_REASON"
+        ]
+      },
+      "runtimeFollowupQuestion": {
+        "questionOrder": 3,
+        "questionType": "follow_up",
+        "questionText": "그 접근 방식을 선택한 이유를 조금 더 구체적으로 설명해주실 수 있나요?",
+        "difficultyLevel": "medium"
+      },
+      "runtimeFollowupAnswer": {
+        "answerText": "일정 영향과 운영팀 적응 비용을 같이 봤습니다.",
+        "isSkipped": false
+      }
+    },
+    {
+      "tailQuestionOrder": 4,
+      "rootQuestion": {
+        "questionOrder": 4,
+        "questionType": "project",
+        "questionText": "성과를 어떻게 확인했나요?",
+        "difficultyLevel": "medium"
+      },
+      "rootAnswer": {
+        "answerText": "출시 이후 예약 비중이 눈에 띄게 올랐습니다.",
+        "isSkipped": false
+      },
+      "runtimeRuleSummary": {
+        "finalAction": "NO_FOLLOW_UP",
+        "primaryGap": null,
+        "secondaryGap": null,
+        "candidateQuestionTypes": []
+      }
+    }
+  ]
+}
+```
+
+### 6.4.11.4 System Prompt
+
+```text
+당신은 텍스트 기반 모의 면접의 세션 종료 직전 최종 보완 질문 생성 엔진이다.
+세션 전체 answered thread를 보고, 정말 필요한 경우에만 후속 질문 1개를 생성하라.
+지정된 tailQuestionOrder 중 하나를 parentQuestionOrder로 선택해야 하며, 새로운 주제로 이탈하지 말라.
+반드시 JSON object 하나만 출력하라.
+```
+
+### 6.4.11.5 Developer Prompt
+
+```text
+조건:
+- answeredThreads는 이미 답변된 root thread만 포함한다.
+- runtimeFollowupQuestion/runtimeFollowupAnswer가 있으면 rootAnswer와 함께 하나의 thread로 이해한다.
+- 추가 질문이 필요 없으면 followUpQuestion을 null로 반환한다.
+- parentQuestionOrder는 반드시 입력으로 주어진 answeredThreads[].tailQuestionOrder 중 하나여야 한다.
+
+좋은 completion-stage follow-up 기준:
+- root 답변과 runtime follow-up 답변을 합쳐 봐도 여전히 핵심 의사결정 근거나 결과 확인이 비어 있다.
+- 세션 전체 평가 품질에 실제로 도움이 되는 마지막 1개 질문이다.
+- 이미 물은 포인트를 거의 반복하지 않는다.
+
+금지:
+- 입력에 없는 order를 parentQuestionOrder로 선택
+- 예/아니오형 단답 질문
+- 기존 질문을 거의 그대로 반복
+- 전혀 새로운 기술 주제로 점프
+```
+
+### 6.4.11.6 출력 스키마
+
+```json
+{
+  "followUpQuestion": {
+    "questionType": "follow_up",
+    "difficultyLevel": "medium",
+    "questionText": "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
+    "parentQuestionOrder": 3
+  },
+  "qualityFlags": []
+}
+```
+
+또는 생성하지 않는 경우
+
+```json
+{
+  "followUpQuestion": null,
+  "qualityFlags": ["low_context"]
+}
+```
+
+### 6.4.11.7 후처리 검증
+
+- `followUpQuestion`이 null이면 저장 생략 가능
+- `questionType`은 반드시 `follow_up`
+- `parentQuestionOrder`는 입력으로 준 `answeredThreads[].tailQuestionOrder` 중 하나와 일치해야 함
+
+### 6.4.11.8 저장 매핑
+
+- `followUpQuestion`이 null이면 저장하지 않는다.
+- completion-stage supplement도 `interview_session_questions`에 저장한다.
+- 선택된 thread에 runtime follow-up이 없으면 root question 뒤에, answered runtime follow-up이 있으면 thread의 마지막 질문 뒤에 붙인다.
+
+### 6.4.11.9 호출 시점과 소비 규칙
+
+- `POST /interview/sessions/{sessionId}/complete` 직전 마지막 전체 보완은 answered root thread 전체를 보고 AI가 최종 보완 질문 1개를 직접 판단하는 용도로 쓴다.
+- review 대상은 runtime `NO_FOLLOW_UP`, `USE_CANDIDATE`, `USE_DYNAMIC` 여부와 무관한 answered root thread다.
+- runtime follow-up이 이미 있던 thread도 review 대상이 될 수 있다.
+- 마지막 전체 보완에서 추가 follow-up이 생성되면 `complete`는 종료 대신 기존 `remainingQuestionCount=incomplete` 400 응답을 반환하고, 클라이언트는 세션 상세를 재조회해 추가 질문을 이어서 답변한다.
+- `followUpQuestion=null`, timeout, schema 오류, invalid `parentQuestionOrder`면 질문 삽입 없이 그대로 종료/결과 생성으로 진행한다.
+
+### 6.4.11.10 재시도 규칙
+
+- malformed JSON 1회 재시도
+- parent order 불일치나 품질 미달 시 재시도보다 null 반환을 우선
+- 세션 종료 전 UX 고려해 최대 1회 재시도
 
 ## 6.5 ai.interview.evaluate.v1
 
@@ -930,6 +1083,7 @@ applies_to: ai-prompt-io-contract
 - 평가 결과의 `answers[].questionOrder`는 실제 세션 질문에 모두 존재해야 한다.
 - 자소서 생성 결과의 `usedEvidenceKeys`는 summary output의 key와 매핑되어야 한다.
 - follow-up 결과의 `parentQuestionOrder`는 현재 질문 번호와 같아야 한다.
+- completion follow-up 결과의 `parentQuestionOrder`는 입력 `answeredThreads[].tailQuestionOrder` 중 하나여야 한다.
 
 ### 7.3 저장 금지 조건
 
@@ -954,6 +1108,7 @@ applies_to: ai-prompt-io-contract
 - `ai.self_intro.generate.v1`: 최대 2회
 - `ai.interview.questions.generate.v1`: 최대 2회
 - `ai.interview.followup.generate.v1`: 최대 1회
+- `ai.interview.followup.complete.v1`: 최대 1회
 - `ai.interview.evaluate.v1`: 최대 2회
 - `ai.interview.summary.v1`: 최대 1회
 
@@ -968,6 +1123,7 @@ applies_to: ai-prompt-io-contract
 - 자소서 생성 중 오류가 발생했습니다. 다시 시도해주세요.
 - 면접 질문 생성 중 오류가 발생했습니다. 다시 시도해주세요.
 - 꼬리 질문 생성에 실패했습니다. 다음 질문으로 진행합니다.
+- 마지막 보완 질문 생성에 실패했습니다. 결과 생성으로 진행합니다.
 - 면접 결과 생성 중 오류가 발생했습니다. 다시 시도해주세요.
 
 ## 9. 구현 가이드
@@ -984,6 +1140,7 @@ ai/
       ai.self_intro.generate.v1.txt
       ai.interview.questions.generate.v1.txt
       ai.interview.followup.generate.v1.txt
+      ai.interview.followup.complete.v1.txt
       ai.interview.evaluate.v1.txt
       ai.interview.summary.v1.txt
   schema/
@@ -991,6 +1148,7 @@ ai/
     self-intro-generate.schema.json
     interview-questions-generate.schema.json
     interview-followup-generate.schema.json
+    interview-followup-complete.schema.json
     interview-evaluate.schema.json
     interview-summary.schema.json
   registry/
