@@ -57,7 +57,12 @@ public record PracticeQuestionResponse(
             cleanTitle = bracketMatcher.group(2).trim();
         }
 
-        // 3. content 키워드 분석으로 질문 구체화
+        // 3. title에 이미 "원리", "과정", "방식", "구조", "구성" 등이 포함되면 기본형 사용
+        if (titleAlreadyDescriptive(cleanTitle)) {
+            return cleanTitle + "에 대해 설명해주세요.";
+        }
+
+        // 4. content 키워드 분석으로 질문 구체화
         String contentLower = content.toLowerCase();
         String modifier = analyzeContentKeywords(contentLower);
 
@@ -94,5 +99,15 @@ public record PracticeQuestionResponse(
             return "의 개념과 구현 방법을 포함하여";
         }
         return "에 대해";
+    }
+
+    private static boolean titleAlreadyDescriptive(String title) {
+        String[] descriptiveKeywords = {"원리", "작동", "과정", "방식", "방법", "구조", "구성", "메커니즘"};
+        for (String keyword : descriptiveKeywords) {
+            if (title.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
