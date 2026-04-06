@@ -1,5 +1,6 @@
 package com.back.backend.domain.interview.repository;
 
+import com.back.backend.domain.interview.entity.InterviewQuestionType;
 import com.back.backend.domain.interview.entity.InterviewSessionQuestion;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -36,6 +37,8 @@ public interface InterviewSessionQuestionRepository extends JpaRepository<Interv
     );
 
     boolean existsBySessionIdAndParentSessionQuestionId(Long sessionId, Long parentSessionQuestionId);
+
+    boolean existsBySessionIdAndQuestionTypeAndSourceQuestionIsNull(Long sessionId, InterviewQuestionType questionType);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = """

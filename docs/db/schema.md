@@ -268,11 +268,13 @@ applies_to: storage-schema
 - `summary_feedback`
 - `started_at`
 - `last_activity_at`
+- `completion_followup_reviewed_at`
 - `ended_at`
 
 비고
 - `total_score`는 0~100 범위를 권장한다.
 - `last_activity_at`는 세션 생성, 답변 제출 성공, 재개 성공 시점에 갱신한다.
+- `completion_followup_reviewed_at`는 complete 직전 마지막 전체 보완 follow-up 검토를 세션당 1회로 제한하는 내부 마커다.
 
 ## 3.14 interview_session_questions
 
