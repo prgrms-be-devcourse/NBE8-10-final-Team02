@@ -37,6 +37,7 @@ import static com.back.backend.domain.interview.support.InterviewSessionQuestion
 import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.persistSessionQuestionSnapshot;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -81,7 +82,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         UserFixture fixture = persistAnsweredSession("complete-success");
         InterviewSession session = fixture.session();
 
-        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
+        given(interviewResultGenerationService.generate(anyLong(), eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
                 .willReturn(new InterviewResultGenerationService.GeneratedInterviewResult(
                         84,
                         "기술 선택 근거는 좋았지만 결과 지표를 더 명확히 제시하면 좋습니다.",
@@ -139,7 +140,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         UserFixture fixture = persistAnsweredSessionWithDynamicFollowup("complete-followup-success", true);
         InterviewSession session = fixture.session();
 
-        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
+        given(interviewResultGenerationService.generate(anyLong(), eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
                 .willReturn(new InterviewResultGenerationService.GeneratedInterviewResult(
                         86,
                         "동적 꼬리질문 답변까지 포함해 평가했습니다.",
@@ -226,7 +227,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         UserFixture fixture = persistAnsweredSession("complete-incomplete-result");
         InterviewSession session = fixture.session();
 
-        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
+        given(interviewResultGenerationService.generate(anyLong(), eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
                 .willThrow(new ServiceException(
                         ErrorCode.INTERVIEW_RESULT_INCOMPLETE,
                         HttpStatus.BAD_GATEWAY,
@@ -255,7 +256,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         UserFixture fixture = persistAnsweredSession("complete-service-unavailable");
         InterviewSession session = fixture.session();
 
-        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
+        given(interviewResultGenerationService.generate(anyLong(), eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
                 .willThrow(new ServiceException(
                         ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
                         HttpStatus.SERVICE_UNAVAILABLE,
@@ -284,7 +285,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         UserFixture fixture = persistAnsweredSession("complete-recheck-flow");
         InterviewSession session = fixture.session();
 
-        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
+        given(interviewResultGenerationService.generate(anyLong(), eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
                 .willThrow(new ServiceException(
                         ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
                         HttpStatus.SERVICE_UNAVAILABLE,
@@ -311,7 +312,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.error.retryable").value(true));
 
         then(interviewResultGenerationService).should(times(1))
-                .generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString());
+                .generate(anyLong(), eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString());
     }
 
     @Test
@@ -324,7 +325,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 FIXED_NOW,
                 FIXED_NOW.plusSeconds(31)
         );
-        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
+        given(interviewResultGenerationService.generate(anyLong(), eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
                 .willThrow(new ServiceException(
                         ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
                         HttpStatus.SERVICE_UNAVAILABLE,
@@ -367,7 +368,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.totalScore").value(84));
 
         then(interviewResultGenerationService).should(times(2))
-                .generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString());
+                .generate(anyLong(), eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString());
     }
 
     private RequestPostProcessor authenticated(long userId) {
