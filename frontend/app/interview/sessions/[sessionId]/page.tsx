@@ -297,6 +297,7 @@ export default function InterviewSessionPage() {
   const currentQuestionId = session?.currentQuestion?.id ?? null;
   const completionFollowupContext = session?.completionFollowupContext ?? null;
   const isCompletionFollowupMode = !!completionFollowupContext;
+  const latestSystemMessage = [...messages].reverse().find((message) => message.role === 'system') ?? null;
 
   useEffect(() => {
     setMessages(readStoredMessages(sessionId));
@@ -786,7 +787,12 @@ export default function InterviewSessionPage() {
 
           {transcriptCollapsed ? (
             <div className="mt-4 rounded-3xl border border-dashed border-zinc-200 bg-white px-4 py-5 text-sm text-zinc-500">
-              기존 질문/답변 기록은 접혀 있습니다. 필요하면 위 버튼으로 다시 펼쳐 확인할 수 있습니다.
+              <p>기존 질문/답변 기록은 접혀 있습니다. 필요하면 위 버튼으로 다시 펼쳐 확인할 수 있습니다.</p>
+              {latestSystemMessage && (
+                <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {latestSystemMessage.text}
+                </p>
+              )}
             </div>
           ) : (
             <div className="mt-4 max-h-[34rem] space-y-3 overflow-y-auto rounded-3xl bg-white px-3 py-4">
