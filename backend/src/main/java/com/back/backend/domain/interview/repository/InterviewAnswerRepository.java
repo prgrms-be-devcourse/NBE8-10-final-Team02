@@ -39,4 +39,18 @@ public interface InterviewAnswerRepository extends JpaRepository<InterviewAnswer
             @Param("sessionId") Long sessionId,
             Pageable pageable
     );
+
+    @Query("""
+            select kt.name, kt.category, avg(ia.score), count(ia)
+            from InterviewAnswer ia
+            join ia.sessionQuestion isq
+            join isq.sourceQuestion iq
+            join iq.knowledgeTags kt
+            where ia.session.user.id = :userId
+              and ia.score is not null
+              and ia.skipped = false
+            group by kt.name, kt.category
+            order by avg(ia.score) asc
+            """)
+    List<Object[]> findWeakAreasByUserId(@Param("userId") Long userId);
 }

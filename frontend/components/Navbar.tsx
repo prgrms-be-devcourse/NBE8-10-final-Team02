@@ -4,14 +4,20 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getMe, logout } from '@/api/auth';
+import { getStreak } from '@/api/activity';
 import type { User } from '@/types/auth';
+import StreakBadge from '@/components/activity/StreakBadge';
 
 export default function Navbar() {
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
+  const [streak, setStreak] = useState(0);
 
   useEffect(() => {
-    getMe().then(setUser);
+    Promise.all([getMe(), getStreak()]).then(([u, s]) => {
+      setUser(u);
+      setStreak(s.currentStreak);
+    });
   }, []);
 
   if (pathname === '/' || pathname.startsWith('/login')) {
@@ -34,6 +40,8 @@ export default function Navbar() {
         <Link href="/portfolio">포트폴리오</Link>
         <Link href="/applications">지원 준비</Link>
         <Link href="/interview/history">면접 히스토리</Link>
+        <Link href="/activity">활동</Link>
+        <StreakBadge streak={streak} />
 
         {user ? (
           <>

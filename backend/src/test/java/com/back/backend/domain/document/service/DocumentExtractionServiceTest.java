@@ -21,6 +21,8 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 
+import static org.mockito.Mockito.never;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -39,6 +41,12 @@ class DocumentExtractionServiceTest {
 
     @Mock
     private DocumentTextExtractor textExtractor;
+
+    @Mock
+    private TextSanitizationService textSanitizationService;
+
+    @Mock
+    private SecretMaskingService secretMaskingService;
 
     @Mock
     private PiiMaskingService piiMaskingService;
@@ -65,15 +73,21 @@ class DocumentExtractionServiceTest {
         Document doc = pendingDocument();
         given(documentRepository.findById(1L)).willReturn(Optional.of(doc));
         given(textExtractor.extract("uploads/test.pdf", "application/pdf")).willReturn("이름: 홍길동");
+        given(textSanitizationService.sanitize("이름: 홍길동")).willReturn("이름: 홍길동");
+        // 시크릿 마스킹 먼저 — 시크릿 없으므로 원문 그대로
+        given(secretMaskingService.mask("이름: 홍길동")).willReturn("이름: 홍길동");
+        // PII 마스킹은 시크릿 마스킹 결과를 입력으로 받음
         given(piiMaskingService.mask("이름: 홍길동")).willReturn("이름: 홍*동");
         given(clock.instant()).willReturn(FIXED_NOW);
 
         extractionService.performExtraction(
-            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf"));
+            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf", 1L));
 
         assertThat(doc.getExtractStatus()).isEqualTo(DocumentExtractStatus.SUCCESS);
         assertThat(doc.getExtractedText()).isEqualTo("이름: 홍*동");
         assertThat(doc.getExtractedAt()).isEqualTo(FIXED_NOW);
+        then(textSanitizationService).should().sanitize("이름: 홍길동");
+        then(secretMaskingService).should().mask("이름: 홍길동");
         then(piiMaskingService).should().mask("이름: 홍길동");
         then(documentRepository).should().save(doc);
     }
@@ -83,17 +97,21 @@ class DocumentExtractionServiceTest {
     // =========================================================
 
     @Test
-    void onDocumentUploaded_savesRawTextWhenMaskingFails() {
+    void onDocumentUploaded_savesSanitizedTextWhenPiiMaskingFails() {
         Document doc = pendingDocument();
         given(documentRepository.findById(1L)).willReturn(Optional.of(doc));
         given(textExtractor.extract("uploads/test.pdf", "application/pdf")).willReturn("raw text");
+        given(textSanitizationService.sanitize("raw text")).willReturn("raw text");
+        // 시크릿 마스킹은 성공 (시크릿 없으므로 원문 반환)
+        given(secretMaskingService.mask("raw text")).willReturn("raw text");
+        // PII 마스킹 실패 → 시크릿 마스킹 결과(raw text)가 저장됨
         given(piiMaskingService.mask("raw text")).willThrow(new RuntimeException("masking error"));
         given(clock.instant()).willReturn(FIXED_NOW);
 
         extractionService.performExtraction(
-            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf"));
+            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf", 1L));
 
-        // 추출 자체는 성공이므로 SUCCESS, 원문이 저장됨
+        // 추출 자체는 성공이므로 SUCCESS, 시크릿 마스킹까지 완료된 텍스트가 저장됨
         assertThat(doc.getExtractStatus()).isEqualTo(DocumentExtractStatus.SUCCESS);
         assertThat(doc.getExtractedText()).isEqualTo("raw text");
         then(documentRepository).should().save(doc);
@@ -110,9 +128,10 @@ class DocumentExtractionServiceTest {
         given(textExtractor.extract(any(), any())).willThrow(
             new ServiceException(ErrorCode.DOCUMENT_EXTRACT_FAILED,
                 HttpStatus.UNPROCESSABLE_CONTENT, "추출 실패"));
+        // 추출 실패 시 sanitize는 호출되지 않음
 
         extractionService.performExtraction(
-            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf"));
+            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf", 1L));
 
         assertThat(doc.getExtractStatus()).isEqualTo(DocumentExtractStatus.FAILED);
         assertThat(doc.getExtractedText()).isNull();
@@ -130,7 +149,7 @@ class DocumentExtractionServiceTest {
         given(textExtractor.extract(any(), any())).willThrow(new RuntimeException("unexpected"));
 
         extractionService.performExtraction(
-            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf"));
+            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf", 1L));
 
         assertThat(doc.getExtractStatus()).isEqualTo(DocumentExtractStatus.FAILED);
         then(documentRepository).should().save(doc);
@@ -145,7 +164,7 @@ class DocumentExtractionServiceTest {
         given(documentRepository.findById(1L)).willReturn(Optional.empty());
 
         extractionService.performExtraction(
-            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf"));
+            new DocumentUploadedEvent(1L, "uploads/test.pdf", "application/pdf", 1L));
 
         then(textExtractor).shouldHaveNoInteractions();
         then(documentRepository).should().findById(1L);

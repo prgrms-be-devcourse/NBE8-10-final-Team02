@@ -8,4 +8,6 @@ import java.util.Optional;
 public interface KnowledgeTagRepository extends JpaRepository<KnowledgeTag, Long> {
 
     Optional<KnowledgeTag> findByName(String name);
+
+    boolean existsByName(String name);
 }

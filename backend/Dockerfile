@@ -41,10 +41,16 @@ WORKDIR /app
 # git: RepoCloneService의 git clone/fetch 실행에 필요
 # python3 + pip: Kotlin/Go/Rust/C/C++ 정적 분석 스크립트 (tree-sitter 기반)
 # nodejs: TypeScript/JavaScript 분석 스크립트 (ts-morph)
-RUN microdnf install -y git python3 python3-pip nodejs && microdnf clean all && \
+# gitleaks: 시크릿 스캔 (GitleaksService) — OCI ARM64(aarch64) 환경용 linux_arm64 바이너리
+ARG GITLEAKS_VERSION=8.18.4
+RUN microdnf install -y git python3 python3-pip nodejs tar curl && microdnf clean all && \
     pip3 install --no-cache-dir \
       tree-sitter tree-sitter-kotlin tree-sitter-go \
-      tree-sitter-rust tree-sitter-c tree-sitter-cpp
+      tree-sitter-rust tree-sitter-c tree-sitter-cpp && \
+    curl -sSfL \
+      "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_arm64.tar.gz" \
+      | tar -xz -C /usr/local/bin gitleaks && \
+    chmod +x /usr/local/bin/gitleaks
 
 # 한글 인코딩 및 한국 시간대(KST) 설정
 ENV LANG=ko_KR.UTF-8 \
