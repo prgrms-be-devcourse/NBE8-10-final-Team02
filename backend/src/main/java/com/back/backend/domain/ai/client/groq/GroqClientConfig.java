@@ -3,6 +3,7 @@ package com.back.backend.domain.ai.client.groq;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
@@ -13,6 +14,7 @@ import org.springframework.web.client.RestClient;
  * Gemini 할당량 초과 시 fallback으로 자동 전환됨
  */
 @Configuration
+@Profile("!load-test")
 @EnableConfigurationProperties(GroqClientProperties.class)
 public class GroqClientConfig {
 
