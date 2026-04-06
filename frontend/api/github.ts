@@ -5,6 +5,7 @@ import type {
   RepositorySelectionResponse,
   RepositorySyncResponse,
   RepoSyncStatus,
+  RepoSummaryResponse,
   ContributedRepo,
   SaveContributionRequest,
 } from '@/types/github';
@@ -159,6 +160,9 @@ export async function syncCommits(repositoryId: number): Promise<RepositorySyncR
  * POST /github/repositories/{repositoryId}/analyze
  * 분석 파이프라인(clone → 정적 분석 → AI 요약) 시작. 202 Accepted 반환.
  * 커밋 동기화(sync-commits) 완료 후 호출해야 한다.
+ *
+ * @deprecated Batch 아키텍처 전환으로 인해 Deprecated 처리됨 (추후 삭제 예정).
+ *   대체: analyzeBatch()
  */
 export async function analyzeRepository(repositoryId: number): Promise<RepoSyncStatus | null> {
   const res = await fetch(`${base()}/repositories/${repositoryId}/analyze`, {
@@ -196,6 +200,9 @@ export async function getAnalysisStatus(repositoryId: number): Promise<RepoSyncS
 /**
  * DELETE /github/repositories/{repositoryId}/analyze
  * 진행 중인 분석 파이프라인을 취소한다. 이미 완료됐어도 200을 반환한다 (idempotent).
+ *
+ * @deprecated Batch 아키텍처 전환으로 인해 Deprecated 처리됨 (추후 삭제 예정).
+ *   대체: cancelBatch()
  */
 export async function cancelAnalysis(repositoryId: number): Promise<void> {
   const res = await fetch(`${base()}/repositories/${repositoryId}/analyze`, {
@@ -261,6 +268,60 @@ export async function removeRepository(repositoryId: number): Promise<void> {
   if (!res.ok) {
     throw new Error(await parseError(res));
   }
+}
+
+/**
+ * POST /github/repositories/analyze-batch
+ * 여러 repo를 묶어 단 1회의 AI 호출로 분석하는 배치 파이프라인을 시작한다. 202 Accepted 반환.
+ * 진행 상황은 각 repo의 getAnalysisStatus() 폴링으로 확인한다.
+ */
+export async function analyzeBatch(repositoryIds: number[]): Promise<void> {
+  const res = await fetch(`${base()}/repositories/analyze-batch`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repositoryIds }),
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseError(res));
+  }
+}
+
+/**
+ * DELETE /github/repositories/analyze-batch
+ * 여러 repo의 진행 중인 배치 분석을 일괄 취소한다. 이미 완료된 repo가 포함돼도 idempotent하게 처리된다.
+ */
+export async function cancelBatch(repositoryIds: number[]): Promise<void> {
+  const res = await fetch(`${base()}/repositories/analyze-batch`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repositoryIds }),
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseError(res));
+  }
+}
+
+/**
+ * GET /github/repositories/{repositoryId}/summary
+ * 특정 repo의 최신 AI 분석 요약을 조회한다.
+ * 분석이 완료된 적 없으면 null 반환 (에러 아님).
+ */
+export async function getRepoSummary(repositoryId: number): Promise<RepoSummaryResponse | null> {
+  const res = await fetch(`${base()}/repositories/${repositoryId}/summary`, {
+    credentials: 'include',
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseError(res));
+  }
+
+  const body = await res.json();
+  return (body.data as RepoSummaryResponse) ?? null;
 }
 
 /**

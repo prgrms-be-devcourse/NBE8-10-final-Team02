@@ -1,97 +1,99 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": [
-    "projects",
-    "globalStrengths",
-    "globalRisks",
-    "qualityFlags"
-  ],
+  "required": ["project"],
   "additionalProperties": false,
   "properties": {
-    "projects": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": [
-          "projectKey",
-          "projectName",
-          "summary",
-          "signals",
-          "evidenceBullets",
-          "confidence",
-          "sourceRefs",
-          "qualityFlags"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "projectKey": {
-            "type": "string",
-            "minLength": 1
-          },
-          "projectName": {
-            "type": "string",
-            "minLength": 1
-          },
-          "summary": {
-            "type": "string",
-            "minLength": 1
-          },
-          "signals": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
-            "maxItems": 6
-          },
-          "evidenceBullets": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
-            "maxItems": 5
-          },
-          "confidence": {
-            "type": "string",
-            "enum": [
-              "high",
-              "medium",
-              "low"
-            ]
-          },
-          "sourceRefs": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "qualityFlags": {
-            "type": "array",
-            "items": {
-              "type": "string"
+    "project": {
+      "type": "object",
+      "required": [
+        "projectKey",
+        "projectName",
+        "summary",
+        "role",
+        "stack",
+        "signals",
+        "evidenceBullets",
+        "challenges",
+        "strengths",
+        "risks",
+        "techDecisions",
+        "sourceRefs",
+        "qualityFlags"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "projectKey": { "type": "string", "minLength": 1 },
+        "projectName": { "type": "string", "minLength": 1 },
+        "summary":     { "type": "string", "minLength": 1 },
+        "role":        { "type": "string", "minLength": 1 },
+        "stack": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "signals": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "maxItems": 6
+        },
+        "evidenceBullets": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": ["fact", "challengeRef"],
+            "additionalProperties": false,
+            "properties": {
+              "fact": { "type": "string", "minLength": 1 },
+              "challengeRef": { "type": ["string", "null"] }
             }
           }
+        },
+        "challenges": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "required": ["id", "what", "how", "learning"],
+            "additionalProperties": false,
+            "properties": {
+              "id":       { "type": "string", "minLength": 1 },
+              "what":     { "type": "string", "minLength": 1 },
+              "how":      { "type": "string", "minLength": 1 },
+              "learning": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "techDecisions": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "required": ["decision", "reason", "tradeOff"],
+            "additionalProperties": false,
+            "properties": {
+              "decision": { "type": "string", "minLength": 1 },
+              "reason":   { "type": "string", "minLength": 1 },
+              "tradeOff": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "strengths":   {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "risks": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "sourceRefs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "qualityFlags": {
+          "type": "array",
+          "items": { "type": "string" }
         }
-      }
-    },
-    "globalStrengths": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "globalRisks": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "qualityFlags": {
-      "type": "array",
-      "items": {
-        "type": "string"
       }
     }
   }

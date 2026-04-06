@@ -10,15 +10,20 @@ import java.util.List;
 /**
  * RepoSummary 생성 요청용 AI userMessage 빌더.
  *
- * userMessage 구성:
- *   - repo 기본 정보 (이름, 언어, 크기)
- *   - 본인 기여 클래스 목록 (PageRank 상위, authored_by_me=true 우선)
- *   - 본인 커밋 diff 목록 (최근 N개, 토큰 예산 내)
+ * <h3>userMessage 구성</h3>
+ * <ol>
+ *   <li>## Repository — repo 기본 정보</li>
+ *   <li>## Project Overview (README) — 프로젝트 개요 (nullable)</li>
+ *   <li>## Code Structure — PageRank 필터링된 클래스 목록</li>
+ *   <li>## Contribution Commits — IGNORED 제거된 본인 커밋 (diff + body 포함)</li>
+ * </ol>
  *
- * Token Budget:
- *   본인 소유 repo: 코드 구조 30K + diff 50K  = 80K context
- *   외부(org/오픈소스) repo: 코드 구조 10K + diff 40K = 50K context
- *   → PageRank 임계값(0.6→0.7→0.8)을 높여 초과 시 점진적 축소
+ * evidenceBullets / challenges / techDecisions 분류는 AI에 위임한다.
+ * body와 diff를 함께 제공하므로 AI가 WHY:/NOTE: 주석 기반 techDecisions도 스스로 추출할 수 있다.
+ *
+ * <h3>Token Budget</h3>
+ * 본인 소유 repo: 코드 구조 30K + diff 50K = 80K context<br>
+ * 외부(org/오픈소스) repo: 코드 구조 10K + diff 40K = 50K context
  */
 @Component
 public class PortfolioPromptBuilder {
@@ -38,10 +43,9 @@ public class PortfolioPromptBuilder {
      * @param repo            대상 repo
      * @param authorEmail     본인 GitHub primary email
      * @param codeEntries     CodeIndex 전체 (pagerank + authoredByMe 포함)
-     * @param diffs           본인 기여 diff 목록
+     * @param diffs           IGNORED 제거된 본인 커밋 diff 목록
      * @param isOwnedRepo     본인 소유 repo 여부 (token budget 차등 적용)
-     * @param projectOverview README 등 프로젝트 개요 텍스트 (nullable).
-     *                        large repo에서 전체 정적 분석 대신 제공되는 구조 보완 자료.
+     * @param projectOverview README 등 프로젝트 개요 텍스트 (nullable)
      */
     public String buildUserMessage(
             GithubRepository repo,
@@ -66,7 +70,6 @@ public class PortfolioPromptBuilder {
         sb.append("author_email: ").append(authorEmail).append("\n\n");
 
         // --- 프로젝트 개요 (README) ---
-        // large repo처럼 전체 정적 분석을 생략한 경우, AI가 전체 프로젝트 맥락을 파악하는 데 활용한다.
         if (projectOverview != null && !projectOverview.isBlank()) {
             sb.append("## Project Overview (README)\n");
             sb.append(projectOverview).append("\n\n");
@@ -74,13 +77,13 @@ public class PortfolioPromptBuilder {
 
         // --- 코드 구조 (PageRank 필터링) ---
         sb.append("## Code Structure (authored classes highlighted)\n");
-        String codeSection = buildCodeSection(codeEntries, codeBudget);
-        sb.append(codeSection).append("\n\n");
+        sb.append(buildCodeSection(codeEntries, codeBudget)).append("\n\n");
 
-        // --- 기여 diff ---
-        sb.append("## Contribution Diffs\n");
-        String diffSection = buildDiffSection(diffs, diffBudget);
-        sb.append(diffSection).append("\n");
+        // --- 기여 커밋 ---
+        // docs/chore/style 등 IGNORED 커밋은 사전에 제거됨.
+        // evidenceBullets / challenges / techDecisions 분류는 AI가 수행한다.
+        sb.append("## Contribution Commits\n");
+        sb.append(buildDiffSection(diffs, diffBudget));
 
         return sb.toString();
     }
@@ -88,6 +91,27 @@ public class PortfolioPromptBuilder {
     // ─────────────────────────────────────────────────
     // 내부 빌더
     // ─────────────────────────────────────────────────
+
+    private String buildDiffSection(List<DiffEntry> diffs, int budget) {
+        StringBuilder sb = new StringBuilder();
+        int used = 0;
+        for (DiffEntry d : diffs) {
+            StringBuilder entry = new StringBuilder();
+            entry.append("### ").append(d.sha()).append(" ").append(d.subject()).append("\n");
+            if (!d.body().isBlank()) {
+                entry.append("body:\n").append(d.body()).append("\n");
+            }
+            entry.append(d.diff()).append("\n");
+
+            if (used + entry.length() > budget) {
+                sb.append("... [remaining diffs truncated due to token budget]\n");
+                break;
+            }
+            sb.append(entry);
+            used += entry.length();
+        }
+        return sb.toString();
+    }
 
     /**
      * CodeIndex 목록을 토큰 예산 내에서 텍스트로 직렬화한다.
@@ -106,22 +130,16 @@ public class PortfolioPromptBuilder {
                 })
                 .toList();
 
-        // PageRank 임계값 단계적 적용
         for (double threshold : PAGERANK_THRESHOLDS) {
             List<CodeIndex> filtered = sorted.stream()
                     .filter(e -> e.isAuthoredByMe()
                             || (e.getPagerank() != null && e.getPagerank() >= threshold))
                     .toList();
-
             String text = serializeCodeEntries(filtered);
             if (text.length() <= budget) return text;
         }
 
-        // 임계값 0.8 이후에도 초과 → authored_by_me 항목만
-        List<CodeIndex> authoredOnly = sorted.stream()
-                .filter(CodeIndex::isAuthoredByMe)
-                .toList();
-        return serializeCodeEntries(authoredOnly);
+        return serializeCodeEntries(sorted.stream().filter(CodeIndex::isAuthoredByMe).toList());
     }
 
     private String serializeCodeEntries(List<CodeIndex> entries) {
@@ -134,22 +152,6 @@ public class PortfolioPromptBuilder {
             }
             sb.append(" → ").append(e.getFilePath());
             sb.append("\n");
-        }
-        return sb.toString();
-    }
-
-    private String buildDiffSection(List<DiffEntry> diffs, int budget) {
-        StringBuilder sb = new StringBuilder();
-        int used = 0;
-        for (DiffEntry diff : diffs) {
-            String entry = "### " + diff.sha() + " " + diff.subject() + "\n"
-                    + diff.diff() + "\n";
-            if (used + entry.length() > budget) {
-                sb.append("... [remaining diffs truncated due to token budget]\n");
-                break;
-            }
-            sb.append(entry);
-            used += entry.length();
         }
         return sb.toString();
     }

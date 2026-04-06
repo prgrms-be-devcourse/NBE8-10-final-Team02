@@ -1,12 +1,15 @@
 package com.back.backend.domain.interview.entity;
 
 import com.back.backend.domain.application.entity.ApplicationQuestion;
+import com.back.backend.domain.knowledge.entity.KnowledgeTag;
 import com.back.backend.global.jpa.entity.CreatedAtEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -15,6 +18,10 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Getter
 @Entity
@@ -55,7 +62,21 @@ public class InterviewQuestion extends CreatedAtEntity {
     @Column(name = "question_text", nullable = false, columnDefinition = "text")
     private String questionText;
 
+    @Builder.Default
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "interview_question_knowledge_tags",
+            joinColumns = @JoinColumn(name = "question_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id")
+    )
+    private Set<KnowledgeTag> knowledgeTags = new LinkedHashSet<>();
+
     public void changeQuestionOrder(int questionOrder) {
         this.questionOrder = questionOrder;
+    }
+
+    public void assignKnowledgeTags(Collection<KnowledgeTag> tags) {
+        this.knowledgeTags.clear();
+        this.knowledgeTags.addAll(tags);
     }
 }

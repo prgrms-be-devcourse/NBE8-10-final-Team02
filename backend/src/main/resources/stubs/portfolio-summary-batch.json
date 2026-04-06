@@ -1,0 +1,25 @@
+[
+  {
+    "repoId": "stub-repo",
+    "project": {
+      "projectKey": "stub-repo",
+      "projectName": "Stub Repository",
+      "summary": "부하 테스트용 stub 응답입니다. 실제 AI 호출 없이 반환됩니다.",
+      "role": "백엔드 개발",
+      "stack": ["Java", "Spring Boot"],
+      "signals": ["REST API 설계", "JPA 활용"],
+      "evidenceBullets": [
+        {
+          "fact": "stub: 실제 분석 없음",
+          "challengeRef": null
+        }
+      ],
+      "challenges": [],
+      "techDecisions": [],
+      "strengths": ["stub 강점"],
+      "risks": [],
+      "sourceRefs": ["stub-ref"],
+      "qualityFlags": ["stub"]
+    }
+  }
+]

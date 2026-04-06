@@ -46,9 +46,13 @@ dependencies {
   // Redis
   implementation("org.springframework.boot:spring-boot-starter-data-redis")
 
+  // Cache
+  implementation("org.springframework.boot:spring-boot-starter-cache")
+  implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
+
   compileOnly("org.projectlombok:lombok")
   developmentOnly("org.springframework.boot:spring-boot-devtools")
-  runtimeOnly("com.h2database:h2")
+  developmentOnly("com.h2database:h2")
   annotationProcessor("org.projectlombok:lombok")
   runtimeOnly("org.postgresql:postgresql")
 
@@ -64,7 +68,7 @@ dependencies {
   testImplementation("org.wiremock:wiremock-standalone:3.12.1")
 
   // API Docs
-  implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.4.0")
+  implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.1")
 
   // Monitoring
   implementation("org.springframework.boot:spring-boot-starter-actuator")

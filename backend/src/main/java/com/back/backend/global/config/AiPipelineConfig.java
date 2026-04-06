@@ -4,6 +4,7 @@ import com.back.backend.domain.ai.client.AiClientRouter;
 import com.back.backend.domain.ai.pipeline.AiPipeline;
 import com.back.backend.domain.ai.template.PromptLoader;
 import com.back.backend.domain.ai.template.PromptTemplateRegistry;
+import com.back.backend.domain.ai.usage.AiUsageRecorder;
 import com.back.backend.domain.ai.validation.JsonSchemaValidator;
 import com.back.backend.domain.ai.validation.ValidationRegistry;
 import org.springframework.context.annotation.Bean;
@@ -11,6 +12,7 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * PromptLoader, AiPipeline을 빈으로 등록
+ * AiUsageRecorder를 AiPipeline에 주입하여 성공/rate limit 사용량 기록 활성화
  */
 @Configuration
 public class AiPipelineConfig {
@@ -26,8 +28,9 @@ public class AiPipelineConfig {
             PromptTemplateRegistry templateRegistry,
             ValidationRegistry validationRegistry,
             PromptLoader promptLoader,
-            JsonSchemaValidator jsonSchemaValidator
+            JsonSchemaValidator jsonSchemaValidator,
+            AiUsageRecorder usageRecorder
     ) {
-        return new AiPipeline(router, templateRegistry, validationRegistry, promptLoader, jsonSchemaValidator);
+        return new AiPipeline(router, templateRegistry, validationRegistry, promptLoader, jsonSchemaValidator, usageRecorder);
     }
 }

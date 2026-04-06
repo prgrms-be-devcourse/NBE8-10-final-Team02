@@ -29,7 +29,9 @@ import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import com.back.backend.global.jpa.converter.StringCodeEnum;
 import com.back.backend.global.response.FieldErrorDetail;
+import com.back.backend.domain.activity.event.ApplicationReadyEvent;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +55,7 @@ public class ApplicationService {
     private final UserRepository userRepository;
     private final ApplicationResponseMapper applicationResponseMapper;
     private final ApplicationStatusService applicationStatusService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public ApplicationResponse createApplication(long userId, CreateApplicationRequest request) {
@@ -124,6 +127,11 @@ public class ApplicationService {
             }
 
             application.changeStatus(requestedStatus);
+
+            if (requestedStatus == ApplicationStatus.READY) {
+                eventPublisher.publishEvent(
+                        new ApplicationReadyEvent(application.getUser().getId(), application.getId()));
+            }
         }
 
         return applicationResponseMapper.toApplicationResponse(application);
@@ -155,9 +163,11 @@ public class ApplicationService {
         validateOwnedSourceCount(repositoryIds, repositories.size(), ErrorCode.GITHUB_REPOSITORY_NOT_FOUND, "선택한 repository를 찾을 수 없습니다.");
         validateOwnedSourceCount(documentIds, documents.size(), ErrorCode.DOCUMENT_NOT_FOUND, "선택한 문서를 찾을 수 없습니다.");
 
-        // source 저장은 부분 수정이 아니라 전체 교체로 다룬다.
+        // source 저장은 부분 수정이 아니라 전체 교체로 다루며, 같은 키 재삽입 전에 삭제를 먼저 반영한다.
         applicationSourceRepositoryBindingRepository.deleteByApplicationId(applicationId);
         applicationSourceDocumentBindingRepository.deleteByApplicationId(applicationId);
+        applicationSourceRepositoryBindingRepository.flush();
+        applicationSourceDocumentBindingRepository.flush();
 
         applicationSourceRepositoryBindingRepository.saveAll(
                 repositories.stream()
@@ -195,8 +205,9 @@ public class ApplicationService {
         List<SaveApplicationQuestionsRequest.QuestionItem> questionItems = request.questionsOrEmpty();
 
         validateQuestions(questionItems);
-        // 문항 저장도 화면 기준 현재 목록 전체를 덮어쓰는 방식으로 맞춘다.
+        // 문항 저장도 화면 기준 현재 목록 전체를 덮어쓰는 방식으로 맞추고, 기존 순번 삭제를 먼저 반영한다.
         applicationQuestionRepository.deleteByApplicationId(applicationId);
+        applicationQuestionRepository.flush();
 
         List<ApplicationQuestion> questions = questionItems.stream()
                 .map(questionItem -> ApplicationQuestion.builder()

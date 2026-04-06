@@ -92,7 +92,7 @@ export default function InterviewSessionResultPage() {
           </Link>
           <h1 className="mt-2 text-2xl font-semibold text-zinc-900">면접 결과 리포트</h1>
           <p className="mt-2 text-sm text-zinc-500">
-            세션은 종료됐지만 결과 생성이 아직 끝나지 않았을 수 있습니다.
+            세션은 종료됐지만 결과 생성이 아직 끝나지 않았을 수 있습니다. 결과가 준비되면 답변된 꼬리질문도 같은 리포트에 함께 표시됩니다.
           </p>
         </div>
 

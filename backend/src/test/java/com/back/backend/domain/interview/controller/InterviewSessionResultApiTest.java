@@ -37,6 +37,8 @@ import static com.back.backend.domain.interview.support.InterviewSessionQuestion
 import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.persistSessionQuestionSnapshot;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.hamcrest.Matchers.hasSize;
@@ -83,6 +85,8 @@ class InterviewSessionResultApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.answers", hasSize(3)))
                 .andExpect(jsonPath("$.data.answers[0].answerId").value(fixture.answers().get(0).getId()))
                 .andExpect(jsonPath("$.data.answers[0].questionId").value(fixture.sessionQuestions().get(0).getId()))
+                .andExpect(jsonPath("$.data.answers[0].questionType")
+                        .value(fixture.sessionQuestions().get(0).getQuestionType().getValue()))
                 .andExpect(jsonPath("$.data.answers[0].questionText").value("첫 번째 질문"))
                 .andExpect(jsonPath("$.data.answers[0].answerText").value("첫 번째 답변입니다. 결과 조회 응답 검증용으로 충분히 긴 답변입니다."))
                 .andExpect(jsonPath("$.data.answers[0].score").value(80))
@@ -108,6 +112,8 @@ class InterviewSessionResultApiTest extends ApiTestBase {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.answers", hasSize(4)))
                 .andExpect(jsonPath("$.data.answers[1].questionId").value(fixture.sessionQuestions().get(1).getId()))
+                .andExpect(jsonPath("$.data.answers[1].questionType")
+                        .value(fixture.sessionQuestions().get(1).getQuestionType().getValue()))
                 .andExpect(jsonPath("$.data.answers[1].questionText")
                         .value("방금 답변한 선택 기준을 조금 더 구체적으로 설명해주실 수 있나요?"))
                 .andExpect(jsonPath("$.data.answers[1].answerText")
@@ -122,9 +128,11 @@ class InterviewSessionResultApiTest extends ApiTestBase {
         ResultFixture fixture = persistCompletedFixture("result-retry-success");
 
         given(interviewResultGenerationService.generate(
+                anyLong(),
                 eq(fixture.session().getId()),
                 eq(fixture.questionSet().getId()),
-                anyList()
+                anyList(),
+                anyString()
         )).willReturn(new InterviewResultGenerationService.GeneratedInterviewResult(
                 84,
                 "구조는 좋았고 경험 기반 근거를 더 구체화하면 좋습니다.",
@@ -202,9 +210,11 @@ class InterviewSessionResultApiTest extends ApiTestBase {
         ResultFixture fixture = persistCompletedFixture("result-incomplete");
 
         given(interviewResultGenerationService.generate(
+                anyLong(),
                 eq(fixture.session().getId()),
                 eq(fixture.questionSet().getId()),
-                anyList()
+                anyList(),
+                anyString()
         )).willThrow(new ServiceException(
                 ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
                 org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,

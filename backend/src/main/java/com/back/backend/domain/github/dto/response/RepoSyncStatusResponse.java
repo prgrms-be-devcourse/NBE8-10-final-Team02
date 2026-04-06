@@ -16,7 +16,8 @@ public record RepoSyncStatusResponse(
         Instant startedAt,
         Instant estimatedEndAt,
         Instant completedAt,
-        String error
+        String error,
+        String skipReason
 ) {
     public static RepoSyncStatusResponse from(SyncStatusService.SyncStatusData data) {
         return new RepoSyncStatusResponse(
@@ -26,7 +27,8 @@ public record RepoSyncStatusResponse(
                 data.startedAt(),
                 data.estimatedEndAt(),
                 data.completedAt(),
-                data.error()
+                data.error(),
+                data.skipReason()
         );
     }
 }

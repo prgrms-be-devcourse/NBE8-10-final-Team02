@@ -55,5 +55,7 @@ public enum ErrorCode {
     REQUEST_VALIDATION_FAILED,
     RATE_LIMIT_EXCEEDED,
     EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+    // AI provider 일간 할당량 소진 (분당 초과와 구분 — 내일 UTC 00:00 이후에 해결됨)
+    AI_DAILY_LIMIT_EXCEEDED,
     INTERNAL_SERVER_ERROR
 }

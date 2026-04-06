@@ -5,6 +5,7 @@ import java.util.List;
 public record InterviewAnswerResultResponse(
         Long answerId,
         Long questionId,
+        String questionType,
         String questionText,
         String answerText,
         Integer score,

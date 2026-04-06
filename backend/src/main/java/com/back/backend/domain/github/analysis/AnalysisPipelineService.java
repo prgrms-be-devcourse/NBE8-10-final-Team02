@@ -1,14 +1,18 @@
 package com.back.backend.domain.github.analysis;
 
 import com.back.backend.domain.github.entity.GithubRepository;
+import com.back.backend.domain.github.portfolio.BatchRepoSummaryGeneratorService;
 import com.back.backend.domain.github.portfolio.MergedSummaryService;
 import com.back.backend.domain.github.portfolio.RepoSummaryGeneratorService;
 import com.back.backend.domain.github.repository.GithubCommitRepository;
 import com.back.backend.domain.github.repository.GithubRepositoryRepository;
+import com.back.backend.domain.portfolio.service.FailedJobRedisStore;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
+import com.back.backend.global.security.GitleaksService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
@@ -26,7 +30,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executor;
 
 /**
  * clone → 정적 분석 → Code Index → RepoSummary → MergedSummary 파이프라인 오케스트레이터.
@@ -74,7 +81,13 @@ public class AnalysisPipelineService {
     private final CodeIndexService codeIndexService;
     private final ContributionExtractorService contributionExtractorService;
     private final RepoSummaryGeneratorService repoSummaryGeneratorService;
+    private final BatchRepoSummaryGeneratorService batchRepoSummaryGeneratorService;
     private final MergedSummaryService mergedSummaryService;
+    private final Executor parallelAnalysisExecutor;
+    private final RepoFileFilterService repoFileFilterService;
+    private final GitleaksService gitleaksService;
+    private final ObjectMapper objectMapper;
+    private final FailedJobRedisStore failedJobRedisStore;
 
     // Self-injection: @Async 프록시를 통해 executeAsync를 호출하기 위함
     private AnalysisPipelineService self;
@@ -91,7 +104,14 @@ public class AnalysisPipelineService {
             CodeIndexService codeIndexService,
             ContributionExtractorService contributionExtractorService,
             RepoSummaryGeneratorService repoSummaryGeneratorService,
-            MergedSummaryService mergedSummaryService
+            BatchRepoSummaryGeneratorService batchRepoSummaryGeneratorService,
+            MergedSummaryService mergedSummaryService,
+            @org.springframework.beans.factory.annotation.Qualifier("parallelAnalysisExecutor")
+            Executor parallelAnalysisExecutor,
+            RepoFileFilterService repoFileFilterService,
+            GitleaksService gitleaksService,
+            ObjectMapper objectMapper,
+            FailedJobRedisStore failedJobRedisStore
     ) {
         this.userRepository = userRepository;
         this.repositoryRepository = repositoryRepository;
@@ -104,7 +124,13 @@ public class AnalysisPipelineService {
         this.codeIndexService = codeIndexService;
         this.contributionExtractorService = contributionExtractorService;
         this.repoSummaryGeneratorService = repoSummaryGeneratorService;
+        this.batchRepoSummaryGeneratorService = batchRepoSummaryGeneratorService;
         this.mergedSummaryService = mergedSummaryService;
+        this.parallelAnalysisExecutor = parallelAnalysisExecutor;
+        this.repoFileFilterService = repoFileFilterService;
+        this.gitleaksService = gitleaksService;
+        this.objectMapper = objectMapper;
+        this.failedJobRedisStore = failedJobRedisStore;
     }
 
     // Spring이 주입한 자기 자신 (프록시) — @Lazy로 순환 참조 방지
@@ -140,12 +166,6 @@ public class AnalysisPipelineService {
                     HttpStatus.FORBIDDEN, "접근 권한이 없는 저장소입니다.");
         }
 
-        // 커밋 동기화가 완료되지 않은 repo는 분석 불가
-        if (!commitRepository.existsByRepository(repo)) {
-            throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
-                    HttpStatus.UNPROCESSABLE_ENTITY, "커밋 동기화를 먼저 완료해주세요.");
-        }
-
         // 이미 PENDING/IN_PROGRESS 상태이면 중복 실행 방지 (git lock 충돌 예방)
         syncStatusService.getStatus(userId, repositoryId).ifPresent(existing -> {
             if (existing.status() == SyncStatus.PENDING || existing.status() == SyncStatus.IN_PROGRESS) {
@@ -167,6 +187,152 @@ public class AnalysisPipelineService {
     }
 
     /**
+     * 배치 분석 파이프라인 전 단계를 비동기로 실행한다.
+     *
+     * <p>흐름:
+     * <ol>
+     *   <li>각 repo에 대해 순차적으로 ①②③ (significance check, clone, static analysis) 실행</li>
+     *   <li>모든 repo 분석 완료 후 {@link BatchRepoSummaryGeneratorService#generateAll} 단 1회 호출</li>
+     *   <li>{@link MergedSummaryService#rebuild}로 MergedSummary 재집계</li>
+     * </ol>
+     *
+     * <p>개별 repo ①②③ 실패 시: 해당 repo를 {@code analyzedRepos} 목록에서 제외하고 나머지 계속.
+     * 배치 AI 호출 실패 시: 성공적으로 분석된 모든 repo를 FAILED 처리.
+     *
+     * <p>반드시 @Async 프록시를 통해 호출되어야 한다 (self.executeBatchAsync()로 호출할 것).
+     */
+    @Async("analysisExecutor")
+    public void executeBatchAsync(Long userId, List<Long> repositoryIds) {
+        log.info("Batch async pipeline started: userId={}, repos={}", userId, repositoryIds);
+
+        // 엔티티를 비동기 컨텍스트에서 다시 로드 (영속성 컨텍스트 분리)
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            log.error("Batch pipeline aborted: user not found. userId={}", userId);
+            repositoryIds.forEach(repoId ->
+                    syncStatusService.setFailed(userId, repoId, "사용자를 찾을 수 없습니다."));
+            // 사용자 조회 실패를 실패 로그에 기록
+            failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
+                    ErrorCode.AUTH_REQUIRED.name(), "배치 분석 실패: 사용자를 찾을 수 없습니다.");
+            return;
+        }
+
+        // ── 1단계: 각 repo에 대해 ①②③ 병렬 실행 ────────────────────────
+        // thread-safe list: 여러 CompletableFuture가 동시에 add()하므로 CopyOnWriteArrayList 사용
+        List<GithubRepository> analyzedRepos = new CopyOnWriteArrayList<>();
+
+        List<CompletableFuture<Void>> futures = repositoryIds.stream()
+                .map(repositoryId -> CompletableFuture.runAsync(() -> {
+                    // 스레드 추적 등록 (cancel() 호출 시 interrupt 가능)
+                    String key = threadKey(userId, repositoryId);
+                    activeThreads.put(key, Thread.currentThread());
+
+                    // PENDING 중 cancel() 이 먼저 호출된 경우 즉시 skip
+                    SyncStatusService.SyncStatusData currentStatus =
+                            syncStatusService.getStatus(userId, repositoryId).orElse(null);
+                    if (currentStatus == null || currentStatus.status() == SyncStatus.FAILED) {
+                        log.info("Batch: repo skipped (cancelled before start): repoId={}", repositoryId);
+                        activeThreads.remove(key);
+                        return;
+                    }
+
+                    // findByIdWithConnection: githubConnection + user JOIN FETCH → LazyInitializationException 방지
+                    GithubRepository repo = repositoryRepository.findByIdWithConnection(repositoryId).orElse(null);
+                    if (repo == null) {
+                        syncStatusService.setFailed(userId, repositoryId, "저장소를 찾을 수 없습니다.");
+                        // 저장소 조회 실패를 실패 로그에 기록
+                        failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
+                                ErrorCode.GITHUB_REPOSITORY_NOT_FOUND.name(), "배치 분석 실패: 저장소를 찾을 수 없습니다.");
+                        activeThreads.remove(key);
+                        return;
+                    }
+
+                    try {
+                        // ①②③ 실행. significance check 미달이면 false 반환 → 배치 AI 대상 제외
+                        boolean passed = runStaticAnalysisSteps(user, repo, userId, repositoryId);
+                        if (passed) {
+                            analyzedRepos.add(repo);
+                        }
+                    } catch (Exception e) {
+                        log.error("Batch: static analysis failed for repoId={}: {}", repositoryId, e.getMessage(), e);
+                        syncStatusService.setFailed(userId, repositoryId, summarizeError(e));
+                        // 정적 분석 실패를 실패 로그에 기록
+                        failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
+                                ErrorCode.GITHUB_COMMIT_SYNC_FAILED.name(), "정적 분석 실패: " + summarizeError(e));
+                        try {
+                            codeIndexService.deleteByRepository(repo);
+                        } catch (Exception cleanupEx) {
+                            log.warn("Batch: code index cleanup failed for repoId={}: {}",
+                                    repositoryId, cleanupEx.getMessage());
+                        }
+                    } finally {
+                        activeThreads.remove(key);
+                        // 정적 분석 완료 후 clone 디렉터리 정리
+                        // (BatchRepoSummaryGeneratorService.collectSingleRepoData가 clone 이후 읽으므로
+                        //  분석 실패한 repo만 여기서 정리. 성공한 repo는 generateAll 완료 후 정리됨.)
+                        if (!analyzedRepos.contains(repo)) {
+                            repoCloneService.deleteRepo(userId, repositoryId);
+                        }
+                    }
+                }, parallelAnalysisExecutor))
+                .toList();
+
+        // 모든 repo의 ①②③이 끝날 때까지 대기
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        if (analyzedRepos.isEmpty()) {
+            log.warn("Batch: no repos passed static analysis. Batch AI call skipped. userId={}", userId);
+            return;
+        }
+
+        // ── 2단계: 단 1회 배치 AI 호출 ④ ──────────────────────────────
+        // 정적 분석에 성공한 repo들의 authorEmail 결정 (첫 번째 repo 기준, 동일 사용자이므로 동일)
+        String authorEmail = resolveAuthorEmail(analyzedRepos.get(0), user);
+        String triggerReason = "significant_commits"; // 배치 분석은 항상 갱신 트리거
+
+        try {
+            // 배치 AI 호출 중임을 status에 반영
+            analyzedRepos.forEach(repo ->
+                    syncStatusService.setInProgress(userId, repo.getId(), "summary"));
+
+            // generateAll: 모든 repo 데이터를 1회 AI 호출로 처리
+            batchRepoSummaryGeneratorService.generateAll(user, analyzedRepos, authorEmail, triggerReason);
+            mergedSummaryService.rebuild(user);
+
+            // 성공: 모든 분석된 repo COMPLETED
+            analyzedRepos.forEach(repo ->
+                    syncStatusService.setCompleted(userId, repo.getId()));
+            analyzedRepos.forEach(repo ->
+                    significanceCheckService.markAnalyzed(userId, repo.getId()));
+
+            log.info("Batch pipeline completed: userId={}, analyzedRepos={}", userId, analyzedRepos.size());
+
+        } catch (Exception e) {
+            log.error("Batch: AI call failed for userId={}: {}", userId, e.getMessage(), e);
+            // AI 호출 실패: 분석된 모든 repo를 FAILED 처리
+            String errorMsg = "배치 AI 호출 실패: " + summarizeError(e);
+            analyzedRepos.forEach(repo ->
+                    syncStatusService.setFailed(userId, repo.getId(), errorMsg));
+            // 배치 AI 호출 실패를 실패 로그에 기록 (repo 수에 관계없이 1건)
+            failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
+                    ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE.name(), errorMsg);
+            // AI 호출 실패 시 이번 run에서 새로 저장한 CodeIndex를 정리
+            analyzedRepos.forEach(repo -> {
+                try {
+                    codeIndexService.deleteByRepository(repo);
+                } catch (Exception cleanupEx) {
+                    log.warn("Batch: code index cleanup failed for repoId={}: {}",
+                            repo.getId(), cleanupEx.getMessage());
+                }
+            });
+        } finally {
+            // 배치 완료 후 모든 clone 디렉터리 정리
+            analyzedRepos.forEach(repo ->
+                    repoCloneService.deleteRepo(userId, repo.getId()));
+        }
+    }
+
+    /**
      * 진행 중인 분석 파이프라인을 취소한다.
      *
      * 실행 중인 스레드가 있으면 interrupt 신호를 보내고 Redis 상태를 FAILED로 갱신한다.
@@ -184,6 +350,85 @@ public class AnalysisPipelineService {
                 syncStatusService.setFailed(userId, repositoryId, "분석이 취소되었습니다.");
             }
         });
+    }
+
+    /**
+     * 여러 repo의 진행 중인 분석 파이프라인을 일괄 취소한다.
+     *
+     * 각 repo에 대해 {@link #cancel}을 순차 호출한다.
+     * 개별 취소는 idempotent하므로 이미 완료된 repo가 포함돼도 안전하다.
+     *
+     * @param userId        인증된 사용자 ID
+     * @param repositoryIds 취소할 repo ID 목록
+     */
+    public void cancelBatch(Long userId, List<Long> repositoryIds) {
+        if (repositoryIds == null || repositoryIds.isEmpty()) return;
+        for (Long repositoryId : repositoryIds) {
+            try {
+                cancel(userId, repositoryId);
+            } catch (Exception e) {
+                log.warn("Batch cancel partial failure: userId={}, repoId={}, reason={}",
+                        userId, repositoryId, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 여러 repo를 배치로 분석하고 단 1회의 AI 호출로 요약을 생성한다.
+     *
+     * <p>기존 {@link #triggerAnalysis}는 repo마다 AI를 1회씩 호출했다.
+     * 이 메서드는 모든 repo의 정적 분석(①②③)이 완료된 후 배치 AI 호출(④)을 1회만 수행하여
+     * Gemini/Groq 무료 tier의 Rate Limit 소모를 최소화한다.
+     *
+     * <p>즉시 반환 (202 Accepted 패턴). 진행 상황은 각 repo의 sync-status 폴링으로 확인.
+     *
+     * @param userId        인증된 사용자 ID
+     * @param repositoryIds 분석할 repo ID 목록 (1개 이상)
+     * @throws ServiceException repo 미존재, 접근 권한 없음, 커밋 미동기화 등
+     */
+    @Transactional(readOnly = true)
+    public void triggerBatchAnalysis(Long userId, List<Long> repositoryIds) {
+        if (repositoryIds == null || repositoryIds.isEmpty()) {
+            throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
+                    HttpStatus.BAD_REQUEST, "분석할 저장소 목록이 비어있습니다.");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ServiceException(ErrorCode.AUTH_REQUIRED,
+                        HttpStatus.UNAUTHORIZED, "사용자를 찾을 수 없습니다."));
+
+        // 각 repo에 대해 유효성 검증 + PENDING 등록
+        for (Long repositoryId : repositoryIds) {
+            GithubRepository repo = repositoryRepository.findById(repositoryId)
+                    .orElseThrow(() -> new ServiceException(ErrorCode.GITHUB_REPOSITORY_NOT_FOUND,
+                            HttpStatus.NOT_FOUND, "저장소를 찾을 수 없습니다: " + repositoryId));
+
+            if (!repo.getGithubConnection().getUser().getId().equals(userId)) {
+                throw new ServiceException(ErrorCode.GITHUB_REPOSITORY_FORBIDDEN,
+                        HttpStatus.FORBIDDEN, "접근 권한이 없는 저장소입니다: " + repositoryId);
+            }
+
+            // 이미 진행 중인 분석이 있으면 중복 방지
+            syncStatusService.getStatus(userId, repositoryId).ifPresent(existing -> {
+                if (existing.status() == SyncStatus.PENDING
+                        || existing.status() == SyncStatus.IN_PROGRESS) {
+                    throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
+                            HttpStatus.CONFLICT,
+                            "이미 분석이 진행 중입니다: " + repositoryId);
+                }
+            });
+
+            // 각 repo를 PENDING으로 등록
+            Instant estimatedEnd = Instant.now().plusSeconds(ESTIMATED_MINUTES * 60L
+                    * repositoryIds.size()); // 전체 소요 시간 = repo 수 × 단일 추정치
+            syncStatusService.setPending(userId, repositoryId, estimatedEnd);
+        }
+
+        log.info("Batch analysis pipeline triggered: userId={}, repoCount={}",
+                userId, repositoryIds.size());
+
+        // @Async 프록시를 통해 비동기 실행
+        self.executeBatchAsync(userId, repositoryIds);
     }
 
     // ─────────────────────────────────────────────────
@@ -217,6 +462,9 @@ public class AnalysisPipelineService {
         if (user == null || repo == null) {
             log.error("Pipeline aborted: user or repo not found. userId={}, repoId={}", userId, repositoryId);
             syncStatusService.setFailed(userId, repositoryId, "사용자 또는 저장소를 찾을 수 없습니다.");
+            // 엔티티 조회 실패를 실패 로그에 기록
+            failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
+                    ErrorCode.AUTH_REQUIRED.name(), "분석 실패: 사용자 또는 저장소를 찾을 수 없습니다.");
             activeThreads.remove(threadKey(userId, repositoryId));
             return;
         }
@@ -226,6 +474,9 @@ public class AnalysisPipelineService {
         } catch (Exception e) {
             log.error("Pipeline failed: userId={}, repoId={}, error={}", userId, repositoryId, e.getMessage(), e);
             syncStatusService.setFailed(userId, repositoryId, summarizeError(e));
+            // 파이프라인 실패를 실패 로그에 기록
+            failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
+                    ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE.name(), "분석 파이프라인 실패: " + summarizeError(e));
         } finally {
             activeThreads.remove(threadKey(userId, repositoryId));
             repoCloneService.deleteRepo(userId, repositoryId);
@@ -236,14 +487,73 @@ public class AnalysisPipelineService {
     // 파이프라인 단계
     // ─────────────────────────────────────────────────
 
+    /**
+     * 배치 파이프라인에서 각 repo에 대해 ①②③ (significance check, clone, static analysis)만 실행한다.
+     *
+     * <p>④ (AI 요약 생성)은 포함하지 않는다 — 모든 repo가 ①②③을 완료한 뒤
+     * {@link BatchRepoSummaryGeneratorService#generateAll}에서 1회 배치 호출로 처리한다.
+     *
+     * @return significance check를 통과하면 true, 임계값 미달로 skip되면 false
+     * @throws Exception 분석 단계에서 오류 발생 시 (호출자가 FAILED 처리)
+     */
+    boolean runStaticAnalysisSteps(User user, GithubRepository repo,
+                                   Long userId, Long repositoryId) {
+        // ① Significance Check
+        syncStatusService.setInProgress(userId, repositoryId, "significance_check");
+        Optional<String> skipReason = significanceCheckService.isSignificant(repo, userId);
+        if (skipReason.isPresent()) {
+            log.info("Batch: repo not significant, skipping: userId={}, repoId={}, reason={}",
+                    userId, repositoryId, skipReason.get());
+            syncStatusService.setSkipped(userId, repositoryId, skipReason.get());
+            significanceCheckService.markAnalyzed(userId, repositoryId);
+            return false; // 이 repo는 배치 AI 호출 대상에서 제외
+        }
+
+        // ② Clone / Fetch
+        checkCancelled(userId, repositoryId);
+        syncStatusService.setInProgress(userId, repositoryId, "clone");
+        repoCloneService.cloneOrFetch(repo.getHtmlUrl(), userId, repositoryId);
+
+        // ② 파일 필터링 + 시크릿 스캔
+        Path repoPath = repoCloneService.getRepoPath(userId, repositoryId);
+        Set<String> safeFiles = applyFileFilterAndSecretScan(repo, repoPath);
+
+        // ③ 정적 분석 + PageRank + Code Index 저장
+        checkCancelled(userId, repositoryId);
+        syncStatusService.setInProgress(userId, repositoryId, "analysis");
+
+        String authorEmail = resolveAuthorEmail(repo, user);
+        Set<String> authoredFiles = contributionExtractorService.getAuthoredFiles(repoPath, authorEmail);
+
+        boolean largeRepo = isLargeRepo(repoPath);
+        Optional<Set<String>> analyzeScope;
+        if (largeRepo) {
+            Set<String> scopedFiles = authoredFiles.stream()
+                    .filter(safeFiles::contains)
+                    .collect(java.util.stream.Collectors.toSet());
+            analyzeScope = Optional.of(scopedFiles);
+            log.info("Batch: large repo detected (>{} files), scope=authored∩safe: repoId={}, count={}",
+                    LARGE_REPO_FILE_THRESHOLD, repositoryId, scopedFiles.size());
+        } else {
+            analyzeScope = Optional.of(safeFiles);
+        }
+
+        List<AnalysisNode> nodes = staticAnalysisService.analyze(repoPath, analyzeScope);
+        Map<String, Double> pagerankMap = callGraphService.computePageRank(nodes);
+        codeIndexService.buildIndex(repo, userId, nodes, authoredFiles, pagerankMap);
+
+        log.info("Batch: static analysis completed for repoId={}", repositoryId);
+        return true; // 이 repo를 배치 AI 호출 대상에 포함
+    }
+
     private void runPipeline(User user, GithubRepository repo, Long userId, Long repositoryId) {
 
         // ① Significance Check
         syncStatusService.setInProgress(userId, repositoryId, "significance_check");
-        boolean significant = significanceCheckService.isSignificant(repo, userId);
-        if (!significant) {
-            log.info("Pipeline skipped (not significant): userId={}, repoId={}", userId, repositoryId);
-            syncStatusService.setSkipped(userId, repositoryId);
+        Optional<String> skipReason = significanceCheckService.isSignificant(repo, userId);
+        if (skipReason.isPresent()) {
+            log.info("Pipeline skipped: userId={}, repoId={}, reason={}", userId, repositoryId, skipReason.get());
+            syncStatusService.setSkipped(userId, repositoryId, skipReason.get());
             significanceCheckService.markAnalyzed(userId, repositoryId);
             return;
         }
@@ -253,6 +563,9 @@ public class AnalysisPipelineService {
         syncStatusService.setInProgress(userId, repositoryId, "clone");
         Path repoPath = repoCloneService.cloneOrFetch(repo.getHtmlUrl(), userId, repositoryId);
 
+        // ② 파일 필터링 + 시크릿 스캔 (확장자/크기 필터 → Gitleaks 스캔 → 시크릿 파일 제거)
+        Set<String> safeFiles = applyFileFilterAndSecretScan(repo, repoPath);
+
         // ③ 정적 분석 + PageRank + Code Index 저장
         checkCancelled(userId, repositoryId); // clone 완료 후 취소 여부 확인
         syncStatusService.setInProgress(userId, repositoryId, "analysis");
@@ -260,13 +573,19 @@ public class AnalysisPipelineService {
         String authorEmail = resolveAuthorEmail(repo, user);
         Set<String> authoredFiles = contributionExtractorService.getAuthoredFiles(repoPath, authorEmail);
 
-        // large repo이면 본인 기여 파일만 정적 분석 (전체 분석은 비용 대비 효과 낮음)
-        // 부족한 전체 구조 파악은 README/docs로 보완 (RepoSummaryGeneratorService에서 프롬프트에 주입)
+        // large repo이면 본인 기여 파일과 safe files의 교집합만 분석
+        // 일반 repo는 safe files 전체 분석
         boolean largeRepo = isLargeRepo(repoPath);
-        Optional<Set<String>> analyzeScope = largeRepo ? Optional.of(authoredFiles) : Optional.empty();
+        Optional<Set<String>> analyzeScope;
         if (largeRepo) {
-            log.info("Large repo detected (>{} source files), analyzing authored files only: userId={}, repoId={}",
-                    LARGE_REPO_FILE_THRESHOLD, userId, repositoryId);
+            Set<String> scopedFiles = authoredFiles.stream()
+                    .filter(safeFiles::contains)
+                    .collect(java.util.stream.Collectors.toSet());
+            analyzeScope = Optional.of(scopedFiles);
+            log.info("Large repo detected (>{} source files), scope=authored∩safe: userId={}, repoId={}, count={}",
+                    LARGE_REPO_FILE_THRESHOLD, userId, repositoryId, scopedFiles.size());
+        } else {
+            analyzeScope = Optional.of(safeFiles);
         }
 
         List<AnalysisNode> nodes = staticAnalysisService.analyze(repoPath, analyzeScope);
@@ -380,6 +699,73 @@ public class AnalysisPipelineService {
             Thread.currentThread().interrupt(); // interrupt 플래그 복원
             throw new CancellationException("분석이 취소되었습니다.");
         }
+    }
+
+    /**
+     * 파일 확장자/크기 필터링과 시크릿 스캔을 순서대로 실행하고 안전한 파일의 상대 경로 집합을 반환한다.
+     *
+     * <p>처리 순서:</p>
+     * <ol>
+     *   <li>{@link RepoFileFilterService}: 확장자 Whitelist + 단일 파일 크기 상한 필터링</li>
+     *   <li>{@link GitleaksService}: 시크릿 스캔 — 발견된 파일을 분석 대상에서 제거</li>
+     *   <li>시크릿 발견 시: 파일 경로 + 룰 ID를 {@code github_repositories.secret_excluded_files}에 저장</li>
+     * </ol>
+     *
+     * <p>시크릿 발견 시에도 <b>분석은 계속 진행</b>된다 (Graceful Degradation).
+     * 실제 시크릿 값은 저장하거나 로그에 남기지 않는다.</p>
+     *
+     * @param repo     분석 대상 GithubRepository
+     * @param repoPath clone된 repo 루트 경로
+     * @return 분석 가능한 파일의 상대 경로 집합 (repoPath 기준)
+     */
+    private Set<String> applyFileFilterAndSecretScan(GithubRepository repo, Path repoPath) {
+        // 1) 확장자 Whitelist + 크기 필터
+        RepoFileFilterService.FilterResult filterResult = repoFileFilterService.filter(repoPath);
+
+        // 절대 경로 → 상대 경로(String) 변환 (OS 경로 구분자를 /로 통일)
+        Set<String> safeFiles = filterResult.allowed().stream()
+                .map(p -> repoPath.relativize(p).toString().replace('\\', '/'))
+                .collect(java.util.stream.Collectors.toCollection(java.util.HashSet::new));
+
+        log.info("FileFilter: allowed={}, skipped={}, repoId={}",
+                safeFiles.size(), filterResult.skipped().size(), repo.getId());
+
+        // 2) 시크릿 스캔
+        GitleaksService.GitleaksScanResult scanResult = gitleaksService.scanRepo(repoPath);
+
+        if (!scanResult.hasFindings()) {
+            // 시크릿 없음: 이전 분석에서 남은 excluded 기록 초기화 (재분석 시 stale 방지)
+            repo.updateSecretExcludedFiles(null);
+            repositoryRepository.save(repo);
+            return safeFiles;
+        }
+
+        // 3) 시크릿 발견된 파일 제거 (경로 구분자 통일 후 비교)
+        Set<String> secretFilePaths = scanResult.findings().stream()
+                .map(f -> f.filePath().replace('\\', '/'))
+                .collect(java.util.stream.Collectors.toSet());
+        safeFiles.removeAll(secretFilePaths);
+
+        log.warn("Secret scan: {} file(s) excluded from analysis. repoId={}, ruleIds={}",
+                secretFilePaths.size(),
+                repo.getId(),
+                scanResult.findings().stream()
+                        .map(GitleaksService.SecretFinding::ruleId)
+                        .distinct()
+                        .toList());
+
+        // 4) 제외 파일 목록 DB 저장 (파일 경로 + 룰 ID만 — 시크릿 값 포함 없음)
+        try {
+            List<java.util.Map<String, String>> excluded = scanResult.findings().stream()
+                    .map(f -> java.util.Map.of("filePath", f.filePath(), "ruleId", f.ruleId()))
+                    .toList();
+            repo.updateSecretExcludedFiles(objectMapper.writeValueAsString(excluded));
+            repositoryRepository.save(repo);
+        } catch (Exception e) {
+            log.warn("Failed to persist secret excluded files for repoId={}: {}", repo.getId(), e.getMessage());
+        }
+
+        return safeFiles;
     }
 
     private String summarizeError(Exception e) {

@@ -257,6 +257,38 @@ class ApplicationApiTest extends ApiTestBase {
     }
 
     @Test
+    void saveSources_replacesExistingBindingsWhenSameSourcesAreSubmittedAgain() throws Exception {
+        User user = persistUser("sources-repeat@example.com", "sources-repeat-owner");
+        Application application = persistApplication(user, "source-repeat-application", ApplicationStatus.DRAFT);
+        GithubRepository repository = persistGithubRepository(user, "team/project-repeat");
+        Document document = persistDocument(user, "resume-repeat.md");
+
+        SaveApplicationSourcesRequest request = new SaveApplicationSourcesRequest(
+                List.of(repository.getId()),
+                List.of(document.getId())
+        );
+
+        mockMvc.perform(put("/api/v1/applications/{applicationId}/sources", application.getId())
+                        .with(authenticated(user.getId()))
+                        .contentType("application/json")
+                        .content(OBJECT_MAPPER.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/applications/{applicationId}/sources", application.getId())
+                        .with(authenticated(user.getId()))
+                        .contentType("application/json")
+                        .content(OBJECT_MAPPER.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.applicationId").value(application.getId()))
+                .andExpect(jsonPath("$.data.sourceCount").value(2))
+                .andExpect(jsonPath("$.data.repositoryIds[0]").value(repository.getId()))
+                .andExpect(jsonPath("$.data.documentIds[0]").value(document.getId()));
+
+        assertThat(applicationSourceRepositoryBindingRepository.countByApplicationId(application.getId())).isEqualTo(1L);
+        assertThat(applicationSourceDocumentBindingRepository.countByApplicationId(application.getId())).isEqualTo(1L);
+    }
+
+    @Test
     void saveSources_returns404WhenRepositoryIsNotOwned() throws Exception {
         User user = persistUser("owner-sources@example.com", "owner-sources");
         User otherUser = persistUser("other-sources@example.com", "other-sources");
@@ -304,6 +336,41 @@ class ApplicationApiTest extends ApiTestBase {
 
         assertThat(applicationQuestionRepository.findAllByApplicationIdOrderByQuestionOrderAsc(application.getId()))
                 .hasSize(2);
+    }
+
+    @Test
+    void saveQuestions_replacesExistingQuestionsWhenSameOrdersAreSubmittedAgain() throws Exception {
+        User user = persistUser("questions-repeat@example.com", "questions-repeat-owner");
+        Application application = persistApplication(user, "questions-repeat-application", ApplicationStatus.DRAFT);
+
+        SaveApplicationQuestionsRequest initialRequest = new SaveApplicationQuestionsRequest(List.of(
+                new SaveApplicationQuestionsRequest.QuestionItem(1, "기존 첫 번째 문항", "formal", "medium", null),
+                new SaveApplicationQuestionsRequest.QuestionItem(2, "기존 두 번째 문항", "balanced", "long", null)
+        ));
+        SaveApplicationQuestionsRequest updatedRequest = new SaveApplicationQuestionsRequest(List.of(
+                new SaveApplicationQuestionsRequest.QuestionItem(1, "수정된 첫 번째 문항", "formal", "short", "성과"),
+                new SaveApplicationQuestionsRequest.QuestionItem(2, "수정된 두 번째 문항", "balanced", "medium", "협업")
+        ));
+
+        mockMvc.perform(post("/api/v1/applications/{applicationId}/questions", application.getId())
+                        .with(authenticated(user.getId()))
+                        .contentType("application/json")
+                        .content(OBJECT_MAPPER.writeValueAsString(initialRequest)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/applications/{applicationId}/questions", application.getId())
+                        .with(authenticated(user.getId()))
+                        .contentType("application/json")
+                        .content(OBJECT_MAPPER.writeValueAsString(updatedRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].questionText").value("수정된 첫 번째 문항"))
+                .andExpect(jsonPath("$.data[0].lengthOption").value("short"))
+                .andExpect(jsonPath("$.data[1].questionText").value("수정된 두 번째 문항"));
+
+        assertThat(applicationQuestionRepository.findAllByApplicationIdOrderByQuestionOrderAsc(application.getId()))
+                .extracting(ApplicationQuestion::getQuestionText)
+                .containsExactly("수정된 첫 번째 문항", "수정된 두 번째 문항");
     }
 
     @Test

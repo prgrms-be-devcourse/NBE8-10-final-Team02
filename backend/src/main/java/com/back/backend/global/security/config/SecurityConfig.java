@@ -8,12 +8,11 @@ import com.back.backend.global.security.handler.ApiAuthenticationEntryPoint;
 import com.back.backend.global.security.jwt.JwtTokenService;
 import com.back.backend.global.security.oauth2.CookieOAuth2AuthorizationRequestRepository;
 import com.back.backend.global.security.oauth2.CustomOAuth2AuthorizationRequestResolver;
+import com.back.backend.global.security.oauth2.CustomOAuth2LoginFailureHandler;
 import com.back.backend.global.security.oauth2.CustomOAuth2LoginSuccessHandler;
 import com.back.backend.global.security.oauth2.CustomOAuth2UserService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.authorization.AuthorityAuthorizationManager;
-import org.springframework.security.authorization.AuthorizationManagers;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.access.expression.WebExpressionAuthorizationManager;
@@ -38,6 +37,7 @@ public class SecurityConfig {
     private final CookieManager cookieManager;
     private final CustomOAuth2UserService customOAuth2UserService;
     private final CustomOAuth2LoginSuccessHandler customOAuth2LoginSuccessHandler;
+    private final CustomOAuth2LoginFailureHandler customOAuth2LoginFailureHandler;
     private final CustomOAuth2AuthorizationRequestResolver customOAuth2AuthorizationRequestResolver;
     private final CookieOAuth2AuthorizationRequestRepository cookieOAuth2AuthorizationRequestRepository;
 
@@ -49,6 +49,7 @@ public class SecurityConfig {
             CookieManager cookieManager,
             CustomOAuth2UserService customOAuth2UserService,
             CustomOAuth2LoginSuccessHandler customOAuth2LoginSuccessHandler,
+            CustomOAuth2LoginFailureHandler customOAuth2LoginFailureHandler,
             CustomOAuth2AuthorizationRequestResolver customOAuth2AuthorizationRequestResolver,
             CookieOAuth2AuthorizationRequestRepository cookieOAuth2AuthorizationRequestRepository
     ) {
@@ -59,12 +60,13 @@ public class SecurityConfig {
         this.cookieManager = cookieManager;
         this.customOAuth2UserService = customOAuth2UserService;
         this.customOAuth2LoginSuccessHandler = customOAuth2LoginSuccessHandler;
+        this.customOAuth2LoginFailureHandler = customOAuth2LoginFailureHandler;
         this.customOAuth2AuthorizationRequestResolver = customOAuth2AuthorizationRequestResolver;
         this.cookieOAuth2AuthorizationRequestRepository = cookieOAuth2AuthorizationRequestRepository;
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http) {
         // 필터를 여기서 직접 생성(new)합니다.
         // CookieFilter의 @Component를 뗐기 때문에 오직 여기서만 생성되어 시큐리티 체인에만 들어갑니다.
         // 필터의 생명주기 주도권이 '스프링 부트'에서 **'스프링 시큐리티'**로 완전히 넘어옵니다.
@@ -96,6 +98,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/oauth2/github/link-url").authenticated() // 연동 URL 생성은 로그인 필요 (permitAll 와일드카드보다 먼저 선언)
                         .requestMatchers("/auth/oauth2/**", "/api/v1/auth/oauth2/**").permitAll()
                         .requestMatchers("/api/v1/auth/logout").permitAll() // 만료된 토큰으로도 로그아웃 가능
+                        .requestMatchers("/api/v1/ai/status").permitAll() // AI 가용성 상태 조회는 인증 불필요
                         .requestMatchers("/api/v1/knowledge/sync")
                             .access(new WebExpressionAuthorizationManager(
                                 "hasIpAddress('127.0.0.1') or hasIpAddress('::1')"))
@@ -112,6 +115,7 @@ public class SecurityConfig {
                                 .userService(customOAuth2UserService)
                         )
                         .successHandler(customOAuth2LoginSuccessHandler)
+                        .failureHandler(customOAuth2LoginFailureHandler)
                 )
                 .addFilterBefore(requestIdFilter, SecurityContextHolderFilter.class)
                 .addFilterBefore(cookieJwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

@@ -1,5 +1,7 @@
 package com.back.backend.domain.github.controller;
 
+import com.back.backend.domain.github.analysis.AnalysisPipelineService;
+import com.back.backend.domain.github.dto.request.BatchAnalyzeRequest;
 import com.back.backend.domain.github.dto.request.GithubConnectRequest;
 import com.back.backend.domain.github.dto.request.RepositorySelectionRequest;
 import com.back.backend.domain.github.dto.response.GithubConnectionResponse;
@@ -18,6 +20,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
@@ -51,6 +54,9 @@ class GithubApiTest extends ApiTestBase {
 
     @MockitoBean
     private GithubRepositoryService repositoryService;
+
+    @MockitoBean
+    private AnalysisPipelineService analysisPipelineService;
 
     // ─────────────────────────────────────────────────
     // GET /connections
@@ -150,12 +156,12 @@ class GithubApiTest extends ApiTestBase {
         GithubRepositoryResponse repoA = new GithubRepositoryResponse(
                 1L, 1001L, "github-user", "repo-a", "github-user/repo-a",
                 "https://github.com/github-user/repo-a", "public", "main",
-                true, false, null, null, "owner", "Java"
+                true, false, null, false, null, "owner", "Java", null
         );
         GithubRepositoryResponse repoB = new GithubRepositoryResponse(
                 2L, 1002L, "github-user", "repo-b", "github-user/repo-b",
                 "https://github.com/github-user/repo-b", "public", "main",
-                false, false, null, null, "owner", null
+                false, false, null, false, null, "owner", null, null
         );
         given(repositoryService.getRepositories(any(), eq(null), eq(1), eq(20)))
                 .willReturn(new PageImpl<>(List.of(repoA, repoB), PageRequest.of(0, 20), 2));
@@ -174,7 +180,7 @@ class GithubApiTest extends ApiTestBase {
         GithubRepositoryResponse selected = new GithubRepositoryResponse(
                 1L, 1001L, "github-user", "selected-repo", "github-user/selected-repo",
                 "https://github.com/github-user/selected-repo", "public", "main",
-                true, false, null, null, "owner", null
+                true, false, null, false, null, "owner", null, null
         );
         given(repositoryService.getRepositories(any(), eq(true), eq(1), eq(20)))
                 .willReturn(new PageImpl<>(List.of(selected), PageRequest.of(0, 20), 1));
@@ -265,5 +271,61 @@ class GithubApiTest extends ApiTestBase {
                 userId,
                 AuthorityUtils.createAuthorityList("ROLE_USER")
         ));
+    }
+
+    // ─────────────────────────────────────────────────
+    // POST /repositories/analyze-batch
+    // ─────────────────────────────────────────────────
+
+    @Test
+    void analyzeBatch_returns202WhenRequestIsValid() throws Exception {
+        BatchAnalyzeRequest request = new BatchAnalyzeRequest(List.of(1L, 2L));
+
+        mockMvc.perform(post("/api/v1/github/repositories/analyze-batch")
+                        .with(authenticated(10L))
+                        .contentType("application/json")
+                        .content(OBJECT_MAPPER.writeValueAsString(request)))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    void analyzeBatch_returns400WhenRepositoryIdsIsEmpty() throws Exception {
+        // @NotEmpty Bean Validation이 서비스 호출 전에 400을 반환한다
+        BatchAnalyzeRequest request = new BatchAnalyzeRequest(List.of());
+
+        mockMvc.perform(post("/api/v1/github/repositories/analyze-batch")
+                        .with(authenticated(10L))
+                        .contentType("application/json")
+                        .content(OBJECT_MAPPER.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void analyzeBatch_returns401WhenUnauthenticated() throws Exception {
+        BatchAnalyzeRequest request = new BatchAnalyzeRequest(List.of(1L));
+
+        mockMvc.perform(post("/api/v1/github/repositories/analyze-batch")
+                        .contentType("application/json")
+                        .content(OBJECT_MAPPER.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void analyzeBatch_returns409WhenAnalysisAlreadyInProgress() throws Exception {
+        willThrow(new ServiceException(
+                ErrorCode.REQUEST_VALIDATION_FAILED,
+                HttpStatus.CONFLICT,
+                "이미 분석이 진행 중입니다: 1"
+        )).given(analysisPipelineService).triggerBatchAnalysis(any(), any());
+
+        BatchAnalyzeRequest request = new BatchAnalyzeRequest(List.of(1L));
+
+        mockMvc.perform(post("/api/v1/github/repositories/analyze-batch")
+                        .with(authenticated(10L))
+                        .contentType("application/json")
+                        .content(OBJECT_MAPPER.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.REQUEST_VALIDATION_FAILED.name()));
     }
 }

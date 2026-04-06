@@ -49,6 +49,9 @@ public class InterviewSession extends BaseEntity {
     @Column(name = "last_activity_at")
     private Instant lastActivityAt;
 
+    @Column(name = "completion_followup_reviewed_at")
+    private Instant completionFollowupReviewedAt;
+
     @Column(name = "ended_at")
     private Instant endedAt;
 
@@ -62,6 +65,10 @@ public class InterviewSession extends BaseEntity {
 
     public void changeEndedAt(Instant endedAt) {
         this.endedAt = endedAt;
+    }
+
+    public void markCompletionFollowupReviewed(Instant completionFollowupReviewedAt) {
+        this.completionFollowupReviewedAt = completionFollowupReviewedAt;
     }
 
     public void applyResult(int totalScore, String summaryFeedback) {

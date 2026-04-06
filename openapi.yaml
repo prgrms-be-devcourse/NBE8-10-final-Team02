@@ -12,6 +12,8 @@ tags:
 - name: Documents
 - name: Applications
 - name: Interview
+- name: Followup
+- name: AI
 components:
   securitySchemes:
     AuthorizationHeader:
@@ -45,6 +47,10 @@ components:
               type: string
             retryable:
               type: boolean
+            retryAfterSeconds:
+              type: integer
+              nullable: true
+              description: rate limit 시 재시도까지 기다려야 하는 초. null이면 해당 없음.
             fieldErrors:
               type: array
               items:
@@ -594,6 +600,16 @@ components:
           type: integer
           format: int64
           description: 세션 질문 id
+        questionType:
+          type: string
+          description: 세션 질문 유형. `follow_up`이면 결과 화면에서 꼬리 질문 배지를 표시할 수 있다.
+          enum:
+          - experience
+          - project
+          - technical_cs
+          - technical_stack
+          - behavioral
+          - follow_up
         questionText:
           type: string
         answerText:
@@ -613,6 +629,7 @@ components:
       required:
       - answerId
       - questionId
+      - questionType
       - questionText
       - score
       - evaluationRationale
@@ -767,7 +784,7 @@ components:
           - COMPLETED
           - SKIPPED
           - FAILED
-          description: PENDING=대기중, IN_PROGRESS=처리중, COMPLETED=완료, SKIPPED=변경없음(significance check 미달), FAILED=오류
+          description: PENDING=대기중, IN_PROGRESS=처리중, COMPLETED=완료, SKIPPED=분석 생략(skipReason 참조), FAILED=오류
         step:
           type: string
           nullable: true
@@ -787,6 +804,10 @@ components:
         error:
           type: string
           nullable: true
+        skipReason:
+          type: string
+          nullable: true
+          description: SKIPPED 상태일 때 skip 이유 (예:"커밋이 없습니다. 커밋 동기화를 먼저 실행해주세요.", "최근 변경량이 기준치에 미달합니다.")
       required:
       - repositoryId
       - status
@@ -972,6 +993,165 @@ components:
       - totalScore
       - summaryFeedback
       - endedAt
+    FollowupQuestionType:
+      type: string
+      enum:
+      - PROJECT
+      - PROBLEM
+      - TECH
+      - COLLABORATION
+    FollowupGapType:
+      type: string
+      enum:
+      - ROLE
+      - ACTION
+      - RESULT
+      - REASON
+      - METRIC
+      - CAUSE
+      - VERIFICATION
+      - PREVENTION
+      - ALTERNATIVE
+      - TRADEOFF
+      - LIMITATION
+      - ISSUE
+      - AGREEMENT
+      - REFLECTION
+      - SCOPE_MIXED
+    FollowupFinalAction:
+      type: string
+      enum:
+      - NO_FOLLOW_UP
+      - USE_CANDIDATE
+      - USE_DYNAMIC
+    FollowupCandidateQuestionType:
+      type: string
+      enum:
+      - PROJECT_RESULT_DETAIL
+      - PROJECT_RESULT_METRIC
+      - PROJECT_APPROACH_REASON
+      - PROJECT_SCOPE_NARROW
+      - PROJECT_CORE_CLARIFY
+      - PROBLEM_CAUSE_DETAIL
+      - PROBLEM_VERIFICATION_DETAIL
+      - PROBLEM_PREVENTION_DETAIL
+      - PROBLEM_CORE_CLARIFY
+      - TECH_ALTERNATIVE_COMPARE
+      - TECH_TRADEOFF_DETAIL
+      - TECH_EFFECT_AFTER_ADOPTION
+      - TECH_CORE_CLARIFY
+      - COLLAB_ISSUE_DETAIL
+      - COLLAB_AGREEMENT_CRITERIA
+      - COLLAB_DECISION_REASON
+      - COLLAB_RESULT_IMPACT
+      - COLLAB_CORE_CLARIFY
+    FollowupSignals:
+      type: object
+      properties:
+        ROLE:
+          type: boolean
+        ACTION:
+          type: boolean
+        RESULT:
+          type: boolean
+        REASON:
+          type: boolean
+        METRIC:
+          type: boolean
+        CAUSE:
+          type: boolean
+        VERIFICATION:
+          type: boolean
+        PREVENTION:
+          type: boolean
+        ALTERNATIVE:
+          type: boolean
+        TRADEOFF:
+          type: boolean
+        LIMITATION:
+          type: boolean
+        ISSUE:
+          type: boolean
+        AGREEMENT:
+          type: boolean
+        REFLECTION:
+          type: boolean
+        SCOPE_MIXED:
+          type: boolean
+      required:
+      - ROLE
+      - ACTION
+      - RESULT
+      - REASON
+      - METRIC
+      - CAUSE
+      - VERIFICATION
+      - PREVENTION
+      - ALTERNATIVE
+      - TRADEOFF
+      - LIMITATION
+      - ISSUE
+      - AGREEMENT
+      - REFLECTION
+      - SCOPE_MIXED
+    FollowupAnalyzeRequest:
+      type: object
+      properties:
+        questionType:
+          $ref: '#/components/schemas/FollowupQuestionType'
+        answerText:
+          type: string
+      required:
+      - questionType
+      - answerText
+    FollowupAnalyzeData:
+      type: object
+      properties:
+        questionType:
+          $ref: '#/components/schemas/FollowupQuestionType'
+        signals:
+          $ref: '#/components/schemas/FollowupSignals'
+        orderedMissingGaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/FollowupGapType'
+        primaryGap:
+          allOf:
+          - $ref: '#/components/schemas/FollowupGapType'
+          nullable: true
+        secondaryGap:
+          allOf:
+          - $ref: '#/components/schemas/FollowupGapType'
+          nullable: true
+        finalAction:
+          $ref: '#/components/schemas/FollowupFinalAction'
+        candidateQuestionTypes:
+          type: array
+          description: finalAction이 `USE_CANDIDATE`일 때 runtime local deterministic follow-up 템플릿 선택에 쓰는 우선순위 후보 목록. 그 외에는 빈 배열일 수 있다.
+          items:
+            $ref: '#/components/schemas/FollowupCandidateQuestionType'
+      required:
+      - questionType
+      - signals
+      - orderedMissingGaps
+      - primaryGap
+      - secondaryGap
+      - finalAction
+      - candidateQuestionTypes
+    FollowupAnalyzeApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/FollowupAnalyzeData'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - success
+      - data
+      - meta
 security:
 - AuthorizationHeader: []
 paths:
@@ -1842,6 +2022,148 @@ paths:
                       retryable: false
                       fieldErrors: []
                     meta: *id001
+  /portfolios/me/readiness:
+    get:
+      tags:
+      - Portfolio
+      summary: 준비 현황 대시보드 조회
+      description: |
+        현재 사용자의 포트폴리오 준비 상태를 집계해서 반환한다.
+        GitHub 연결 상태, 선택된 repository 수, 문서 수/추출 성공/실패,
+        다음 추천 행동, 최근 실패 작업 알림을 포함한다.
+        v1에서 아직 계산하지 않는 값(recentCollectedCommitCount, recentFailedJobs)은
+        status="not_ready"로 고정하고 가짜 숫자를 표시하지 않는다.
+      responses:
+        '200':
+          description: 준비 현황 조회 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      profile:
+                        type: object
+                        properties:
+                          userId:
+                            type: integer
+                            format: int64
+                          displayName:
+                            type: string
+                          email:
+                            type: string
+                            nullable: true
+                          profileImageUrl:
+                            type: string
+                            nullable: true
+                      github:
+                        type: object
+                        properties:
+                          connectionStatus:
+                            type: string
+                            enum: [connected, not_connected]
+                          scopeStatus:
+                            type: string
+                            nullable: true
+                            enum: [public_only, private_ready, insufficient, not_applicable]
+                          selectedRepositoryCount:
+                            type: integer
+                          recentCollectedCommitCount:
+                            type: object
+                            properties:
+                              status:
+                                type: string
+                                enum: [not_ready, ready]
+                              value:
+                                type: integer
+                                nullable: true
+                      documents:
+                        type: object
+                        properties:
+                          totalCount:
+                            type: integer
+                          extractSuccessCount:
+                            type: integer
+                          extractFailedCount:
+                            type: integer
+                      readiness:
+                        type: object
+                        properties:
+                          missingItems:
+                            type: array
+                            items:
+                              type: string
+                          nextRecommendedAction:
+                            type: string
+                            enum: [connect_github, select_repository, upload_document, retry_document_extraction, start_application]
+                          canStartApplication:
+                            type: boolean
+                      alerts:
+                        type: object
+                        properties:
+                          recentFailedJobs:
+                            type: object
+                            properties:
+                              status:
+                                type: string
+                                enum: [not_ready, ready]
+                              items:
+                                type: array
+                                nullable: true
+                                items:
+                                  type: object
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+              examples:
+                portfolioReadinessSuccess:
+                  value:
+                    success: true
+                    data:
+                      profile:
+                        userId: 1
+                        displayName: q q
+                        email: user@example.com
+                        profileImageUrl: https://avatars.githubusercontent.com/u/1?v=4
+                      github:
+                        connectionStatus: connected
+                        scopeStatus: public_only
+                        selectedRepositoryCount: 2
+                        recentCollectedCommitCount:
+                          status: not_ready
+                          value: null
+                      documents:
+                        totalCount: 3
+                        extractSuccessCount: 2
+                        extractFailedCount: 1
+                      readiness:
+                        missingItems: []
+                        nextRecommendedAction: start_application
+                        canStartApplication: true
+                      alerts:
+                        recentFailedJobs:
+                          status: not_ready
+                          items: null
+                    meta: *id001
+        '401':
+          description: 인증 필요
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                authRequired:
+                  value:
+                    success: false
+                    error:
+                      code: AUTH_REQUIRED
+                      message: 로그인이 필요합니다.
+                      retryable: false
+                    meta: *id001
   /documents:
     post:
       tags:
@@ -2106,51 +2428,6 @@ paths:
                       message: 로그인이 필요합니다.
                       retryable: false
                     meta: *id001
-    patch:
-      tags:
-      - Documents
-      summary: 추출된 텍스트 업데이트
-      description: 사용자가 수동으로 추출 텍스트를 편집하여 저장합니다.
-      parameters:
-      - name: documentId
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int64
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                extractedText:
-                  type: string
-                  description: 사용자가 편집한 추출 텍스트
-              required:
-              - extractedText
-      responses:
-        '200':
-          description: 업데이트 성공
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    $ref: '#/components/schemas/Document'
-                  meta:
-                    $ref: '#/components/schemas/Meta'
-                required:
-                - success
-                - data
-                - meta
-        '404':
-          description: 문서를 찾을 수 없음
   /applications:
     post:
       tags:
@@ -3223,9 +3500,11 @@ paths:
                     meta: *id001
       description: 세션 복원 화면이 한 번의 조회로 그려질 수 있도록 현재 질문, 진행률, 남은 질문 수, resume 가능 여부, 마지막 활동 시각을 함께 반환한다.
         currentQuestion.id는 세션 질문 id이며, 현재 질문은 답변이 없는 세션 질문 중 가장 작은 questionOrder로 계산한다.
-        답변 저장 직후 재조회에서는 pending dynamic follow-up 생성 대상이 있으면 best-effort로 1회 생성 시도를 먼저 수행할 수 있다.
-        follow-up이 생성되지 않거나 생성에 실패해도 세션은 멈추지 않고 다음 기본 질문을 currentQuestion으로 반환한다.
-        v1 자동 일시정지는 이 조회 요청 진입 시점에도 `lastActivityAt` 기준으로 평가하며, 30분 초과 상태의 `in_progress`
+        답변 저장 직후 재조회에서는 pending 답변을 로컬 follow-up rule로 먼저 해석한다. `USE_CANDIDATE`면
+        `candidateQuestionTypes` 우선순위 기준의 로컬 deterministic follow-up 1개를 즉시 검토한다. `USE_DYNAMIC`이면 runtime
+        dynamic follow-up AI 생성을 best-effort로 시도하며, 이 즉시 AI 생성은 세션당 최대 1회만 허용한다. 같은 부모 답변에는 최대
+        1개만 확정한다. `NO_FOLLOW_UP`, candidate 템플릿 미선정/미생성, follow-up 생성 null/실패는 세션을 멈추지 않으며 다음 기본
+        질문을 currentQuestion으로 반환한다. v1 자동 일시정지는 이 조회 요청 진입 시점에도 `lastActivityAt` 기준으로 평가하며, 30분 초과 상태의 `in_progress`
         세션은 `paused`로 정규화한다.
   /interview/sessions/{sessionId}/pause:
     post:
@@ -3523,8 +3802,11 @@ paths:
                     meta: *id001
       description: 세션 답변을 저장한다. 일반 답변은 `in_progress` 상태에서만 허용한다. questionId는 세션 질문 id이며,
         현재 질문과 일치해야 한다. answerOrder는 다음 제출 순번과 일치해야 한다. 세션 또는 질문이 현재 사용자 범위에서
-        없으면 404를 반환한다. 이 endpoint는 답변 저장까지만 담당하며 dynamic follow-up 생성 여부는 직접 응답하지 않는다.
-        클라이언트는 저장 성공 후 `GET /interview/sessions/{sessionId}`를 재조회해 다음 질문을 확인한다.
+        없으면 404를 반환한다. 이 endpoint는 답변 저장까지만 담당하며 follow-up 생성 여부는 직접 응답하지 않는다.
+        클라이언트는 저장 성공 후 `GET /interview/sessions/{sessionId}`를 재조회해 다음 질문을 확인한다. 재조회 경로에서는 로컬
+        rule 결과가 `USE_CANDIDATE`일 때 `candidateQuestionTypes` 기반 로컬 deterministic follow-up을 먼저 검토하고,
+        `USE_DYNAMIC`일 때만 runtime dynamic follow-up AI 생성을 검토한다. 세션 마지막 전체 보완 1회는 runtime에서
+        follow-up으로 확정되지 못한 positive와 FN을 다시 본다.
         v1 자동 일시정지는 답변 제출 요청 진입 시점에도 `lastActivityAt` 기준으로 평가하며,
         30분 초과 상태의 세션은 `paused`로 정규화한 뒤 답변 제출을 막는다.
   /interview/sessions/{sessionId}/complete:
@@ -3649,7 +3931,10 @@ paths:
                     meta: *id001
       description: 세션을 종료하고 피드백 결과 생성을 시작한다. 피드백이 즉시 생성되면 feedback_completed 상태로 응답할
         수 있다. `complete`는 `in_progress`, `paused` 상태에서만 허용하며, 미답변 질문이 남아 있으면 400을 반환한다.
-        답변된 dynamic follow-up도 일반 세션 질문과 동일하게 미답변 검증과 결과 생성 입력에 포함한다.
+        결과 생성 전에 세션 전체 답변을 기준으로 마지막 follow-up 보완 1회를 best-effort로 검토할 수 있다. 이 보완은 runtime에서
+        follow-up으로 확정되지 못한 positive 또는 FN 회수 경로이며 세션당 최대 1회만 수행한다. 추가 follow-up이 생성되면 세션은
+        종료하지 않고 기존 `remainingQuestionCount=incomplete` 400 응답을 반환한다. 마지막 보완이 null 또는 실패여도 완료
+        흐름은 계속 진행한다. 답변된 follow-up은 일반 세션 질문과 동일하게 미답변 검증과 결과 생성 입력에 포함한다.
   /interview/sessions/{sessionId}/result:
     get:
       tags:
@@ -3694,6 +3979,7 @@ paths:
                       answers:
                       - answerId: 1001
                         questionId: 801
+                        questionType: project
                         questionText: 프로젝트에서 가장 어려웠던 장애 대응 경험을 설명해주세요.
                         answerText: Redis 캐시 장애 상황에서 DB 부하를 줄이기 위해 읽기 경로를 단계적으로 우회했습니다.
                         score: 86
@@ -3708,3 +3994,258 @@ paths:
       description: 세션 결과와 피드백 리포트를 조회한다. answers[].questionId는 세션 질문 id를 사용한다.
         답변된 dynamic follow-up도 answers[]에 일반 질문과 동일하게 포함한다. 완료 직후에는 결과 생성 지연이
         있을 수 있다.
+  /followup-rules/analyze:
+    post:
+      tags:
+      - Followup
+      summary: follow-up rules 분석
+      description: questionType과 answerText만으로 P0 로컬 follow-up 규칙을 분석한다. 면접 세션 runtime gate와 complete 직전
+        마지막 보완 검토가 같은 로컬 rule engine을 사용하며, `finalAction=USE_CANDIDATE`일 때 `candidateQuestionTypes`는
+        runtime local deterministic follow-up 템플릿 선택 우선순위로 해석한다. 이 endpoint는 그 결과를 독립적으로 확인하기
+        위한 분석 경로다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowupAnalyzeRequest'
+      responses:
+        '200':
+          description: 분석 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowupAnalyzeApiResponse'
+              examples:
+                followupAnalyzeSuccess:
+                  value:
+                    success: true
+                    data:
+                      questionType: PROJECT
+                      signals:
+                        ROLE: true
+                        ACTION: true
+                        RESULT: false
+                        REASON: false
+                        METRIC: false
+                        CAUSE: false
+                        VERIFICATION: false
+                        PREVENTION: false
+                        ALTERNATIVE: false
+                        TRADEOFF: false
+                        LIMITATION: false
+                        ISSUE: false
+                        AGREEMENT: false
+                        REFLECTION: false
+                        SCOPE_MIXED: false
+                      orderedMissingGaps:
+                      - RESULT
+                      - REASON
+                      - METRIC
+                      primaryGap: RESULT
+                      secondaryGap: REASON
+                      finalAction: USE_DYNAMIC
+                      candidateQuestionTypes: []
+                    meta: *id001
+        '400':
+          description: 요청 validation 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 인증 필요
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /ai/status:
+    get:
+      tags:
+      - AI
+      summary: AI 서비스 가용성 상태 조회
+      description: >
+        인증 없이 접근 가능. 설정된 AI provider(기본 + fallback)의 가용성 상태를 반환한다.
+        available=false이면 estimatedWaitSeconds와 message가 포함된다.
+        status 값: "available" | "minute_rate_limited" | "daily_exhausted" | "unavailable"
+      security: []
+      responses:
+        '200':
+          description: AI 서비스 가용성 상태
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                    description: 하나 이상의 provider가 사용 가능한 경우 true
+                  estimatedWaitSeconds:
+                    type: integer
+                    nullable: true
+                    description: 모든 provider가 rate limited일 때 예상 대기 초 (available=true면 null)
+                  message:
+                    type: string
+                    nullable: true
+                    description: 비가용 상태일 때 사용자에게 표시할 메시지 (available=true면 null)
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: gemini
+                        status:
+                          type: string
+                          enum: [available, minute_rate_limited, daily_exhausted, unavailable]
+                        minuteUsage:
+                          type: object
+                          properties:
+                            used:
+                              type: integer
+                            limit:
+                              type: integer
+                            percentage:
+                              type: integer
+                              description: 사용률 퍼센트 (0-100)
+                            resetInSeconds:
+                              type: integer
+                        dailyUsage:
+                          type: object
+                          properties:
+                            used:
+                              type: integer
+                            limit:
+                              type: integer
+                            percentage:
+                              type: integer
+                              description: 사용률 퍼센트 (0-100)
+                            resetsAt:
+                              type: string
+                              format: date-time
+                        tokenUsage:
+                          type: object
+                          properties:
+                            minuteUsed:
+                              type: integer
+                              format: int64
+                            minuteLimit:
+                              type: integer
+                              format: int64
+                            minutePercentage:
+                              type: integer
+                              description: 분당 토큰 사용률 퍼센트 (0-100)
+                            dailyUsed:
+                              type: integer
+                              format: int64
+                            dailyLimit:
+                              type: integer
+                              format: int64
+                              nullable: true
+                            dailyPercentage:
+                              type: integer
+                              nullable: true
+                              description: 일간 토큰 사용률 퍼센트 (0-100). dailyLimit이 null이면 null
+              examples:
+                available:
+                  value:
+                    available: true
+                    providers:
+                    - name: gemini
+                      status: available
+                      minuteUsage:
+                        used: 3
+                        limit: 10
+                        percentage: 30
+                        resetInSeconds: 42
+                      dailyUsage:
+                        used: 57
+                        limit: 250
+                        percentage: 23
+                        resetsAt: '2026-04-02T00:00:00Z'
+                      tokenUsage:
+                        minuteUsed: 12000
+                        minuteLimit: 250000
+                        minutePercentage: 5
+                        dailyUsed: 230000
+                        dailyLimit: null
+                        dailyPercentage: null
+                    - name: groq
+                      status: available
+                      minuteUsage:
+                        used: 1
+                        limit: 30
+                        percentage: 3
+                        resetInSeconds: 58
+                      dailyUsage:
+                        used: 120
+                        limit: 1000
+                        percentage: 12
+                        resetsAt: '2026-04-02T00:00:00Z'
+                      tokenUsage:
+                        minuteUsed: 3000
+                        minuteLimit: 12000
+                        minutePercentage: 25
+                        dailyUsed: 45000
+                        dailyLimit: 100000
+                        dailyPercentage: 45
+                dailyExhausted:
+                  value:
+                    available: false
+                    estimatedWaitSeconds: 32400
+                    message: 오늘의 AI 서비스 사용량이 모두 소진되었습니다. 내일 오전 9시 이후 다시 시도해주세요.
+                    providers:
+                    - name: gemini
+                      status: daily_exhausted
+                      minuteUsage:
+                        used: 0
+                        limit: 10
+                        percentage: 0
+                        resetInSeconds: 0
+                      dailyUsage:
+                        used: 250
+                        limit: 250
+                        percentage: 100
+                        resetsAt: '2026-04-02T00:00:00Z'
+                      tokenUsage:
+                        minuteUsed: 0
+                        minuteLimit: 250000
+                        minutePercentage: 0
+                        dailyUsed: 250000
+                        dailyLimit: null
+                        dailyPercentage: null
+                    - name: groq
+                      status: daily_exhausted
+                      minuteUsage:
+                        used: 0
+                        limit: 30
+                        percentage: 0
+                        resetInSeconds: 0
+                      dailyUsage:
+                        used: 1000
+                        limit: 1000
+                        percentage: 100
+                        resetsAt: '2026-04-02T00:00:00Z'
+                      tokenUsage:
+                        minuteUsed: 0
+                        minuteLimit: 12000
+                        minutePercentage: 0
+                        dailyUsed: 100000
+                        dailyLimit: 100000
+                        dailyPercentage: 100
+        '503':
+          description: AI 서비스 일간 한도 소진
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                dailyLimitExceeded:
+                  value:
+                    success: false
+                    error:
+                      code: AI_DAILY_LIMIT_EXCEEDED
+                      message: 오늘 Gemini API 일간 한도를 모두 소진했습니다. 내일 오전 9시(KST) 이후 다시 시도해주세요.
+                      retryable: false
+                      retryAfterSeconds: 32400

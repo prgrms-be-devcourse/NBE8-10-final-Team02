@@ -33,8 +33,8 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class DocumentService {
 
-    /** 허용되는 최대 파일 크기 (50MB). */
-    public static final long MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024;
+    /** 허용되는 최대 파일 크기 (15MB). */
+    public static final long MAX_FILE_SIZE_BYTES = 15L * 1024 * 1024;
 
     /** 사용자 1명이 보유할 수 있는 최대 문서 수. */
     public static final int MAX_DOCUMENT_COUNT = 5;
@@ -101,7 +101,7 @@ public class DocumentService {
             throw new ServiceException(
                 ErrorCode.DOCUMENT_FILE_TOO_LARGE,
                 HttpStatus.UNPROCESSABLE_CONTENT,
-                "파일 크기는 50MB를 초과할 수 없습니다."
+                "파일 크기는 15MB를 초과할 수 없습니다."
             );
         }
         if (documentRepository.countByUserId(userId) >= MAX_DOCUMENT_COUNT) {
@@ -149,7 +149,7 @@ public class DocumentService {
 
         // 트랜잭션 커밋 후 DocumentExtractionService가 이 이벤트를 수신해 비동기로 텍스트 추출을 시작한다
         eventPublisher.publishEvent(
-            new DocumentUploadedEvent(saved.getId(), saved.getStoragePath(), saved.getMimeType()));
+            new DocumentUploadedEvent(saved.getId(), saved.getStoragePath(), saved.getMimeType(), saved.getUser().getId()));
 
         return DocumentResponse.from(saved);
     }

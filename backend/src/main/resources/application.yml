@@ -3,11 +3,16 @@ spring:
     name: backend
   profiles:
     active: dev
+  threads:
+    virtual:
+      enabled: false
   data:
     redis:
       host: localhost
       port: 6379
       timeout: 3s
+  cache:
+    type: caffeine
 
   security:
     oauth2:
@@ -56,6 +61,17 @@ app:
 ai:
   provider: gemini
   fallback-provider: groq  # Gemini 할당량 초과 시 Groq로 자동 전환
+  rate-limit:
+    gemini:
+      rpm: 10
+      rpd: 250
+      tpm: 250000
+      # tpd 미설정 → 일간 토큰 체크 비활성화
+    groq:
+      rpm: 30
+      rpd: 1000
+      tpm: 12000
+      tpd: 100000
   gemini:
     api-key: ${GEMINI_API_KEY}
     base-url: https://generativelanguage.googleapis.com/v1beta
@@ -74,15 +90,32 @@ ai:
       read: 60s
     retry:
       max-attempts: 1
+  # 배치 AI 호출 토큰 예산 설정
+  # 기본값(480_000 chars = 120K tokens)은 Gemini Pro free tier 기준.
+  # Groq free (TPM 매우 제한): 120_000 (30K tokens × 4 chars)으로 낮출 것.
+  # 현재는 git repo 분석에만 적용되어있음
+  portfolio:
+    batch:
+      global-budget-chars: 480000
 
 analysis:
   # OCI 파일시스템의 repo clone 베이스 경로 (/data/repos/{userId}/{repoId}/)
   repo-base-path: /data/repos
   # 외부 언어 분석기 스크립트 디렉토리 경로 (배포 시 절대 경로로 지정)
   scripts-base-path: /opt/analysis-scripts
+  file-filter:
+    # repo 파일 단일 크기 상한 (기본 1MB). 초과 파일은 스킵.
+    max-file-size-bytes: 1048576
 
 # JWT 보안 설정
 security:
+  gitleaks:
+    # gitleaks 바이너리 경로 (PATH에 있으면 이름만 지정)
+    binary-path: gitleaks
+    # 스캔 타임아웃 (초). 초과 시 스캔 스킵 후 분석 계속.
+    timeout-seconds: 60
+    # false로 설정하면 스캔 없이 통과 (로컬 개발 환경 등 gitleaks 미설치 시)
+    enabled: true
   jwt:
     # 개발용 기본 시크릿 (운영에서는 반드시 환경변수로 변경 필요!)
     secret: dev-jwt-secret-key-change-in-production-f8e7d6c5b4a39281706958473625140a

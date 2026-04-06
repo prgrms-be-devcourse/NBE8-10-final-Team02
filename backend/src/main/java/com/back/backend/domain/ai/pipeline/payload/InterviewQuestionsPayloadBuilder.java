@@ -38,7 +38,8 @@ public class InterviewQuestionsPayloadBuilder {
         List<String> documentTexts,
         int questionCount,
         String difficultyLevel,
-        List<String> questionTypes
+        List<String> questionTypes,
+        List<String> knowledgeTagNames
     ) {
         Objects.requireNonNull(jobRole, "jobRole must not be null");
         Objects.requireNonNull(selfIntroQnAs, "selfIntroQnAs must not be null");
@@ -56,6 +57,7 @@ public class InterviewQuestionsPayloadBuilder {
         root.put("difficultyLevel", difficultyLevel);
 
         buildQuestionTypes(root, questionTypes);
+        buildKnowledgeTagMaster(root, knowledgeTagNames);
         buildSelfIntroContext(root, selfIntroQnAs);
         buildPortfolioEvidence(root, documentTexts);
 
@@ -70,6 +72,13 @@ public class InterviewQuestionsPayloadBuilder {
         ArrayNode types = root.putArray("questionTypes");
         for (String type : questionTypes) {
             types.add(type);
+        }
+    }
+
+    private void buildKnowledgeTagMaster(ObjectNode root, List<String> knowledgeTagNames) {
+        ArrayNode tags = root.putArray("knowledgeTagMaster");
+        for (String name : knowledgeTagNames) {
+            tags.add(name);
         }
     }
 

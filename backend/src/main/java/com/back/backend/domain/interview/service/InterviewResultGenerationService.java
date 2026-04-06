@@ -5,6 +5,7 @@ import com.back.backend.domain.ai.pipeline.AiPipeline;
 import com.back.backend.domain.interview.entity.FeedbackTag;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
 import com.back.backend.domain.interview.repository.FeedbackTagRepository;
+import com.back.backend.domain.portfolio.service.FailedJobRedisStore;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -14,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -27,21 +29,55 @@ import java.util.stream.StreamSupport;
 public class InterviewResultGenerationService {
 
     private static final String EVALUATE_TEMPLATE_ID = "ai.interview.evaluate.v1";
+    private static final String OVERLAY_BASE = "developer/evaluate-role/";
 
     private final AiPipeline aiPipeline;
     private final FeedbackTagRepository feedbackTagRepository;
+    private final FailedJobRedisStore failedJobRedisStore;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public GeneratedInterviewResult generate(long sessionId, long questionSetId, List<InterviewAnswer> answers) {
+    /**
+     * 면접 결과를 생성하고, 실패 시 Redis 실패 로그를 기록한 뒤 예외를 다시 던진다.
+     *
+     * @param userId 결과를 생성할 사용자 ID (실패 로그 기록용)
+     */
+    public GeneratedInterviewResult generate(Long userId, long sessionId, long questionSetId, List<InterviewAnswer> answers, String jobRole) {
+        try {
+            return doGenerate(sessionId, questionSetId, answers, jobRole);
+        } catch (ServiceException exception) {
+            // ServiceException은 에러 코드가 명확하므로 해당 코드로 실패 로그 기록
+            failedJobRedisStore.push(
+                    userId,
+                    FailedJobRedisStore.JobType.INTERVIEW_RESULT,
+                    exception.getErrorCode().name(),
+                    exception.getMessage() != null ? exception.getMessage() : "면접 결과 생성 실패"
+            );
+            throw exception;
+        } catch (Exception exception) {
+            failedJobRedisStore.push(
+                    userId,
+                    FailedJobRedisStore.JobType.INTERVIEW_RESULT,
+                    ErrorCode.INTERVIEW_RESULT_GENERATION_FAILED.name(),
+                    exception.getMessage() != null ? exception.getMessage() : "면접 결과 생성 중 오류가 발생했습니다."
+            );
+            throw exception;
+        }
+    }
+
+    /** generate()에서 실제 로직을 수행한다. 실패 로그 기록은 generate()가 담당한다. */
+    private GeneratedInterviewResult doGenerate(long sessionId, long questionSetId, List<InterviewAnswer> answers, String jobRole) {
         List<FeedbackTag> tagMaster = feedbackTagRepository.findAllByOrderByIdAsc();
         if (tagMaster.isEmpty()) {
             throw generationFailed();
         }
 
+        String roleOverlayFile = resolveRoleOverlay(jobRole);
+
         try {
             JsonNode response = aiPipeline.execute(
                     EVALUATE_TEMPLATE_ID,
-                    objectMapper.writeValueAsString(buildEvaluatePayload(sessionId, questionSetId, answers, tagMaster))
+                    objectMapper.writeValueAsString(buildEvaluatePayload(sessionId, questionSetId, answers, tagMaster, jobRole)),
+                    roleOverlayFile
             );
             return mapGeneratedResult(response, answers, tagMaster);
         } catch (AiClientException exception) {
@@ -67,30 +103,70 @@ public class InterviewResultGenerationService {
             long sessionId,
             long questionSetId,
             List<InterviewAnswer> answers,
-            List<FeedbackTag> tagMaster
+            List<FeedbackTag> tagMaster,
+            String jobRole
     ) {
-        return Map.of(
-                "sessionId", sessionId,
-                "questionSetId", questionSetId,
-                "tagMaster", tagMaster.stream()
-                        .map(tag -> Map.of(
-                                "tagId", tag.getId(),
-                                "tagName", tag.getTagName(),
-                                "tagCategory", tag.getTagCategory().getValue()
-                        ))
-                        .toList(),
-                "answers", answers.stream()
-                        .map(answer -> Map.of(
-                                "questionOrder", answer.getAnswerOrder(),
-                                "questionId", answer.getSessionQuestion().getId(),
-                                "questionType", answer.getSessionQuestion().getQuestionType().getValue(),
-                                "difficultyLevel", answer.getSessionQuestion().getDifficultyLevel().getValue(),
-                                "questionText", answer.getSessionQuestion().getQuestionText(),
-                                "answerText", answer.getAnswerText(),
-                                "isSkipped", answer.isSkipped()
-                        ))
-                        .toList()
-        );
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("sessionId", sessionId);
+        payload.put("questionSetId", questionSetId);
+        payload.put("jobRole", jobRole);
+        payload.put("tagMaster", tagMaster.stream()
+                .map(tag -> Map.of(
+                        "tagId", tag.getId(),
+                        "tagName", tag.getTagName(),
+                        "tagCategory", tag.getTagCategory().getValue()
+                ))
+                .toList());
+        payload.put("answers", answers.stream()
+                .map(answer -> Map.of(
+                        "questionOrder", answer.getAnswerOrder(),
+                        "questionId", answer.getSessionQuestion().getId(),
+                        "questionType", answer.getSessionQuestion().getQuestionType().getValue(),
+                        "difficultyLevel", answer.getSessionQuestion().getDifficultyLevel().getValue(),
+                        "questionText", answer.getSessionQuestion().getQuestionText(),
+                        "answerText", answer.getAnswerText() != null ? answer.getAnswerText() : "",
+                        "isSkipped", answer.isSkipped()
+                ))
+                .toList());
+        return payload;
+    }
+
+    String resolveRoleOverlay(String jobRole) {
+        if (jobRole == null || jobRole.isBlank()) {
+            return OVERLAY_BASE + "default.txt";
+        }
+        String normalized = jobRole.trim().toLowerCase();
+
+        if (normalized.contains("백엔드") || normalized.contains("backend")
+                || normalized.contains("서버") || normalized.contains("server")) {
+            return OVERLAY_BASE + "backend.txt";
+        }
+        if (normalized.contains("프론트엔드") || normalized.contains("frontend")
+                || normalized.contains("프론트") || normalized.contains("front")) {
+            return OVERLAY_BASE + "frontend.txt";
+        }
+        if (normalized.contains("풀스택") || normalized.contains("fullstack")
+                || normalized.contains("full-stack") || normalized.contains("full stack")) {
+            return OVERLAY_BASE + "fullstack.txt";
+        }
+        if (normalized.contains("데브옵스") || normalized.contains("devops")
+                || normalized.contains("인프라") || normalized.contains("sre")
+                || normalized.contains("클라우드") || normalized.contains("cloud")) {
+            return OVERLAY_BASE + "devops.txt";
+        }
+        if (normalized.contains("모바일") || normalized.contains("mobile")
+                || normalized.contains("ios") || normalized.contains("android")
+                || normalized.contains("flutter") || normalized.contains("react native")
+                || normalized.contains("앱")) {
+            return OVERLAY_BASE + "mobile.txt";
+        }
+        if (normalized.contains("데이터") || normalized.contains("data")
+                || normalized.contains("ml") || normalized.contains("머신러닝")
+                || normalized.contains("machine learning") || normalized.contains("ai")
+                || normalized.contains("인공지능")) {
+            return OVERLAY_BASE + "data.txt";
+        }
+        return OVERLAY_BASE + "default.txt";
     }
 
     private GeneratedInterviewResult mapGeneratedResult(

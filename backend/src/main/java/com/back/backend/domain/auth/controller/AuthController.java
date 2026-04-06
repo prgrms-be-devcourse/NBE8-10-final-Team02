@@ -1,11 +1,16 @@
 package com.back.backend.domain.auth.controller;
 
+import com.back.backend.domain.github.service.GithubApiClient;
+import com.back.backend.domain.github.repository.GithubConnectionRepository;
+import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.global.response.ApiResponse;
 import com.back.backend.global.security.CookieManager;
 import com.back.backend.global.security.apikey.ApiKeyService;
 import com.back.backend.domain.auth.entity.AuthProvider;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.CookieValue;
@@ -24,19 +29,30 @@ import java.util.Map;
 @RequestMapping("/api/v1/auth")
 public class AuthController {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
     private final ApiKeyService apiKeyService;
     private final CookieManager cookieManager;
+    private final GithubApiClient githubApiClient;
+    private final GithubConnectionRepository githubConnectionRepository;
+    private final UserRepository userRepository;
     private final String frontendRedirectUrl;
     private final String backendBaseUrl;
 
     public AuthController(
             ApiKeyService apiKeyService,
             CookieManager cookieManager,
+            GithubApiClient githubApiClient,
+            GithubConnectionRepository githubConnectionRepository,
+            UserRepository userRepository,
             @Value("${security.oauth2.frontend-redirect-url:http://localhost:3000}") String frontendRedirectUrl,
             @Value("${security.oauth2.backend-base-url:}") String backendBaseUrl
     ) {
         this.apiKeyService = apiKeyService;
         this.cookieManager = cookieManager;
+        this.githubApiClient = githubApiClient;
+        this.githubConnectionRepository = githubConnectionRepository;
+        this.userRepository = userRepository;
         this.frontendRedirectUrl = frontendRedirectUrl;
         this.backendBaseUrl = backendBaseUrl;
     }
@@ -113,13 +129,21 @@ public class AuthController {
 
     /**
      * 로그아웃: Redis에서 API Key를 무효화하고 쿠키를 삭제한다.
+     * GitHub OAuth 사용자인 경우, GitHub 측 access token도 취소하여
+     * 다음 로그인 시 GitHub가 이전 계정으로 자동 인증하는 문제를 방지한다.
      */
     @PostMapping("/logout")
     public ApiResponse<Map<String, String>> logout(
             @CookieValue(name = "apiKey", required = false) String apiKey,
             HttpServletResponse response
     ) {
+        // GitHub OAuth token 취소 — 같은 브라우저에서 다른 계정으로 재로그인할 때
+        // GitHub이 이전 세션을 재사용하는 문제를 방지한다.
         if (apiKey != null) {
+            Long userId = apiKeyService.validateAndGetUserId(apiKey);
+            if (userId != null) {
+                revokeGithubTokenQuietly(userId);
+            }
             apiKeyService.invalidateApiKey(apiKey);
         }
         cookieManager.clear(response, "apiKey");
@@ -127,6 +151,25 @@ public class AuthController {
         cookieManager.clear(response, "refreshToken");
 
         return ApiResponse.success(Map.of("message", "로그아웃 성공"));
+    }
+
+    /**
+     * GitHub 연결이 있으면 access token을 취소한다.
+     * 실패해도 로그아웃 흐름을 중단하지 않는다.
+     */
+    private void revokeGithubTokenQuietly(Long userId) {
+        try {
+            userRepository.findById(userId)
+                    .flatMap(githubConnectionRepository::findByUser)
+                    .ifPresent(connection -> {
+                        String token = connection.getAccessToken();
+                        if (token != null && !token.isBlank()) {
+                            githubApiClient.revokeAccessToken(token);
+                        }
+                    });
+        } catch (Exception e) {
+            log.warn("GitHub token revocation failed during logout (userId={}): {}", userId, e.getMessage());
+        }
     }
 
     private String buildBackendBaseUrl(HttpServletRequest request) {
@@ -140,3 +183,4 @@ public class AuthController {
                 : scheme + "://" + serverName + ":" + serverPort;
     }
 }
+

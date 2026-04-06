@@ -14,6 +14,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 
@@ -81,6 +83,16 @@ public class GithubRepository extends BaseEntity {
     private String language;
 
     /**
+     * 시크릿 스캔 결과로 분석에서 제외된 파일 목록.
+     * null이면 스캔 미실행 또는 발견 없음.
+     * 구조: [{"filePath": "...", "ruleId": "..."}, ...]
+     * 실제 시크릿 값은 저장하지 않는다.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "secret_excluded_files", columnDefinition = "jsonb")
+    private String secretExcludedFiles;
+
+    /**
      * GitHub API에서 새로 받아온 값으로 repo 정보를 갱신한다.
      * visibility, defaultBranch, htmlUrl은 바뀔 수 있어 매 동기화마다 덮어쓴다.
      */
@@ -101,5 +113,15 @@ public class GithubRepository extends BaseEntity {
      */
     public void updateSelection(boolean selected) {
         this.selected = selected;
+    }
+
+    /**
+     * 시크릿 스캔 결과로 제외된 파일 목록을 저장한다.
+     * 실제 시크릿 값은 포함하지 않으며, 파일 경로와 룰 ID만 기록한다.
+     *
+     * @param secretExcludedFilesJson JSON 문자열 (null 허용 — 발견 없음)
+     */
+    public void updateSecretExcludedFiles(String secretExcludedFilesJson) {
+        this.secretExcludedFiles = secretExcludedFilesJson;
     }
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { getMe } from "@/api/auth";
+import { getMe, logout } from "@/api/auth";
 
 export default function Home() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -11,6 +11,11 @@ export default function Home() {
     getMe().then((user) => setLoggedIn(!!user));
   }, []);
 
+  async function handleSwitchAccount() {
+    await logout();
+    window.location.href = '/login';
+  }
+
   return (
     <main className="flex flex-col items-center justify-center gap-8 py-24 px-8 text-center">
       <h1 className="text-4xl font-bold">AI 기술 면접 연습</h1>
@@ -18,12 +23,21 @@ export default function Home() {
         포트폴리오와 자소서를 기반으로 AI가 면접 질문을 생성하고 피드백을 제공합니다.
       </p>
       <div className="flex gap-4">
-        <Link
-          href="/login"
-          className="rounded border border-zinc-300 px-6 py-2 font-medium hover:bg-zinc-50"
-        >
-          {loggedIn ? "다른 계정으로 로그인" : "로그인"}
-        </Link>
+        {loggedIn ? (
+          <button
+            onClick={handleSwitchAccount}
+            className="rounded border border-zinc-300 px-6 py-2 font-medium hover:bg-zinc-50"
+          >
+            다른 계정으로 로그인
+          </button>
+        ) : (
+          <Link
+            href="/login"
+            className="rounded border border-zinc-300 px-6 py-2 font-medium hover:bg-zinc-50"
+          >
+            로그인
+          </Link>
+        )}
         <Link
           href="/portfolio"
           className="rounded bg-black px-6 py-2 font-medium text-white hover:bg-zinc-800"

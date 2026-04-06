@@ -1,0 +1,55 @@
+{
+  "questions": [
+    {
+      "questionOrder": 1,
+      "questionType": "technical_cs",
+      "difficultyLevel": "medium",
+      "questionText": "Java의 가비지 컬렉션 동작 방식과 G1GC의 특징에 대해 설명해 주세요.",
+      "sourceApplicationQuestionOrder": null,
+      "parentQuestionOrder": null,
+      "usedEvidenceKeys": [],
+      "knowledgeTagNames": ["Java", "JVM"]
+    },
+    {
+      "questionOrder": 2,
+      "questionType": "technical_stack",
+      "difficultyLevel": "medium",
+      "questionText": "Spring Boot에서 @Transactional 어노테이션의 전파 레벨(Propagation)과 격리 레벨(Isolation)의 차이를 설명해 주세요.",
+      "sourceApplicationQuestionOrder": null,
+      "parentQuestionOrder": null,
+      "usedEvidenceKeys": ["doc_1"],
+      "knowledgeTagNames": ["Spring", "DB"]
+    },
+    {
+      "questionOrder": 3,
+      "questionType": "technical_cs",
+      "difficultyLevel": "easy",
+      "questionText": "인덱스(Index)를 사용해야 하는 상황과 사용을 지양해야 하는 상황을 각각 설명해 주세요.",
+      "sourceApplicationQuestionOrder": null,
+      "parentQuestionOrder": null,
+      "usedEvidenceKeys": [],
+      "knowledgeTagNames": ["DB"]
+    },
+    {
+      "questionOrder": 4,
+      "questionType": "behavioral",
+      "difficultyLevel": "easy",
+      "questionText": "팀 프로젝트에서 기술적 의견 충돌이 발생했을 때 어떻게 해결하셨나요?",
+      "sourceApplicationQuestionOrder": 1,
+      "parentQuestionOrder": null,
+      "usedEvidenceKeys": ["doc_1"],
+      "knowledgeTagNames": []
+    },
+    {
+      "questionOrder": 5,
+      "questionType": "technical_cs",
+      "difficultyLevel": "hard",
+      "questionText": "분산 환경에서 동시성 문제를 해결하기 위한 방법(낙관적 락, 비관적 락, 분산 락)의 차이와 적용 시나리오를 설명해 주세요.",
+      "sourceApplicationQuestionOrder": null,
+      "parentQuestionOrder": null,
+      "usedEvidenceKeys": [],
+      "knowledgeTagNames": ["DB", "concurrency"]
+    }
+  ],
+  "qualityFlags": []
+}

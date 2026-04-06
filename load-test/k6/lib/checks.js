@@ -7,6 +7,23 @@ export const apiErrorRate   = new Rate('api_error_rate');
 export const apiCallCount   = new Counter('api_call_count');
 
 /**
+ * AI 생성 엔드포인트별 p95 목표 응답시간 (ms).
+ * Stub 기준: 입력 토큰(코드 분석 묶음) + 출력 토큰 규모를 반영한 값.
+ *
+ * 산출 근거 (Gemini 2.5 Flash stub, jitter ×1.2 상한 적용):
+ *   self-intro:  입력 ~2,571tok + 출력 ~1,200tok → 16,814ms × 1.2 ≈ 20,200ms
+ *   interview-questions: 입력 ~286tok + 출력 ~600tok → 7,691ms × 1.2 ≈ 9,230ms
+ *   evaluate/followup:   입력 ~200tok + 출력 ~200tok → 3,381ms × 1.2 ≈ 4,060ms
+ */
+export const AI_TIMEOUT = {
+  selfIntro:           25_000,
+  interviewQuestions:  12_000,
+  evaluate:             6_000,
+  followup:             6_000,
+  summary:              8_000,
+};
+
+/**
  * 공통 응답 검증.
  * @param {object} res   - k6 http response
  * @param {number[]} okStatuses - 성공으로 볼 HTTP 상태코드 목록

@@ -4,6 +4,7 @@ import com.back.backend.domain.ai.client.*;
 import com.back.backend.domain.ai.template.PromptLoader;
 import com.back.backend.domain.ai.template.PromptTemplate;
 import com.back.backend.domain.ai.template.PromptTemplateRegistry;
+import com.back.backend.domain.ai.usage.AiUsageRecorder;
 import com.back.backend.domain.ai.validation.AiResponseValidator;
 import com.back.backend.domain.ai.validation.JsonSchemaValidator;
 import com.back.backend.domain.ai.validation.ValidationRegistry;
@@ -21,6 +22,7 @@ import java.util.List;
  * AI 파이프라인 오케스트레이터
  * 템플릿 조회 → 프롬프트 로딩 → AiRequest 생성 → AiClient 호출 → JSON 파싱 → 검증 → 결과 반환
  * 파싱/검증 실패 시 RetryPolicy.maxRetries만큼 재시도, 초과 시 ServiceException
+ * 성공/rate limit hit 시 AiUsageRecorder에 사용량 기록
  */
 public class AiPipeline {
 
@@ -31,6 +33,8 @@ public class AiPipeline {
     private final ValidationRegistry validationRegistry;
     private final PromptLoader promptLoader;
     private final JsonSchemaValidator jsonSchemaValidator;
+    /** AI 호출 성공/실패 사용량 기록기 */
+    private final AiUsageRecorder usageRecorder;
 
     /**
      * @param router              AI provider 라우터 — getDefault()로 기본 provider의 AiClient 반환
@@ -38,19 +42,58 @@ public class AiPipeline {
      * @param validationRegistry  6개 응답 검증기 조회 (templateId → AiResponseValidator)
      * @param promptLoader        classpath .txt 프롬프트 파일 로딩 (캐싱)
      * @param jsonSchemaValidator AI 응답 JSON 파싱 및 schema 검증
+     * @param usageRecorder       AI 호출 결과를 인메모리+DB에 기록
      */
     public AiPipeline(
         AiClientRouter router,
         PromptTemplateRegistry templateRegistry,
         ValidationRegistry validationRegistry,
         PromptLoader promptLoader,
-        JsonSchemaValidator jsonSchemaValidator
+        JsonSchemaValidator jsonSchemaValidator,
+        AiUsageRecorder usageRecorder
     ) {
         this.router = router;
         this.templateRegistry = templateRegistry;
         this.validationRegistry = validationRegistry;
         this.promptLoader = promptLoader;
         this.jsonSchemaValidator = jsonSchemaValidator;
+        this.usageRecorder = usageRecorder;
+    }
+
+    /**
+     * AI 파이프라인 실행 — 직무별 overlay 프롬프트 합성 지원
+     * base developerPrompt에 roleOverlayFile을 append하여 직무별 평가 기준을 적용
+     *
+     * @param templateId      사용할 프롬프트 템플릿 ID
+     * @param payload         AI에 전달할 입력 데이터 (JSON 문자열)
+     * @param roleOverlayFile 직무별 overlay 프롬프트 파일 경로 (null이면 overlay 없이 실행)
+     * @return 파싱 및 검증을 통과한 AI 응답 JsonNode
+     */
+    public JsonNode execute(String templateId, String payload, String roleOverlayFile) {
+        PromptTemplate template = templateRegistry.get(templateId);
+        AiResponseValidator validator = validationRegistry.get(templateId);
+
+        String systemPrompt = promptLoader.load(template.systemPromptFile());
+        String developerPrompt = promptLoader.loadComposite(
+            template.developerPromptFile(), roleOverlayFile
+        );
+
+        AiRequest request = new AiRequest(
+            systemPrompt, developerPrompt, payload,
+            template.temperature(), template.maxTokens()
+        );
+
+        try {
+            return executeWithClient(router.getDefault(), request, template, validator, templateId);
+        } catch (AiClientException e) {
+            return router.getFallback()
+                .map(fallbackClient -> {
+                    log.warn("[Fallback] 기본 provider({}) 실패 → fallback provider({})로 전환. 원인: {}",
+                        e.getProvider(), fallbackClient.getProvider(), e.getMessage());
+                    return executeWithClient(fallbackClient, request, template, validator, templateId);
+                })
+                .orElseThrow(() -> e);
+        }
     }
 
     /**
@@ -82,10 +125,14 @@ public class AiPipeline {
         try {
             return executeWithClient(router.getDefault(), request, template, validator, templateId);
         } catch (AiClientException e) {
-            // fallback provider가 설정되어 있으면 전환 시도
+            // rate limit(429)일 때만 fallback provider로 전환
+            // 그 외(빈 응답, 타임아웃, API 오류 등)는 즉시 전파
+            if (e.getRateLimitType() == null) {
+                throw e;
+            }
             return router.getFallback()
                 .map(fallbackClient -> {
-                    log.warn("[Fallback] 기본 provider({}) 실패 → fallback provider({})로 전환. 원인: {}",
+                    log.warn("[Fallback] 기본 provider({}) rate limit → fallback provider({})로 전환. 원인: {}",
                         e.getProvider(), fallbackClient.getProvider(), e.getMessage());
                     return executeWithClient(fallbackClient, request, template, validator, templateId);
                 })
@@ -96,6 +143,7 @@ public class AiPipeline {
     /**
      * 특정 AiClient로 호출 → 파싱 → 검증 재시도 루프 실행
      * 파싱/검증 실패만 재시도, AiClientException은 즉시 전파
+     * 성공 시 usageRecorder.recordSuccess(), AiClientException 시 recordRateLimitHit() 호출
      */
     private JsonNode executeWithClient(
         AiClient client,
@@ -108,8 +156,18 @@ public class AiPipeline {
         List<String> lastErrors = List.of();
 
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
-            // AiClientException은 재시도 없이 즉시 전파
-            AiResponse response = client.call(request);
+            AiResponse response;
+            try {
+                // AiClientException은 재시도 없이 즉시 전파
+                response = client.call(request);
+            } catch (AiClientException e) {
+                // rate limit hit 사용량 기록 (rateLimitType이 null이면 내부에서 skip)
+                usageRecorder.recordRateLimitHit(client.getProvider(), e.getRateLimitType());
+                throw e;
+            }
+
+            // 성공 시 사용량 기록
+            usageRecorder.recordSuccess(client.getProvider(), response.tokenUsage());
 
             // JSON 파싱
             JsonSchemaValidator.ParseResult parseResult = jsonSchemaValidator.parse(response.content());
