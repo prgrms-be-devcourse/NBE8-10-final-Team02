@@ -101,7 +101,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         given(aiPipeline.execute(eq(COMPLETION_FOLLOWUP_TEMPLATE_ID), anyString()))
                 .willReturn(OBJECT_MAPPER.readTree("""
                         {
-                          "followUpQuestion": null,
+                          "followUpQuestions": [],
                           "qualityFlags": ["low_context"]
                         }
                         """));
@@ -214,12 +214,14 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 )
         )).willReturn(OBJECT_MAPPER.readTree("""
                 {
-                  "followUpQuestion": {
-                    "questionType": "follow_up",
-                    "difficultyLevel": "medium",
-                    "questionText": "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
-                    "parentQuestionOrder": 2
-                  },
+                  "followUpQuestions": [
+                    {
+                      "questionType": "follow_up",
+                      "difficultyLevel": "medium",
+                      "questionText": "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
+                      "parentQuestionOrder": 2
+                    }
+                  ],
                   "qualityFlags": []
                 }
                 """));
@@ -251,6 +253,84 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.currentQuestion.questionType").value("follow_up"))
                 .andExpect(jsonPath("$.data.currentQuestion.questionText")
                         .value("그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?"));
+    }
+
+    @Test
+    void completeSession_canInsertMultipleCompletionSupplementsAcrossThreads() throws Exception {
+        UserFixture fixture = persistAnsweredSessionWithCandidateRuntimeFollowup("complete-multi-completion-followups");
+        InterviewSession session = fixture.session();
+
+        given(aiPipeline.execute(
+                eq(COMPLETION_FOLLOWUP_TEMPLATE_ID),
+                org.mockito.ArgumentMatchers.argThat(payload ->
+                        hasCompletionThread(payload, 1, 2, true, "USE_CANDIDATE")
+                                && hasCompletionThread(payload, 4, 4, false, "NO_FOLLOW_UP")
+                )
+        )).willReturn(OBJECT_MAPPER.readTree("""
+                {
+                  "followUpQuestions": [
+                    {
+                      "questionType": "follow_up",
+                      "difficultyLevel": "medium",
+                      "questionText": "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
+                      "parentQuestionOrder": 2
+                    },
+                    {
+                      "questionType": "follow_up",
+                      "difficultyLevel": "medium",
+                      "questionText": "성과를 측정할 때 어떤 지표를 가장 먼저 봤는지 설명해주실 수 있나요?",
+                      "parentQuestionOrder": 4
+                    }
+                  ],
+                  "qualityFlags": []
+                }
+                """));
+
+        mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.REQUEST_VALIDATION_FAILED.name()))
+                .andExpect(jsonPath("$.error.fieldErrors[0].field").value("remainingQuestionCount"));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        InterviewSession refreshedSession = interviewSessionRepository.findById(session.getId()).orElseThrow();
+        assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.IN_PROGRESS);
+        assertThat(refreshedSession.getCompletionFollowupReviewedAt()).isNotNull();
+
+        List<InterviewSessionQuestion> followupQuestions = entityManager.createQuery(
+                        """
+                                select q
+                                from InterviewSessionQuestion q
+                                where q.session.id = :sessionId
+                                  and q.questionType = :questionType
+                                order by q.questionOrder asc
+                                """,
+                        InterviewSessionQuestion.class
+                )
+                .setParameter("sessionId", session.getId())
+                .setParameter("questionType", InterviewQuestionType.FOLLOW_UP)
+                .getResultList();
+
+        assertThat(followupQuestions).hasSize(3);
+        assertThat(followupQuestions)
+                .extracting(InterviewSessionQuestion::getQuestionText)
+                .containsExactly(
+                        "그 방식으로 접근한 이유를 조금 더 구체적으로 설명해주실 수 있나요?",
+                        "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
+                        "성과를 측정할 때 어떤 지표를 가장 먼저 봤는지 설명해주실 수 있나요?"
+                );
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentQuestion.questionOrder").value(3))
+                .andExpect(jsonPath("$.data.currentQuestion.questionType").value("follow_up"))
+                .andExpect(jsonPath("$.data.currentQuestion.questionText")
+                        .value("그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?"))
+                .andExpect(jsonPath("$.data.totalQuestionCount").value(6))
+                .andExpect(jsonPath("$.data.remainingQuestionCount").value(2));
     }
 
     @Test
@@ -292,12 +372,14 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         ))
                 .willReturn(OBJECT_MAPPER.readTree("""
                         {
-                          "followUpQuestion": {
-                            "questionType": "follow_up",
-                            "difficultyLevel": "medium",
-                            "questionText": "그때 어떤 기준으로 우선순위를 잡았는지 조금 더 구체적으로 설명해주실 수 있나요?",
-                            "parentQuestionOrder": 3
-                          },
+                          "followUpQuestions": [
+                            {
+                              "questionType": "follow_up",
+                              "difficultyLevel": "medium",
+                              "questionText": "그때 어떤 기준으로 우선순위를 잡았는지 조금 더 구체적으로 설명해주실 수 있나요?",
+                              "parentQuestionOrder": 3
+                            }
+                          ],
                           "qualityFlags": []
                         }
                         """));
@@ -375,12 +457,14 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         given(aiPipeline.execute(eq(COMPLETION_FOLLOWUP_TEMPLATE_ID), anyString()))
                 .willReturn(OBJECT_MAPPER.readTree("""
                         {
-                          "followUpQuestion": {
-                            "questionType": "follow_up",
-                            "difficultyLevel": "medium",
-                            "questionText": "그때 어떤 기준으로 우선순위를 잡았는지 조금 더 구체적으로 설명해주실 수 있나요?",
-                            "parentQuestionOrder": 3
-                          },
+                          "followUpQuestions": [
+                            {
+                              "questionType": "follow_up",
+                              "difficultyLevel": "medium",
+                              "questionText": "그때 어떤 기준으로 우선순위를 잡았는지 조금 더 구체적으로 설명해주실 수 있나요?",
+                              "parentQuestionOrder": 3
+                            }
+                          ],
                           "qualityFlags": []
                         }
                         """));
@@ -445,12 +529,14 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         given(aiPipeline.execute(eq(COMPLETION_FOLLOWUP_TEMPLATE_ID), anyString()))
                 .willReturn(OBJECT_MAPPER.readTree("""
                         {
-                          "followUpQuestion": {
-                            "questionType": "follow_up",
-                            "difficultyLevel": "medium",
-                            "questionText": "이 order는 무시되어야 합니다.",
-                            "parentQuestionOrder": 99
-                          },
+                          "followUpQuestions": [
+                            {
+                              "questionType": "follow_up",
+                              "difficultyLevel": "medium",
+                              "questionText": "이 order는 무시되어야 합니다.",
+                              "parentQuestionOrder": 99
+                            }
+                          ],
                           "qualityFlags": []
                         }
                         """));

@@ -43,48 +43,74 @@ class InterviewCompletionFollowupGenerationServiceTest {
     }
 
     @Test
-    void generate_returnsMappedDecisionWhenParentOrderIsAllowed() throws Exception {
+    void generate_returnsMappedDecisionsWhenParentOrdersAreAllowed() throws Exception {
         given(aiPipeline.execute(eq(TEMPLATE_ID), anyString()))
                 .willReturn(OBJECT_MAPPER.readTree("""
                         {
-                          "followUpQuestion": {
-                            "questionType": "follow_up",
-                            "difficultyLevel": "medium",
-                            "questionText": "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
-                            "parentQuestionOrder": 2
-                          },
+                          "followUpQuestions": [
+                            {
+                              "questionType": "follow_up",
+                              "difficultyLevel": "medium",
+                              "questionText": "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
+                              "parentQuestionOrder": 2
+                            }
+                          ],
                           "qualityFlags": []
                         }
                         """));
 
         var generated = interviewCompletionFollowupGenerationService.generate(baseRequest());
 
-        assertThat(generated).isNotNull();
-        assertThat(generated.parentQuestionOrder()).isEqualTo(2);
-        assertThat(generated.followupDraft().questionType()).isEqualTo(InterviewQuestionType.FOLLOW_UP);
-        assertThat(generated.followupDraft().difficultyLevel()).isEqualTo(DifficultyLevel.MEDIUM);
-        assertThat(generated.followupDraft().questionText())
+        assertThat(generated).hasSize(1);
+        assertThat(generated.getFirst().parentQuestionOrder()).isEqualTo(2);
+        assertThat(generated.getFirst().followupDraft().questionType()).isEqualTo(InterviewQuestionType.FOLLOW_UP);
+        assertThat(generated.getFirst().followupDraft().difficultyLevel()).isEqualTo(DifficultyLevel.MEDIUM);
+        assertThat(generated.getFirst().followupDraft().questionText())
                 .isEqualTo("그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?");
     }
 
     @Test
-    void generate_returnsNullWhenAiReturnsParentOrderOutsideAllowedTailOrders() throws Exception {
+    void generate_returnsOnlyAllowedDecisionsWhenSomeParentOrdersAreInvalid() throws Exception {
         given(aiPipeline.execute(eq(TEMPLATE_ID), anyString()))
                 .willReturn(OBJECT_MAPPER.readTree("""
                         {
-                          "followUpQuestion": {
-                            "questionType": "follow_up",
-                            "difficultyLevel": "medium",
-                            "questionText": "허용되지 않은 parent order입니다.",
-                            "parentQuestionOrder": 99
-                          },
+                          "followUpQuestions": [
+                            {
+                              "questionType": "follow_up",
+                              "difficultyLevel": "medium",
+                              "questionText": "허용된 parent order입니다.",
+                              "parentQuestionOrder": 2
+                            },
+                            {
+                              "questionType": "follow_up",
+                              "difficultyLevel": "medium",
+                              "questionText": "허용되지 않은 parent order입니다.",
+                              "parentQuestionOrder": 99
+                            }
+                          ],
                           "qualityFlags": []
                         }
                         """));
 
         var generated = interviewCompletionFollowupGenerationService.generate(baseRequest());
 
-        assertThat(generated).isNull();
+        assertThat(generated).hasSize(1);
+        assertThat(generated.getFirst().parentQuestionOrder()).isEqualTo(2);
+    }
+
+    @Test
+    void generate_returnsEmptyListWhenAiReturnsNoCompletionFollowups() throws Exception {
+        given(aiPipeline.execute(eq(TEMPLATE_ID), anyString()))
+                .willReturn(OBJECT_MAPPER.readTree("""
+                        {
+                          "followUpQuestions": [],
+                          "qualityFlags": ["low_context"]
+                        }
+                        """));
+
+        var generated = interviewCompletionFollowupGenerationService.generate(baseRequest());
+
+        assertThat(generated).isEmpty();
     }
 
     @Test
