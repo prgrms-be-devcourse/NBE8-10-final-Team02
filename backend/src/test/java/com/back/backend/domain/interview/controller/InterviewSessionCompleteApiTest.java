@@ -263,7 +263,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         UserFixture fixture = persistAnsweredSessionForCompletionReview("complete-last-followup-null");
         InterviewSession session = fixture.session();
 
-        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
+        given(interviewResultGenerationService.generate(anyLong(), eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
                 .willReturn(new InterviewResultGenerationService.GeneratedInterviewResult(
                         83,
                         "마지막 보완 검토 후 바로 결과를 생성했습니다.",
@@ -342,7 +342,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 VALID_ANSWER + " 마지막 보완 답변"
         );
 
-        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
+        given(interviewResultGenerationService.generate(anyLong(),eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
                 .willReturn(new InterviewResultGenerationService.GeneratedInterviewResult(
                         85,
                         "마지막 보완 질문까지 반영해 결과를 생성했습니다.",
@@ -362,7 +362,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
         then(aiPipeline).should(times(1)).execute(eq(FOLLOWUP_TEMPLATE_ID), anyString());
         then(interviewResultGenerationService).should(times(1))
-                .generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString());
+                .generate(anyLong(),eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString());
     }
 
     @Test
