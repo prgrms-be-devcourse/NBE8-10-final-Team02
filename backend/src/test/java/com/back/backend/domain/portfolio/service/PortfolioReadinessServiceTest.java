@@ -21,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.back.backend.domain.portfolio.dto.response.PortfolioReadinessResponse.AlertItem;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -44,6 +45,9 @@ class PortfolioReadinessServiceTest {
 
     @Mock
     private DocumentRepository documentRepository;
+
+    @Mock
+    private FailedJobRedisStore failedJobRedisStore;
 
     @InjectMocks
     private PortfolioReadinessService portfolioReadinessService;
@@ -141,8 +145,27 @@ class PortfolioReadinessServiceTest {
 
         assertThat(result.github().recentCollectedCommitCount().status()).isEqualTo("not_ready");
         assertThat(result.github().recentCollectedCommitCount().value()).isNull();
-        assertThat(result.alerts().recentFailedJobs().status()).isEqualTo("not_ready");
+        // recentFailedJobs는 Redis를 실제로 조회하므로 항상 "ready" 상태로 반환된다
+        // (FailedJobRedisStore mock은 빈 리스트를 반환 → items = null)
+        assertThat(result.alerts().recentFailedJobs().status()).isEqualTo("ready");
         assertThat(result.alerts().recentFailedJobs().items()).isNull();
+    }
+
+    @Test
+    void getReadiness_returnsFailedJobsFromRedis() {
+        User user = user(1L);
+        AlertItem alert = new AlertItem("GITHUB_COMMIT_SYNC_FAILED", "[GITHUB_SYNC] 동기화 실패", FIXED_NOW);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(githubConnectionRepository.findByUser(user)).willReturn(Optional.empty());
+        given(documentRepository.findAllByUserId(1L)).willReturn(List.of());
+        given(failedJobRedisStore.getRecent(1L)).willReturn(List.of(alert));
+
+        PortfolioReadinessResponse result = portfolioReadinessService.getReadiness(1L);
+
+        assertThat(result.alerts().recentFailedJobs().status()).isEqualTo("ready");
+        assertThat(result.alerts().recentFailedJobs().items()).hasSize(1);
+        assertThat(result.alerts().recentFailedJobs().items().get(0).code())
+                .isEqualTo("GITHUB_COMMIT_SYNC_FAILED");
     }
 
     @Test

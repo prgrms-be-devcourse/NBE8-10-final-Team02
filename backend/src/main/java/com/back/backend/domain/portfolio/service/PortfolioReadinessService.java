@@ -7,6 +7,7 @@ import com.back.backend.domain.github.entity.GithubConnection;
 import com.back.backend.domain.github.repository.GithubConnectionRepository;
 import com.back.backend.domain.github.repository.GithubRepositoryRepository;
 import com.back.backend.domain.portfolio.dto.response.PortfolioReadinessResponse;
+import com.back.backend.domain.portfolio.dto.response.PortfolioReadinessResponse.AlertItem;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.global.exception.ErrorCode;
@@ -50,6 +51,7 @@ public class PortfolioReadinessService {
     private final GithubConnectionRepository githubConnectionRepository;
     private final GithubRepositoryRepository githubRepositoryRepository;
     private final DocumentRepository documentRepository;
+    private final FailedJobRedisStore failedJobRedisStore;
 
     public PortfolioReadinessResponse getReadiness(Long userId) {
         User user = userRepository.findById(userId)
@@ -100,9 +102,19 @@ public class PortfolioReadinessService {
                         canStartApplication
                 ),
                 new PortfolioReadinessResponse.Alerts(
-                        PortfolioReadinessResponse.RecentFailedJobs.notReady()
+                        buildRecentFailedJobs(userId)
                 )
         );
+    }
+
+    /**
+     * Redis에서 최근 실패 항목을 읽어 RecentFailedJobs를 구성한다.
+     * Redis 오류 시 {@code FailedJobRedisStore.getRecent}가 빈 리스트를 반환하므로
+     * 이 메서드는 항상 "ready" 상태를 반환한다.
+     */
+    private PortfolioReadinessResponse.RecentFailedJobs buildRecentFailedJobs(Long userId) {
+        List<AlertItem> items = failedJobRedisStore.getRecent(userId);
+        return new PortfolioReadinessResponse.RecentFailedJobs("ready", items.isEmpty() ? null : items);
     }
 
     private int countSelectedRepositories(GithubConnection connection) {

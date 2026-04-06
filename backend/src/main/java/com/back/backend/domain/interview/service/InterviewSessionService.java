@@ -177,6 +177,7 @@ public class InterviewSessionService {
         try {
             InterviewResultGenerationService.GeneratedInterviewResult generatedResult =
                     interviewResultGenerationService.generate(
+                            userId,
                             preparation.sessionId(),
                             preparation.questionSetId(),
                             preparation.answers(),
@@ -325,6 +326,7 @@ public class InterviewSessionService {
         try {
             InterviewResultGenerationService.GeneratedInterviewResult generatedResult =
                     interviewResultGenerationService.generate(
+                            userId,
                             preparation.sessionId(),
                             preparation.questionSetId(),
                             preparation.answers(),
