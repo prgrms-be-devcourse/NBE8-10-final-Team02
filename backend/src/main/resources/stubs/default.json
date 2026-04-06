@@ -1,0 +1,12 @@
+{
+  "answers": [
+    {
+      "questionOrder": 1,
+      "questionText": "stub 기본 질문",
+      "answerText": "stub 기본 답변입니다.",
+      "usedEvidenceKeys": [],
+      "qualityFlags": []
+    }
+  ],
+  "qualityFlags": []
+}
