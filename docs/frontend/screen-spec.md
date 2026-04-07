@@ -737,7 +737,9 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 ### 검증/예외
 - 피드백 생성 실패 시 세션 기록은 유지
 - `POST /interview/sessions/{sessionId}/complete`에서 `502`, `503`이 반환돼도 세션 기록은 유지한다.
-- 결과가 아직 준비되지 않았으면 대기 또는 재확인 안내를 노출한다.
+- 결과가 아직 준비되지 않았으면 결과 페이지를 기준 화면으로 유지하고, pending panel 안에서 자동 재확인 후 수동 재확인 흐름을 노출한다.
+- 자동 재확인은 `INTERVIEW_RESULT_INCOMPLETE` 최초 진입 시에만 `4초 간격 x 최대 3회` 실행하고, 그 뒤에는 수동 `결과 재확인`만 유지한다.
+- v1의 결과 대기 UX는 `POST /interview/sessions/{sessionId}/complete` 재전송이 아니라 `GET /interview/sessions/{sessionId}/result` 재조회만 사용한다.
 - 결과 리포트는 `GET /interview/sessions/{sessionId}/result`의 `answers[]` 순서를 프론트에서 재정렬하지 않고 그대로 렌더링한다.
 - 답변된 dynamic follow-up도 결과 리포트의 같은 질문/답변 목록 안에 포함하고 별도 섹션으로 분리하지 않는다.
 - 결과 리포트의 질문 카드에는 `answers[].questionType`이 `follow_up`인 항목에 한해 `꼬리 질문` 배지를 노출한다.
@@ -774,7 +776,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 활성 세션 다음의 과거 세션은 `startedAt` 최신순으로 노출한다.
 - SCR-15의 상태 필터와 화면 정렬은 별도 백엔드 query parameter가 잠기기 전까지 v1 목록 응답 범위 안에서 처리한다.
 - v1 목록 응답이 제공하는 세션 식별 정보는 `questionSetId` 기준이므로, 질문 세트 기준 구분/정렬은 해당 값 범위 안에서 처리한다.
-- `completed` 상태지만 결과가 아직 준비되지 않은 세션은 결과 재확인 흐름으로 연결한다.
+- `completed` 상태지만 결과가 아직 준비되지 않은 세션은 결과 페이지의 자동 재확인 후 수동 재확인 흐름으로 연결한다.
 
 ---
 
