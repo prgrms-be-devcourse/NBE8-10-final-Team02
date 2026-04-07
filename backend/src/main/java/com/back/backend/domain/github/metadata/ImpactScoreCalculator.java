@@ -3,6 +3,7 @@ package com.back.backend.domain.github.metadata;
 import com.back.backend.domain.github.metadata.dto.PrPhase1Meta;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -43,9 +44,11 @@ public class ImpactScoreCalculator {
     );
 
     private final GithubCollectionProperties properties;
+    private final Clock clock;
 
-    public ImpactScoreCalculator(GithubCollectionProperties properties) {
+    public ImpactScoreCalculator(GithubCollectionProperties properties, Clock clock) {
         this.properties = properties;
+        this.clock = clock;
     }
 
     /**
@@ -156,7 +159,7 @@ public class ImpactScoreCalculator {
     private double recencyWeight(Instant mergedAt) {
         if (mergedAt == null) return 0.0;
         long sinceMs = (long) properties.getCollection().getSinceDays() * 86_400_000L;
-        long ageMs = Instant.now().toEpochMilli() - mergedAt.toEpochMilli();
+        long ageMs = Instant.now(clock).toEpochMilli() - mergedAt.toEpochMilli();
         return Math.max(0.0, 1.0 - (double) ageMs / sinceMs);
     }
 }
