@@ -76,8 +76,8 @@ public class DocumentService {
      * <ul>
      *   <li>허용되지 않는 MIME type</li>
      *   <li>허용되지 않는 파일 확장자</li>
-     *   <li>파일 크기가 10MB 초과</li>
-     *   <li>해당 사용자의 문서가 이미 5개 이상</li>
+     *   <li>파일 크기가 50MB(혹은 정해진 다른 크기) 초과</li>
+     *   <li>해당 사용자의 문서가 이미 5개(혹은 정해진 다른 크기) 이상</li>
      * </ul>
      *
      * @param userId        업로드 요청 사용자 ID
@@ -107,14 +107,14 @@ public class DocumentService {
             throw new ServiceException(
                 ErrorCode.DOCUMENT_FILE_TOO_LARGE,
                 HttpStatus.UNPROCESSABLE_CONTENT,
-                "파일 크기는 50MB를 초과할 수 없습니다."
+                "파일 크기는 " + MAX_MB + "MB를 초과할 수 없습니다."
             );
         }
         if (documentRepository.countByUserId(userId) >= MAX_DOCUMENT_COUNT) {
             throw new ServiceException(
                 ErrorCode.DOCUMENT_UPLOAD_FAILED,
                 HttpStatus.UNPROCESSABLE_CONTENT,
-                "문서는 최대 5개까지 업로드할 수 있습니다."
+                "문서는 최대 " + MAX_DOCUMENT_COUNT + "개까지 업로드할 수 있습니다."
             );
         }
     }
