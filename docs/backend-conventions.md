@@ -469,7 +469,10 @@ domain/application
 ### 14.1 GitHub 연동
 - GitHub URL 입력과 GitHub OAuth 연동은 구분한다.
 - MVP에서는 repository 목록 조회와 사용자 본인 commit 수집까지만 지원한다.
-- PR, Issue 수집 로직은 넣지 않는다.
+- **후속 확장 (feat/github-metadata-pipeline)**: PR, Issue 메타데이터 수집 파이프라인을 구현한다.
+  - 범위: `public_repo` scope 내 본인 MERGED PR, CLOSED+COMPLETED Issue, CHANGES_REQUESTED 리뷰
+  - 설계 근거: `docs/personal-design/github-metadata-pipeline.md` 참조
+  - 구현 전 `docs/project/open-items.md` §2 상태 확인
 - rate limit, pagination, 권한 부족을 구분해 처리한다.
 
 ### 14.2 문서 추출
