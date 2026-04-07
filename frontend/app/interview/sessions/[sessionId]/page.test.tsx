@@ -341,4 +341,109 @@ describe('InterviewSessionPage', () => {
       expect(pushMock).toHaveBeenCalledWith('/interview/sessions/1/result');
     });
   });
+
+  it('재개 성공 후 상단 상태 요약이 즉시 진행 상태로 갱신된다', async () => {
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        status: 'paused',
+        lastActivityAt: new Date().toISOString(),
+      }),
+    );
+    resumeSessionMock.mockResolvedValueOnce({
+      sessionId: 1,
+      status: 'in_progress',
+      updatedAt: '2026-04-07T10:20:00Z',
+    });
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        status: 'in_progress',
+        currentQuestion: createCurrentQuestion({
+          id: 111,
+          questionOrder: 2,
+          questionText: '재개 후 같은 질문부터 이어서 답변해주세요.',
+        }),
+      }),
+    );
+
+    await renderPage();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '재개' }));
+
+    await screen.findByText('세션을 재개했습니다.');
+    expect(
+      screen.getByText('방금 재개되어 같은 질문부터 다시 이어서 제출할 수 있습니다. 다음 질문은 항상 서버가 내려주는 currentQuestion 기준으로 바뀝니다.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '일시정지' })).toBeInTheDocument();
+  });
+
+  it('수동 paused 상태와 자동 일시정지 추정 상태를 다른 문구로 보여준다', async () => {
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        status: 'paused',
+        lastActivityAt: new Date().toISOString(),
+      }),
+    );
+
+    await renderPage();
+
+    expect(screen.getByText('수동 일시정지')).toBeInTheDocument();
+    expect(screen.getAllByText('현재 일시정지된 세션입니다.').length).toBeGreaterThan(0);
+    expect(screen.queryByText('자동 일시정지된 것으로 보입니다.')).not.toBeInTheDocument();
+  });
+
+  it('자동 일시정지로 보이는 paused 상태를 별도 안내로 보여준다', async () => {
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        status: 'paused',
+        lastActivityAt: '2020-01-01T00:00:00Z',
+      }),
+    );
+
+    await renderPage();
+
+    expect(screen.getByText('자동 일시정지')).toBeInTheDocument();
+    expect(screen.getAllByText('자동 일시정지된 것으로 보입니다.').length).toBeGreaterThan(0);
+    expect(
+      screen.getByText('마지막 활동 이후 30분 이상 지나 서버가 paused로 정규화했을 가능성이 높습니다. 재개 후 같은 질문부터 다시 이어서 진행하세요.'),
+    ).toBeInTheDocument();
+  });
+
+  it('completed 상태와 feedback_completed 상태를 다른 결과 안내로 구분한다', async () => {
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        status: 'completed',
+        currentQuestion: null,
+        remainingQuestionCount: 0,
+        endedAt: '2026-04-07T10:30:00Z',
+      }),
+    );
+
+    await renderPage();
+
+    expect(screen.getByText('상태 결과 재확인')).toBeInTheDocument();
+    expect(screen.getByText('세션은 종료되었고 결과를 다시 확인할 수 있습니다.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '결과 재확인' })).toBeInTheDocument();
+    expect(
+      screen.getByText('세션은 종료됐고 결과는 재확인 흐름으로 확인합니다. 세션 종료를 다시 보내지 않고 결과 화면에서 최신 상태를 조회하세요.'),
+    ).toBeInTheDocument();
+  });
+
+  it('feedback_completed 상태에서는 결과 완료 안내와 결과 보기 액션을 노출한다', async () => {
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        status: 'feedback_completed',
+        currentQuestion: null,
+        remainingQuestionCount: 0,
+        endedAt: '2026-04-07T10:32:00Z',
+      }),
+    );
+
+    await renderPage();
+
+    expect(screen.getByText('상태 피드백 완료')).toBeInTheDocument();
+    expect(screen.getByText('피드백 리포트가 준비되었습니다.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '결과 보기' })).toBeInTheDocument();
+    expect(screen.getByText('결과 리포트가 준비되었습니다. 결과 보기 버튼으로 이동하세요.')).toBeInTheDocument();
+  });
 });
