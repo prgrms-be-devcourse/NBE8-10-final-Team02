@@ -296,6 +296,51 @@ class DocumentApiTest extends ApiTestBase {
     }
 
     // =========================================================
+    // GET /api/v1/documents/search
+    // =========================================================
+
+    @Test
+    void searchDocuments_returns401WhenUnauthenticated() throws Exception {
+        mockMvc.perform(get("/api/v1/documents/search").param("q", "Spring Boot"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.error.code").value(ErrorCode.AUTH_REQUIRED.name()));
+    }
+
+    @Test
+    void searchDocuments_returns200WithMatchingResults() throws Exception {
+        DocumentResponse doc = new DocumentResponse(
+            1L, DocumentType.RESUME.getValue(), "이력서.pdf",
+            "application/pdf", 2048L,
+            DocumentExtractStatus.SUCCESS.getValue(),
+            Instant.parse("2026-01-01T00:00:00Z"),
+            Instant.parse("2026-01-01T00:00:02Z"),
+            "Spring Boot 백엔드 개발자"
+        );
+        given(documentService.search(eq(1L), eq("Spring Boot"))).willReturn(List.of(doc));
+
+        mockMvc.perform(get("/api/v1/documents/search")
+                .param("q", "Spring Boot")
+                .with(authenticated(1L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.length()").value(1))
+            .andExpect(jsonPath("$.data[0].originalFileName").value("이력서.pdf"));
+    }
+
+    @Test
+    void searchDocuments_returns200WithEmptyResultWhenNoMatch() throws Exception {
+        given(documentService.search(any(), any())).willReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/documents/search")
+                .param("q", "Python")
+                .with(authenticated(1L)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    // =========================================================
     // Test helpers
     // =========================================================
 

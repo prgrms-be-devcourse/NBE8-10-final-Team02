@@ -2348,6 +2348,48 @@ paths:
                       extractedAt: '2026-03-17T10:31:12Z'
                       extractedText: Spring Boot 기반 프로젝트 경험 ...
                     meta: *id002
+  /documents/search:
+    get:
+      tags:
+      - Documents
+      summary: 문서 전문 검색 (PGroonga FTS)
+      description: |
+        PGroonga의 `&@~` 연산자를 사용해 extracted_text와 original_file_name에서 전문 검색을 수행한다.
+        한국어/영어 형태소 분석 및 Fuzzy search를 지원한다.
+
+        **요구사항**: PGroonga 확장이 설치된 PostgreSQL 환경(운영 서버)에서만 정상 동작한다.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: 검색 키워드 (한국어, 영어, Fuzzy 검색 지원)
+          schema:
+            type: string
+            minLength: 1
+            example: "Spring Boot"
+      responses:
+        '200':
+          description: 검색 성공 (결과 없을 시 빈 배열 반환)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentListResponse'
+              example:
+                success: true
+                data:
+                  - id: 1
+                    documentType: resume
+                    originalFileName: 이력서_2026.pdf
+                    mimeType: application/pdf
+                    fileSizeBytes: 153600
+                    extractStatus: success
+                    uploadedAt: '2026-01-01T00:00:00Z'
+                    extractedAt: '2026-01-01T00:00:02Z'
+                    extractedText: Spring Boot 백엔드 개발자입니다.
+        '401':
+          description: 인증 필요
   /documents/{documentId}:
     get:
       tags:

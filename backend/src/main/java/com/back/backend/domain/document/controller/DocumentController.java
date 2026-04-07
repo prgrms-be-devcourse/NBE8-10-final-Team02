@@ -60,6 +60,23 @@ public class DocumentController {
         return ApiResponse.success(documentService.getDocuments(userId));
     }
 
+    /**
+     * PGroonga 전문 검색(FTS)으로 문서를 검색한다.
+     *
+     * <p>extracted_text와 original_file_name 양쪽을 검색해 결과를 합산한다.
+     * &@~ 연산자를 사용하므로 PGroonga가 설치된 PostgreSQL 환경에서만 동작한다.</p>
+     *
+     * @param userId 인증된 사용자 ID
+     * @param query  검색 키워드 (최소 1자)
+     * @return 검색 결과 문서 목록 (관련도 내림차순, 최대 20개)
+     */
+    @GetMapping("/search")
+    public ApiResponse<List<DocumentResponse>> searchDocuments(
+            @AuthenticationPrincipal Long userId,
+            @RequestParam("q") String query) {
+        return ApiResponse.success(documentService.search(userId, query));
+    }
+
     // 문서 단건 상세 조회 (200 OK / 404 Not Found)
     @GetMapping("/{documentId}")
     public ApiResponse<DocumentResponse> getDocument(

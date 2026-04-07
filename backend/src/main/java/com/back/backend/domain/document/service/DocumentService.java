@@ -202,6 +202,34 @@ public class DocumentService {
         documentStorageService.delete(document.getStoragePath());
     }
 
+    /**
+     * PGroonga 전문 검색(FTS)으로 문서를 검색한다.
+     *
+     * <p>extracted_text와 original_file_name 양쪽에서 검색해 결과를 합산(중복 제거)한다.
+     * PGroonga가 미설치된 환경에서는 repository가 예외를 던질 수 있다.</p>
+     *
+     * @param userId 검색 대상 사용자 ID
+     * @param query  검색 키워드 (한국어, 영어, Fuzzy 지원)
+     * @return 검색 결과 DTO 목록 (텍스트 우선, 파일명 추가, 중복 제거)
+     */
+    @Transactional(readOnly = true)
+    public List<DocumentResponse> search(Long userId, String query) {
+        List<Document> byText = documentRepository.searchByText(userId, query);
+        List<Document> byName = documentRepository.searchByFileName(userId, query);
+
+        // 텍스트 검색 결과 우선, 파일명 검색 결과 추가 — ID 기준 중복 제거
+        return java.util.stream.Stream.concat(byText.stream(), byName.stream())
+            .collect(java.util.stream.Collectors.toMap(
+                Document::getId,
+                d -> d,
+                (a, b) -> a,            // 중복 시 먼저 나온 것 유지
+                java.util.LinkedHashMap::new
+            ))
+            .values().stream()
+            .map(DocumentResponse::from)
+            .toList();
+    }
+
     // 추출된 텍스트를 업데이트한다. 사용자만 자신의 문서를 수정할 수 있다.
     @Transactional
     public DocumentResponse updateExtractedText(Long userId, Long documentId, String extractedText) {
