@@ -1,4 +1,4 @@
-name: Test & Coverage
+name: Test
 
 on:
   pull_request:
@@ -13,9 +13,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
 
     services:
       redis:
@@ -55,7 +52,7 @@ jobs:
 
       - name: Run tests
         working-directory: ./backend
-        run: ./gradlew test jacocoTestReport
+        run: ./gradlew test
 
       - name: Upload test report on failure
         uses: actions/upload-artifact@v4
@@ -63,72 +60,3 @@ jobs:
         with:
           name: test-report
           path: backend/build/reports/tests/
-
-      - name: JaCoCo coverage report (PR comment)
-        uses: madrapps/jacoco-report@v1.6.1
-        if: github.event_name == 'pull_request'
-        with:
-          paths: backend/build/reports/jacoco/test/jacocoTestReport.xml
-          token: ${{ secrets.GITHUB_TOKEN }}
-          title: "Test Coverage Report"
-          update-comment: true
-          min-coverage-overall: 0
-          min-coverage-changed-files: 0
-
-      - name: JaCoCo coverage summary
-        if: always()
-        run: |
-          XML="backend/build/reports/jacoco/test/jacocoTestReport.xml"
-          if [ ! -f "$XML" ]; then
-            echo "## 🧪 Test Coverage" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "> ⚠️ JaCoCo report not found — tests may have failed." >> $GITHUB_STEP_SUMMARY
-            exit 0
-          fi
-
-          python3 - "$XML" >> $GITHUB_STEP_SUMMARY <<'PYEOF'
-import sys, xml.etree.ElementTree as ET
-
-tree = ET.parse(sys.argv[1])
-root = tree.getroot()
-
-targets = [
-    ("INSTRUCTION", "명령 (Instruction)"),
-    ("LINE",        "라인 (Line)"),
-    ("BRANCH",      "브랜치 (Branch)"),
-    ("METHOD",      "메서드 (Method)"),
-]
-
-rows = {}
-for counter in root.findall("counter"):
-    t = counter.get("type")
-    if t in dict(targets):
-        missed  = int(counter.get("missed",  0))
-        covered = int(counter.get("covered", 0))
-        total   = missed + covered
-        pct     = covered / total * 100 if total > 0 else 0.0
-        rows[t] = (covered, total, pct)
-
-instr = rows.get("INSTRUCTION")
-overall_pct = instr[2] if instr else 0.0
-if overall_pct >= 70:
-    badge = "✅ PASS"
-elif overall_pct >= 50:
-    badge = "⚠️ LOW"
-else:
-    badge = "❌ FAIL"
-
-print("## 🧪 Test Coverage")
-print()
-print(f"**전체 명령 커버리지: {overall_pct:.1f}% — {badge}** (기준: ≥ 70%)")
-print()
-print("| 유형 | 커버 | 전체 | 비율 | |")
-print("|------|-----:|-----:|-----:|---|")
-for key, label in targets:
-    if key not in rows:
-        continue
-    cov, tot, pct = rows[key]
-    filled = int(pct / 10)
-    bar = "█" * filled + "░" * (10 - filled)
-    print(f"| {label} | {cov:,} | {tot:,} | {pct:.1f}% | `{bar}` |")
-PYEOF

@@ -2,7 +2,6 @@ plugins {
   java
   id("org.springframework.boot") version "4.0.3"
   id("io.spring.dependency-management") version "1.1.7"
-  jacoco
 }
 
 group = "com.back"
@@ -88,18 +87,4 @@ dependencies {
 
 tasks.withType<Test> {
   useJUnitPlatform()
-  finalizedBy(tasks.jacocoTestReport)
-}
-
-jacoco {
-  toolVersion = "0.8.13" // 0.8.13+ required for Java 25 class files
-}
-
-tasks.jacocoTestReport {
-  dependsOn(tasks.test)
-  reports {
-    xml.required.set(true)
-    html.required.set(true)
-    csv.required.set(false)
-  }
 }
