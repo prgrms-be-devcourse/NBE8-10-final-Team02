@@ -55,6 +55,7 @@ const submitSessionAnswerMock = vi.mocked(submitSessionAnswer);
 const completeSessionMock = vi.mocked(completeSession);
 const pauseSessionMock = vi.mocked(pauseSession);
 const resumeSessionMock = vi.mocked(resumeSession);
+const scrollIntoViewMock = vi.fn();
 
 function createCurrentQuestion(
   overrides?: Partial<InterviewSessionCurrentQuestion>,
@@ -145,7 +146,51 @@ describe('InterviewSessionPage', () => {
     completeSessionMock.mockReset();
     pauseSessionMock.mockReset();
     resumeSessionMock.mockReset();
+    scrollIntoViewMock.mockReset();
     window.sessionStorage.clear();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
+    });
+  });
+
+  it('일반 답변 제출 후 다음 기본 질문으로 넘어가면 입력창으로 다시 포커스한다', async () => {
+    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+    submitSessionAnswerMock.mockResolvedValueOnce({
+      sessionId: 1,
+      questionId: 101,
+      answerOrder: 8,
+      isSkipped: false,
+      submittedAt: '2026-04-07T10:10:00Z',
+    });
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        currentQuestion: createCurrentQuestion({
+          id: 102,
+          questionOrder: 9,
+          questionText: '다음 기본 질문입니다. 직전 사례의 결과를 설명해주세요.',
+        }),
+        totalQuestionCount: 9,
+        answeredQuestionCount: 8,
+        remainingQuestionCount: 1,
+      }),
+    );
+
+    await renderPage();
+
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByRole('textbox'),
+      '이 답변은 다음 기본 질문으로 넘어간 뒤 입력 포커스가 자동으로 돌아오는지 확인하기 위한 충분한 길이의 일반 답변입니다.',
+    );
+    await user.click(screen.getByRole('button', { name: '제출' }));
+
+    await screen.findByText('다음 기본 질문입니다. 직전 사례의 결과를 설명해주세요.');
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).toHaveFocus();
+    });
+    expect(scrollIntoViewMock).toHaveBeenCalled();
   });
 
   it('마지막 일반 답변 제출 후 남은 질문이 없으면 자동으로 complete를 호출한다', async () => {
@@ -238,6 +283,45 @@ describe('InterviewSessionPage', () => {
     expect(screen.getByText('마지막 보완 질문이 추가되었습니다. 이어서 답변을 제출해주세요.')).toBeInTheDocument();
     expect(screen.getByText(completionContext.rootQuestion.questionText)).toBeInTheDocument();
     expect(screen.getByText(completionContext.completionFollowupQuestion.questionText)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).toHaveFocus();
+    });
+    expect(scrollIntoViewMock).toHaveBeenCalled();
+  });
+
+  it('건너뛰기로 다음 질문으로 넘어가도 입력창으로 다시 포커스한다', async () => {
+    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+    submitSessionAnswerMock.mockResolvedValueOnce({
+      sessionId: 1,
+      questionId: 101,
+      answerOrder: 8,
+      isSkipped: true,
+      submittedAt: '2026-04-07T10:10:00Z',
+    });
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        currentQuestion: createCurrentQuestion({
+          id: 103,
+          questionOrder: 9,
+          questionText: '건너뛴 뒤 이어지는 다음 질문입니다.',
+        }),
+        totalQuestionCount: 9,
+        answeredQuestionCount: 8,
+        remainingQuestionCount: 1,
+      }),
+    );
+
+    await renderPage();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '건너뛰기' }));
+
+    await screen.findByText('건너뛴 뒤 이어지는 다음 질문입니다.');
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).toHaveFocus();
+    });
+    expect(scrollIntoViewMock).toHaveBeenCalled();
   });
 
   it('completion follow-up 모드에서 transcript 접기와 펼치기가 동작한다', async () => {
@@ -387,6 +471,8 @@ describe('InterviewSessionPage', () => {
     expect(screen.queryByText('세션 상태')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '일시정지' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '세션 종료' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox')).not.toHaveFocus();
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
   });
 
   it('수동 paused 상태와 자동 일시정지 추정 상태를 다른 문구로 보여준다', async () => {
