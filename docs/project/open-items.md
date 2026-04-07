@@ -28,6 +28,10 @@ applies_to: implementation-blockers
 ### 정리 결과
 - 요구사항 초안의 `필요 시 PR, 이슈 등 활동 내역 수집` 문구는 canonical 기준에서 후속 확장으로 정리했다.
 - 현재 버전의 저장 구조와 화면 흐름은 commit 중심 입력에 맞춘다.
+- **[후속 확장 구현 진행 중 — feat/github-metadata-pipeline]**
+  - GitHub Metadata 파이프라인 (Issue/PR/Review 수집 → AI 프롬프트 병합) 구현 시작.
+  - OAuth scope 확인 결과: `public_repo` 으로 PR Review 포함 모든 메타데이터 접근 가능 — 추가 동의 불필요.
+  - 설계 문서: `docs/personal-design/github-metadata-pipeline.md`
 
 ### 이유
 - PR, Issue까지 포함하면 저장 구조, 권한 scope, 화면 선택 UI, 동기화 정책이 모두 다시 커진다.

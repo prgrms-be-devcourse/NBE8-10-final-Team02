@@ -385,6 +385,26 @@ applies_to: storage-schema
 - `(knowledge_item_id, knowledge_tag_id)`는 유일해야 한다 (복합 PK).
 - knowledge_items 삭제 시 함께 삭제한다 (CASCADE).
 
+## 3.21 merged_summaries
+
+필수 컬럼
+- `user_id` — FK → users(id)
+- `merged_version` — integer, 버전 카운터
+- `included_repo_ids` — jsonb, 대상 repo ID 배열
+- `data` — jsonb, portfolio-summary.schema.json 형식 AI 출력 요약
+- `merge_strategy` — varchar(20), `json_aggregate` | `llm_rewrite`
+- `generated_at` — timestamptz
+
+선택 컬럼
+- `github_activity` — **jsonb, nullable** (V14 추가)
+  GitHub Issue/PR 메타데이터 수집 결과 통계.
+  구조: `{ "total_issues_created": N, "total_prs_authored": N, "total_prs_merged": N, "total_issues_completed": N }`
+  이전 행 및 수집 생략 시 NULL.
+
+비고
+- 기존 행은 `github_activity = NULL`로 초기화 (Flyway V14).
+- `data` JSONB는 portfolio-summary 스키마를 유지하고, GitHub Activity 통계는 별도 컬럼으로 분리한다.
+
 ## 4. enum 후보
 
 - `user_status`: `active`, `withdrawn`

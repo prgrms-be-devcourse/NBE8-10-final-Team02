@@ -17,6 +17,7 @@ public class TestcontainersConfiguration {
     PostgreSQLContainer<?> postgresContainer() {
         return new PostgreSQLContainer<>("postgres:16-alpine")
             .withTmpFs(Map.of("/var/lib/postgresql/data", "rw"))
+            .withCommand("postgres -c max_connections=300")
             .withReuse(true);
     }
 

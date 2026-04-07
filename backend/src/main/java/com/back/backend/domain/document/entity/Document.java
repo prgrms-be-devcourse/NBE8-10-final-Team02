@@ -63,7 +63,7 @@ public class Document extends BaseEntity {
     @Column(name = "mime_type", nullable = false, length = 255)
     private String mimeType;
 
-    /** 파일 크기 (bytes). 최대 10MB 제한 검증에 사용된다. */
+    /** 파일 크기 (bytes). 최대 50MB 제한 검증에 사용된다. */
     @Column(name = "file_size_bytes", nullable = false)
     private Long fileSizeBytes;
 
