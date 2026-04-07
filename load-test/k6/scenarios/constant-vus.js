@@ -14,7 +14,7 @@
 import http from 'k6/http';
 import { sleep } from 'k6';
 import { ENDPOINTS } from '../lib/endpoints.js';
-import { getAuthHeaders } from '../lib/auth.js';
+import { acquireToken, getAuthHeaders } from '../lib/auth.js';
 import { assertResponse, AI_TIMEOUT } from '../lib/checks.js';
 
 const VUS      = parseInt(__ENV.VUS || '10');
@@ -37,8 +37,12 @@ export const options = {
   },
 };
 
-export default function () {
-  const auth = getAuthHeaders();
+export function setup() {
+  return { token: acquireToken() };
+}
+
+export default function ({ token }) {
+  const auth = getAuthHeaders(token);
   if (!auth['Authorization']) {
     console.warn('TEST_JWT_TOKEN 없음 — AI 엔드포인트 테스트 skip');
     sleep(1);

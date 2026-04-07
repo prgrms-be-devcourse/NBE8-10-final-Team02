@@ -72,7 +72,7 @@ public class JwtTokenService {
         return createToken(userId, refreshTtl);
     }
 
-    private String createToken(long userId, Duration ttl) {
+    public String createToken(long userId, Duration ttl) {
         Instant now = clock.instant();
         Instant exp = now.plus(ttl);
 

@@ -90,9 +90,9 @@ resource "aws_instance" "load_test" {
     cpu_credits = "standard"
   }
 
-  # 루트 볼륨 20GB (Docker 이미지 레이어 공간 확보)
+  # 루트 볼륨 30GB (AMI 스냅샷 최소 요구 크기)
   root_block_device {
-    volume_size = 20
+    volume_size = 30
     volume_type = "gp3"
   }
 
