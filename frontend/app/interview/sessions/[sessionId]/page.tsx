@@ -727,7 +727,7 @@ export default function InterviewSessionPage() {
       ? '직전 답변을 더 구체화해 설명하는 꼬리 질문입니다.'
       : '지금 이 질문에 대한 답변을 작성하면 다음 질문은 서버의 currentQuestion 기준으로 이어집니다.';
   const completeButtonDescription = session?.status === 'completed'
-    ? '세션 종료는 완료됐습니다. 결과 재확인으로 최신 리포트 상태를 확인합니다.'
+    ? '세션 종료는 완료됐습니다. 결과 화면에서 잠깐 자동으로 다시 확인한 뒤, 더 오래 걸리면 결과 재확인으로 최신 리포트 상태를 확인합니다.'
     : session?.status === 'feedback_completed'
     ? '세션 종료와 피드백 생성이 모두 끝났습니다.'
     : needsManualCompleteAfterCompletionAnswer
@@ -740,7 +740,7 @@ export default function InterviewSessionPage() {
     : session?.status === 'paused'
     ? '현재 일시정지 상태입니다. 재개 액션으로만 다시 진행 상태로 돌아갈 수 있습니다.'
     : session?.status === 'completed'
-    ? '세션 상태 전이는 끝났습니다. 이제 결과 재확인 흐름으로 최신 리포트 상태를 확인합니다.'
+    ? '세션 상태 전이는 끝났습니다. 결과 화면에서 자동 재확인 후 수동 재확인으로 최신 리포트 상태를 확인합니다.'
     : session?.status === 'feedback_completed'
     ? '세션과 결과가 모두 완료됐습니다. 결과 보기로 리포트를 다시 확인하세요.'
     : '현재 질문이 준비되면 진행 상태로 전환됩니다.';
