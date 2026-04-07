@@ -8,7 +8,7 @@
  *       시드 레포 ID: 999001 (express ~5MB), 999002 (flask ~30MB), 999003 (spring-boot ~150MB)
  *
  * 실행:
- *   VUS=10 BASE_URL=http://43.201.36.166:8080 ./run.sh github-analysis
+ *   VUS=10 BASE_URL=http://43.201.36.166:8080 TEST_JWT_TOKEN=<token> TEST_API_KEY=<apiKey> ./run.sh github-analysis
  */
 import http from 'k6/http';
 import { sleep, check } from 'k6';
@@ -42,11 +42,11 @@ export const options = {
 };
 
 export function setup() {
-  return { token: acquireToken() };
+  return acquireToken(); // { token, apiKey }
 }
 
-export default function ({ token }) {
-  const auth = getAuthHeaders(token);
+export default function ({ token, apiKey }) {
+  const headers = getAuthHeaders({ token, apiKey });
 
   // VU별로 레포 분산 (경량/중량/대형 골고루)
   const repo = REPOS[(__VU - 1) % REPOS.length];
@@ -55,7 +55,7 @@ export default function ({ token }) {
   const triggerRes = http.post(
     ENDPOINTS.analyzeRepository(repo.id),
     null,
-    { headers: auth, tags: { type: 'analyze-trigger', size: repo.size } }
+    { headers: headers, tags: { type: 'analyze-trigger', size: repo.size } }
   );
   const triggered = assertResponse(triggerRes, [202], 3000);
   if (!triggered) {
@@ -73,7 +73,7 @@ export default function ({ token }) {
 
     const statusRes = http.get(
       ENDPOINTS.repoSyncStatus(repo.id),
-      { headers: auth, tags: { type: 'status-poll', size: repo.size } }
+      { headers: headers, tags: { type: 'status-poll', size: repo.size } }
     );
     if (statusRes.status !== 200) break;
 
