@@ -221,28 +221,8 @@ export default function QuestionSetDetailPage() {
           >
             지원 준비 상세
           </Link>
-          <button
-            type="button"
-            onClick={handleStartSession}
-            disabled={startingSession || !questionCountValidForSession}
-            className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {startingSession ? '세션 시작 중...' : '모의 면접 시작'}
-          </button>
         </div>
       </div>
-
-      {!questionCountValidForSession && (
-        <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
-          세션 시작은 질문 3개 이상 20개 이하일 때만 가능합니다. 현재 질문 수를 먼저 조정해주세요.
-        </div>
-      )}
-
-      {sessionStartError && (
-        <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
-          {sessionStartError}
-        </div>
-      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
@@ -319,6 +299,27 @@ export default function QuestionSetDetailPage() {
             <p className="mt-4 text-xs leading-5 text-zinc-500">
               질문 순서는 서버가 관리합니다. 질문 추가/삭제 후 새로고침하면 최신 순서대로 다시 표시됩니다.
             </p>
+
+            {!questionCountValidForSession && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                세션 시작은 질문 3개 이상 20개 이하일 때만 가능합니다. 현재 질문 수를 먼저 조정해주세요.
+              </div>
+            )}
+
+            {sessionStartError && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {sessionStartError}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleStartSession}
+              disabled={startingSession || !questionCountValidForSession}
+              className="mt-4 w-full rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {startingSession ? '세션 시작 중...' : '모의 면접 시작'}
+            </button>
           </section>
 
           <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
