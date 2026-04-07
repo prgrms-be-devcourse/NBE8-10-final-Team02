@@ -665,6 +665,8 @@ export default function InterviewSessionPage() {
     session.remainingQuestionCount === 0 &&
     (session.status === 'in_progress' || session.status === 'paused') &&
     !actionBusy;
+  const showCompletionCard =
+    session?.status === 'in_progress' || session?.status === 'paused';
   const completeButtonDescription = session?.status === 'completed'
     ? '세션 종료는 완료됐습니다. 결과 재확인으로 최신 리포트 상태를 확인합니다.'
     : session?.status === 'feedback_completed'
@@ -770,6 +772,49 @@ export default function InterviewSessionPage() {
             </p>
             <p className={`mt-2 text-sm leading-6 ${sessionStatusSummary.descriptionTone}`}>
               {sessionStatusSummary.description}
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              {session.status === 'in_progress' && (
+                <button
+                  type="button"
+                  onClick={() => void handleTransition('pause')}
+                  disabled={!canPause}
+                  className="rounded-full border border-amber-300 bg-white px-4 py-2.5 text-sm font-medium text-amber-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {transitionMode === 'pause' ? '일시정지 중...' : '일시정지'}
+                </button>
+              )}
+              {session.status === 'paused' && (
+                <button
+                  type="button"
+                  onClick={() => void handleTransition('resume')}
+                  disabled={!canResume}
+                  className="rounded-full border border-green-300 bg-white px-4 py-2.5 text-sm font-medium text-green-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {transitionMode === 'resume' ? '재개 중...' : '재개'}
+                </button>
+              )}
+              {session.status === 'completed' && (
+                <Link
+                  href={`/interview/sessions/${session.id}/result`}
+                  className="rounded-full border border-cyan-300 bg-white px-4 py-2.5 text-sm font-medium text-cyan-900"
+                >
+                  {getSessionActionLabel(session.status)}
+                </Link>
+              )}
+              {session.status === 'feedback_completed' && (
+                <Link
+                  href={`/interview/sessions/${session.id}/result`}
+                  className="rounded-full border border-blue-300 bg-white px-4 py-2.5 text-sm font-medium text-blue-900"
+                >
+                  {getSessionActionLabel(session.status)}
+                </Link>
+              )}
+            </div>
+
+            <p className={`mt-3 text-xs leading-5 ${sessionStatusSummary.descriptionTone}`}>
+              {statusActionDescription}
             </p>
           </div>
         )}
@@ -947,7 +992,7 @@ export default function InterviewSessionPage() {
           </div>
         )}
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr),19rem]">
+        <div className={`mt-6 grid gap-4 ${showCompletionCard ? 'lg:grid-cols-[minmax(0,1fr),19rem]' : ''}`}>
           <div className="rounded-3xl border border-zinc-200 px-4 py-4">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -1039,53 +1084,15 @@ export default function InterviewSessionPage() {
             </div>
           </div>
 
-          <div className="space-y-4">
-            <div className="rounded-3xl border border-zinc-200 px-4 py-4">
-              <p className="text-sm font-semibold text-zinc-900">세션 상태</p>
-              <p className="mt-1 text-xs text-zinc-500">
-                {statusActionDescription}
-              </p>
+          {showCompletionCard && (
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-zinc-200 px-4 py-4">
+                <p className="text-sm font-semibold text-zinc-900">세션 종료</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {completeButtonDescription}
+                </p>
 
-              <div className="mt-4 flex flex-wrap gap-3">
-                {session.status === 'in_progress' && (
-                  <button
-                    type="button"
-                    onClick={() => void handleTransition('pause')}
-                    disabled={!canPause}
-                    className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {transitionMode === 'pause' ? '일시정지 중...' : '일시정지'}
-                  </button>
-                )}
-                {session.status === 'paused' && (
-                  <button
-                    type="button"
-                    onClick={() => void handleTransition('resume')}
-                    disabled={!canResume}
-                    className="rounded-full border border-green-300 bg-green-50 px-4 py-2.5 text-sm font-medium text-green-800 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {transitionMode === 'resume' ? '재개 중...' : '재개'}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-zinc-200 px-4 py-4">
-              <p className="text-sm font-semibold text-zinc-900">세션 종료</p>
-              <p className="mt-1 text-xs text-zinc-500">
-                {completeButtonDescription}
-              </p>
-
-              <div className="mt-4 flex flex-wrap gap-3">
-                {(session.status === 'completed' || session.status === 'feedback_completed') && (
-                  <Link
-                    href={`/interview/sessions/${session.id}/result`}
-                    className="rounded-full border border-blue-300 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-800"
-                  >
-                    {getSessionActionLabel(session.status)}
-                  </Link>
-                )}
-                {(session.status === 'in_progress' || session.status === 'paused') && (
+                <div className="mt-4 flex flex-wrap gap-3">
                   <button
                     type="button"
                     onClick={() => void handleCompleteSession()}
@@ -1094,35 +1101,22 @@ export default function InterviewSessionPage() {
                   >
                     {completingSession ? '세션 종료 중...' : '세션 종료'}
                   </button>
-                )}
-              </div>
+                </div>
 
-              {session.remainingQuestionCount > 0 &&
-                (session.status === 'in_progress' || session.status === 'paused') && (
+                {session.remainingQuestionCount > 0 && (
                   <p className="mt-3 text-sm text-amber-700">
                     남은 질문이 {session.remainingQuestionCount}개라서 아직 세션을 종료할 수 없습니다.
                   </p>
                 )}
 
-              {needsManualCompleteAfterCompletionAnswer && (
-                <p className="mt-3 text-sm text-blue-700">
-                  마지막 보완 질문 답변이 저장되었습니다. 종료 버튼으로 결과 생성을 마무리하세요.
-                </p>
-              )}
-
-              {session.status === 'completed' && (
-                <p className="mt-3 text-sm text-cyan-700">
-                  세션은 종료됐고 결과는 재확인 흐름으로 확인합니다. 세션 종료를 다시 보내지 않고 결과 화면에서 최신 상태를 조회하세요.
-                </p>
-              )}
-
-              {session.status === 'feedback_completed' && (
-                <p className="mt-3 text-sm text-blue-700">
-                  결과 리포트가 준비되었습니다. 결과 보기 버튼으로 이동하세요.
-                </p>
-              )}
+                {needsManualCompleteAfterCompletionAnswer && (
+                  <p className="mt-3 text-sm text-blue-700">
+                    마지막 보완 질문 답변이 저장되었습니다. 종료 버튼으로 결과 생성을 마무리하세요.
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </section>
     </main>
