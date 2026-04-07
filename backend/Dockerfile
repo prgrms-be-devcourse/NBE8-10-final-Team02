@@ -73,9 +73,10 @@ COPY --from=extractor /app/application/ ./
 EXPOSE 8080
 
 # Java 21 이상에서 효율이 좋은 ZGC 사용 및 메모리 최적화 옵션 적용
+ENV SPRING_PROFILES_ACTIVE=prod
+
 ENTRYPOINT ["java", \
   "-XX:+UseZGC", \
   "-XX:MaxRAMPercentage=75", \
   "-XX:InitialRAMPercentage=50", \
-  "-Dspring.profiles.active=prod", \
   "org.springframework.boot.loader.launch.JarLauncher"]
