@@ -3,6 +3,11 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSessions } from '@/api/interview';
+import {
+  getSessionActionLabel,
+  PENDING_RESULT_PANEL_COPY,
+  SESSION_STATUS_BADGE_META,
+} from '@/lib/interview-status-ui';
 import type { InterviewSession, InterviewSessionStatus } from '@/types/interview';
 
 type HistoryFilter = 'all' | 'pending' | 'completed';
@@ -14,22 +19,6 @@ const FILTER_OPTIONS: Array<{ value: HistoryFilter; label: string }> = [
 ];
 
 const ACTIVE_STATUSES = new Set<InterviewSessionStatus>(['in_progress', 'paused']);
-
-const STATUS_LABEL: Record<InterviewSessionStatus, string> = {
-  ready: '준비',
-  in_progress: '진행 중',
-  paused: '일시정지',
-  completed: '결과 준비 중',
-  feedback_completed: '결과 완료',
-};
-
-const STATUS_TONE: Record<InterviewSessionStatus, string> = {
-  ready: 'bg-zinc-100 text-zinc-700',
-  in_progress: 'bg-green-50 text-green-700',
-  paused: 'bg-amber-50 text-amber-700',
-  completed: 'bg-amber-50 text-amber-700',
-  feedback_completed: 'bg-blue-50 text-blue-700',
-};
 
 function formatDateTime(value: string | null) {
   if (!value) {
@@ -141,18 +130,25 @@ export default function InterviewHistoryPage() {
                 질문 세트 #{activeSession.questionSetId}
               </h2>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-green-900">
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[activeSession.status]}`}>
-                  {STATUS_LABEL[activeSession.status]}
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${SESSION_STATUS_BADGE_META[activeSession.status].tone}`}
+                >
+                  {SESSION_STATUS_BADGE_META[activeSession.status].label}
                 </span>
                 <span>시작 {formatDateTime(activeSession.startedAt)}</span>
               </div>
+              <p className="mt-3 text-sm leading-6 text-green-800">
+                {activeSession.status === 'paused'
+                  ? '같은 질문부터 다시 이어서 진행할 수 있습니다. 재개 버튼으로 현재 세션으로 돌아가세요.'
+                  : '현재 질문은 세션 화면의 currentQuestion 기준으로 이어집니다. 필요하면 세션 화면에서 직접 일시정지할 수 있습니다.'}
+              </p>
             </div>
 
             <Link
               href={`/interview/sessions/${activeSession.id}`}
               className="rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white"
             >
-              {activeSession.status === 'paused' ? '세션 재개' : '세션 이어서 진행'}
+              {getSessionActionLabel(activeSession.status)}
             </Link>
           </div>
         </section>
@@ -196,8 +192,10 @@ export default function InterviewHistoryPage() {
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[session.status]}`}>
-                        {STATUS_LABEL[session.status]}
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${SESSION_STATUS_BADGE_META[session.status].tone}`}
+                      >
+                        {SESSION_STATUS_BADGE_META[session.status].label}
                       </span>
                       <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
                         질문 세트 #{session.questionSetId}
@@ -217,8 +215,11 @@ export default function InterviewHistoryPage() {
                         )}
                       </div>
                     ) : (
-                      <div className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                        결과가 아직 준비 중일 수 있습니다. 상세 화면에서 다시 확인할 수 있습니다.
+                      <div className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
+                        <p className="font-medium">{PENDING_RESULT_PANEL_COPY.title}</p>
+                        <p className="mt-1">
+                          세션은 종료되었고 결과는 아직 지연될 수 있습니다. 상세 화면에서 {PENDING_RESULT_PANEL_COPY.actionLabel} 흐름을 사용하세요.
+                        </p>
                       </div>
                     )}
                   </div>
@@ -227,7 +228,7 @@ export default function InterviewHistoryPage() {
                     href={`/interview/history/${session.id}`}
                     className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700"
                   >
-                    상세 보기
+                    {getSessionActionLabel(session.status)}
                   </Link>
                 </div>
               </article>
