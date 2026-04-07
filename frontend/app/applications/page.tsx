@@ -81,6 +81,24 @@ export default function ApplicationsPage() {
     }
   }
 
+  function stopCardNavigation(event: React.MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+  }
+
+  function navigateToApplicationDetail(applicationId: number) {
+    router.push(`/applications/${applicationId}`);
+  }
+
+  function handleCardKeyDown(
+    event: React.KeyboardEvent<HTMLDivElement>,
+    applicationId: number,
+  ) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      navigateToApplicationDetail(applicationId);
+    }
+  }
+
   if (loading) {
     return (
       <main className="mx-auto max-w-2xl px-4 py-12">
@@ -109,7 +127,7 @@ export default function ApplicationsPage() {
         <div>
           <h1 className="text-xl font-semibold">지원 준비</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            지원할 회사와 직무를 등록하고 AI 자소서를 생성하세요.
+            지원 정보를 정리하고 자소서 작성과 면접 준비 흐름으로 이어가세요.
           </p>
         </div>
         <button
@@ -185,76 +203,103 @@ export default function ApplicationsPage() {
         </div>
       ) : (
         <ul className="flex flex-col gap-3">
-          {applications.map((app) => (
-            <li key={app.id} className="rounded border border-zinc-200 px-5 py-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => router.push(`/applications/${app.id}`)}
-                      className="text-sm font-medium text-zinc-900 truncate hover:underline text-left"
-                    >
-                      {app.applicationTitle || app.jobRole}
-                    </button>
-                    <span
-                      className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${
-                        app.status === 'ready'
-                          ? 'bg-green-50 text-green-700'
-                          : 'bg-zinc-100 text-zinc-500'
-                      }`}
-                    >
-                      {STATUS_LABEL[app.status] ?? app.status}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-zinc-500">
-                    {app.companyName && <span>{app.companyName}</span>}
-                    <span>{app.jobRole}</span>
-                    <span>{new Date(app.createdAt).toLocaleDateString('ko-KR')}</span>
-                  </div>
-                </div>
+          {applications.map((app) => {
+            const primaryAction =
+              app.status === 'ready'
+                ? {
+                    label: '면접 준비',
+                    href: `/applications/${app.id}/question-sets/new`,
+                    className: 'rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white',
+                  }
+                : {
+                    label: '자소서 이어쓰기',
+                    href: `/applications/${app.id}`,
+                    className:
+                      'rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700',
+                  };
 
-                <div className="flex shrink-0 items-center gap-2">
-                  {app.status === 'ready' && (
-                    <button
-                      onClick={() => router.push(`/applications/${app.id}/question-sets/new`)}
-                      className="rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700"
-                    >
-                      질문 생성
-                    </button>
-                  )}
-                  <button
-                    onClick={() => router.push(`/applications/${app.id}/generate`)}
-                    className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white"
-                  >
-                    자소서 생성
-                  </button>
-                  {deleteTarget === app.id ? (
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleDelete(app.id)}
-                        className="rounded bg-red-600 px-2 py-1 text-xs text-white"
+            return (
+              <li key={app.id} className="rounded border border-zinc-200">
+                <div
+                  role="link"
+                  tabIndex={0}
+                  onClick={() => navigateToApplicationDetail(app.id)}
+                  onKeyDown={(event) => handleCardKeyDown(event, app.id)}
+                  className="flex cursor-pointer items-start justify-between gap-3 px-5 py-4 transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-300 focus:ring-offset-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium text-zinc-900">
+                        {app.applicationTitle || app.jobRole}
+                      </p>
+                      <span
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${
+                          app.status === 'ready'
+                            ? 'bg-green-50 text-green-700'
+                            : 'bg-zinc-100 text-zinc-500'
+                        }`}
                       >
-                        확인
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget(null)}
-                        className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600"
-                      >
-                        취소
-                      </button>
+                        {STATUS_LABEL[app.status] ?? app.status}
+                      </span>
                     </div>
-                  ) : (
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-zinc-500">
+                      {app.companyName && <span>{app.companyName}</span>}
+                      <span>{app.jobRole}</span>
+                      <span>{new Date(app.createdAt).toLocaleDateString('ko-KR')}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
                     <button
-                      onClick={() => setDeleteTarget(app.id)}
-                      className="rounded border border-zinc-300 px-2 py-1.5 text-xs text-zinc-500 hover:text-red-600 hover:border-red-300"
+                      type="button"
+                      onClick={(event) => {
+                        stopCardNavigation(event);
+                        router.push(primaryAction.href);
+                      }}
+                      className={primaryAction.className}
                     >
-                      삭제
+                      {primaryAction.label}
                     </button>
-                  )}
+                    {deleteTarget === app.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            stopCardNavigation(event);
+                            void handleDelete(app.id);
+                          }}
+                          className="rounded bg-red-600 px-2 py-1 text-xs text-white"
+                        >
+                          확인
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            stopCardNavigation(event);
+                            setDeleteTarget(null);
+                          }}
+                          className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600"
+                        >
+                          취소
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          stopCardNavigation(event);
+                          setDeleteTarget(app.id);
+                        }}
+                        className="rounded border border-zinc-300 px-2 py-1.5 text-xs text-zinc-500 hover:border-red-300 hover:text-red-600"
+                      >
+                        삭제
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
 

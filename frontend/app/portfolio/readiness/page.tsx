@@ -4,17 +4,19 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { getPortfolioReadiness } from '@/api/portfolio';
 import { getRepositories } from '@/api/github';
+import { getSessions } from '@/api/interview';
 import { useBatchAnalysis } from '@/context/BatchAnalysisContext';
+import { resolveReadinessCta } from '@/lib/readiness-cta';
 import RepoSummaryModal from '@/components/RepoSummaryModal';
 import type {
   PortfolioConnectionStatus,
   PortfolioMissingItem,
-  PortfolioNextRecommendedAction,
   PortfolioReadinessCountMetric,
   PortfolioReadinessDashboard,
   PortfolioScopeStatus,
 } from '@/types/portfolio';
 import type { GithubRepository } from '@/types/github';
+import type { InterviewSession } from '@/types/interview';
 
 const connectionStatusLabel: Record<PortfolioConnectionStatus, string> = {
   connected: '연결됨',
@@ -35,37 +37,6 @@ const missingItemLabel: Record<PortfolioMissingItem, string> = {
   document_extract_success: '추출 성공 문서',
 };
 
-const nextActionConfig: Record<
-  PortfolioNextRecommendedAction,
-  { href: string; label: string; helper: string }
-> = {
-  connect_github: {
-    href: '/portfolio/github',
-    label: 'GitHub 연결하기',
-    helper: 'GitHub 연동을 먼저 완료하면 repository와 커밋 데이터를 활용할 수 있습니다.',
-  },
-  select_repository: {
-    href: '/portfolio/repositories',
-    label: 'repository 선택하기',
-    helper: '활용할 repository를 선택해야 GitHub 소스를 지원 준비에 연결할 수 있습니다.',
-  },
-  upload_document: {
-    href: '/portfolio/documents',
-    label: '문서 업로드하기',
-    helper: '문서 업로드 후 텍스트 추출이 완료되면 자소서와 면접 준비에 바로 사용할 수 있습니다.',
-  },
-  retry_document_extraction: {
-    href: '/portfolio/documents',
-    label: '문서 상태 확인하기',
-    helper: '추출 성공 문서가 아직 없어 문서 업로드 화면에서 실패 문서를 다시 확인해야 합니다.',
-  },
-  start_application: {
-    href: '/applications',
-    label: '지원 준비 시작',
-    helper: '현재 기준으로 바로 지원 준비 흐름으로 넘어갈 수 있습니다.',
-  },
-};
-
 function renderMetric(metric: PortfolioReadinessCountMetric, suffix = '개') {
   if (metric.status === 'not_ready' || metric.value == null) {
     return '준비 중';
@@ -75,6 +46,7 @@ function renderMetric(metric: PortfolioReadinessCountMetric, suffix = '개') {
 
 export default function PortfolioReadinessPage() {
   const [dashboard, setDashboard] = useState<PortfolioReadinessDashboard | null>(null);
+  const [sessions, setSessions] = useState<InterviewSession[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,11 +62,13 @@ export default function PortfolioReadinessPage() {
       setError(null);
 
       try {
-        const [data, { data: allRepos }] = await Promise.all([
+        const [data, { data: allRepos }, interviewSessions] = await Promise.all([
           getPortfolioReadiness(),
           getRepositories({ selected: true, size: 1000 }),
+          getSessions().catch(() => null),
         ]);
         setDashboard(data);
+        setSessions(interviewSessions);
         setCompletedRepos(
           allRepos.filter((r) => r.hasSummary)
         );
@@ -131,9 +105,18 @@ export default function PortfolioReadinessPage() {
     );
   }
 
-  const action = nextActionConfig[dashboard.readiness.nextRecommendedAction];
+  const resolvedCta = resolveReadinessCta({
+    nextRecommendedAction: dashboard.readiness.nextRecommendedAction,
+    sessions,
+    surface: 'dashboard',
+  });
   const canStart = dashboard.readiness.canStartApplication;
   const hasMissingItems = dashboard.readiness.missingItems.length > 0;
+  const summaryHeadline = hasMissingItems
+    ? '지원 준비 전에 보완이 필요한 항목이 있습니다.'
+    : resolvedCta.isSessionPriority
+      ? '지원 준비는 가능하며, 먼저 복귀할 면접 세션이 있습니다.'
+      : '현재 기준으로 지원 준비를 시작할 수 있습니다.';
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10">
@@ -154,19 +137,32 @@ export default function PortfolioReadinessPage() {
             </div>
           </div>
 
-          <Link
-            href={action.href}
-            className="inline-flex items-center justify-center rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white"
-          >
-            {action.label}
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href={resolvedCta.primaryAction.href}
+              className="inline-flex items-center justify-center rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white"
+            >
+              {resolvedCta.primaryAction.label}
+            </Link>
+            {resolvedCta.secondaryAction && (
+              <Link
+                href={resolvedCta.secondaryAction.href}
+                className="inline-flex items-center justify-center rounded-full border border-zinc-300 px-5 py-2.5 text-sm font-medium text-zinc-700"
+              >
+                {resolvedCta.secondaryAction.label}
+              </Link>
+            )}
+          </div>
         </div>
 
         <div className="mt-6 rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3">
           <p className="text-sm font-medium text-zinc-900">
-            {canStart ? '현재 기준으로 지원 준비를 시작할 수 있습니다.' : '지원 준비 전에 보완이 필요한 항목이 있습니다.'}
+            {summaryHeadline}
           </p>
-          <p className="mt-1 text-sm text-zinc-500">{action.helper}</p>
+          <p className="mt-1 text-sm text-zinc-500">{resolvedCta.primaryAction.helper}</p>
+          {canStart && resolvedCta.sessionNotice && (
+            <p className="mt-2 text-sm text-blue-700">{resolvedCta.sessionNotice}</p>
+          )}
         </div>
       </section>
 
@@ -258,11 +254,19 @@ export default function PortfolioReadinessPage() {
 
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
-              href={action.href}
+              href={resolvedCta.primaryAction.href}
               className="inline-flex items-center rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
             >
-              {action.label}
+              {resolvedCta.primaryAction.label}
             </Link>
+            {resolvedCta.secondaryAction && (
+              <Link
+                href={resolvedCta.secondaryAction.href}
+                className="inline-flex items-center rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700"
+              >
+                {resolvedCta.secondaryAction.label}
+              </Link>
+            )}
             <Link
               href="/portfolio/repositories"
               className="inline-flex items-center rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700"

@@ -217,6 +217,9 @@ export default function ApplicationDetailPage() {
           {application.companyName && <span>{application.companyName}</span>}
           <span>{application.jobRole}</span>
         </div>
+        <p className="mt-3 text-sm text-zinc-500">
+          이 화면에서 소스를 연결하고 문항을 정리한 뒤, 자소서 작성 화면으로 이동합니다.
+        </p>
       </div>
 
       {/* ── STEP 1: 소스 연결 ──────────────── */}
@@ -400,7 +403,7 @@ export default function ApplicationDetailPage() {
       <section className="rounded border border-zinc-200 px-5 py-5">
         <div className="mb-3 flex items-center gap-2">
           <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">Step 3</span>
-          <h2 className="text-sm font-semibold">AI 자소서 생성</h2>
+          <h2 className="text-sm font-semibold">자소서 작성 화면 이동</h2>
         </div>
 
         {!hasQuestions ? (
@@ -410,13 +413,13 @@ export default function ApplicationDetailPage() {
         ) : (
           <>
             <p className="mb-3 text-sm text-zinc-500">
-              등록된 {questions.length}개 문항에 대해 AI가 자소서 답변을 생성합니다.
+              등록된 {questions.length}개 문항을 기준으로 자소서 작성 전용 화면에서 생성과 재생성을 진행합니다.
             </p>
             <button
               onClick={() => router.push(`/applications/${applicationId}/generate`)}
               className="w-full rounded bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white"
             >
-              AI 자소서 생성하기
+              자소서 작성 화면으로 이동
             </button>
           </>
         )}

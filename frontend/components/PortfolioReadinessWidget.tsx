@@ -6,14 +6,16 @@ import { useEffect, useState } from 'react';
 
 // --- API & Types Imports ---
 import { getPortfolioReadiness, UnauthenticatedError } from '@/api/portfolio';
+import { getSessions } from '@/api/interview';
 import { useAiStatus } from '@/hooks/useAiStatus';
+import { resolveReadinessCta } from '@/lib/readiness-cta';
 import type {
   PortfolioConnectionStatus,
   PortfolioMissingItem,
-  PortfolioNextRecommendedAction,
   PortfolioReadinessDashboard,
 } from '@/types/portfolio';
 import type { AiProviderStatus } from '@/types/aistatus';
+import type { InterviewSession } from '@/types/interview';
 
 // ==========================================
 // 1. Constants & Helpers
@@ -28,14 +30,6 @@ const missingItemLabel: Record<PortfolioMissingItem, string> = {
   selected_repository: 'repository 선택',
   document_source: '문서 업로드',
   document_extract_success: '문서 추출 성공',
-};
-
-const nextActionConfig: Record<PortfolioNextRecommendedAction, { href: string; label: string }> = {
-  connect_github: { href: '/portfolio/github', label: 'GitHub 연결' },
-  select_repository: { href: '/portfolio/repositories', label: 'repository 선택' },
-  upload_document: { href: '/portfolio/documents', label: '문서 업로드' },
-  retry_document_extraction: { href: '/portfolio/documents', label: '문서 상태 확인' },
-  start_application: { href: '/applications', label: '지원 준비 시작' },
 };
 
 const aiStatusColors: Record<AiProviderStatus, string> = {
@@ -83,6 +77,7 @@ export default function PortfolioReadinessWidget() {
 
   // Portfolio States
   const [dashboard, setDashboard] = useState<PortfolioReadinessDashboard | null>(null);
+  const [sessions, setSessions] = useState<InterviewSession[] | null>(null);
   const [loadingPortfolio, setLoadingPortfolio] = useState(true);
   const [errorPortfolio, setErrorPortfolio] = useState<string | null>(null);
   const [unauthenticated, setUnauthenticated] = useState(false);
@@ -97,8 +92,12 @@ export default function PortfolioReadinessWidget() {
       setLoadingPortfolio(true);
       setErrorPortfolio(null);
       try {
-        const data = await getPortfolioReadiness();
+        const [data, interviewSessions] = await Promise.all([
+          getPortfolioReadiness(),
+          getSessions().catch(() => null),
+        ]);
         setDashboard(data);
+        setSessions(interviewSessions);
       } catch (err) {
         if (err instanceof UnauthenticatedError) {
           setUnauthenticated(true);
@@ -150,7 +149,13 @@ export default function PortfolioReadinessWidget() {
     );
   }
 
-  const nextAction = nextActionConfig[dashboard.readiness.nextRecommendedAction];
+  const resolvedCta = resolveReadinessCta({
+    nextRecommendedAction: dashboard.readiness.nextRecommendedAction,
+    sessions,
+    surface: 'widget',
+  });
+  const actionDisabledByAi =
+    !!aiStatus && !aiStatus.available && resolvedCta.primaryAction.href === '/applications';
 
   // --- Render: Main Widget ---
   return (
@@ -207,6 +212,15 @@ export default function PortfolioReadinessWidget() {
         <p className="text-xs font-medium text-zinc-500">부족한 항목</p>
         <p className="mt-1 text-sm text-zinc-700">{formatMissingItems(dashboard.readiness.missingItems)}</p>
       </div>
+
+      {resolvedCta.isSessionPriority && resolvedCta.sessionNotice && (
+        <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-3 text-sm">
+          <p className="font-medium text-blue-900">{resolvedCta.sessionNotice}</p>
+          <p className="mt-1 text-xs text-blue-700">
+            readiness 추천은 그대로 유지하고, 이 위젯에서는 복귀 가능한 세션을 먼저 보여줍니다.
+          </p>
+        </div>
+      )}
 
       {/* 구분선 */}
       <hr className="my-5 border-zinc-100" />
@@ -282,16 +296,27 @@ export default function PortfolioReadinessWidget() {
 
       {/* 3. 하단 액션 버튼 */}
       <Link
-        href={nextAction.href}
+        href={resolvedCta.primaryAction.href}
+        aria-disabled={actionDisabledByAi}
+        tabIndex={actionDisabledByAi ? -1 : undefined}
         className={`mt-5 inline-flex w-full items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium text-white transition-colors
-          ${aiStatus && !aiStatus.available && nextAction.href === '/applications'
+          ${actionDisabledByAi
           ? 'pointer-events-none bg-zinc-400'
           : 'bg-zinc-900 hover:bg-zinc-800'}`}
       >
-        {aiStatus && !aiStatus.available && nextAction.href === '/applications'
+        {actionDisabledByAi
           ? 'AI 기능 대기 중...'
-          : nextAction.label}
+          : resolvedCta.primaryAction.label}
       </Link>
+
+      {resolvedCta.secondaryAction && (
+        <Link
+          href={resolvedCta.secondaryAction.href}
+          className="mt-3 inline-flex items-center text-xs font-medium text-zinc-600 underline"
+        >
+          {resolvedCta.secondaryAction.label}
+        </Link>
+      )}
     </div>
   );
 }

@@ -1,15 +1,6 @@
 import Link from 'next/link';
+import { RESULT_STATUS_BADGE_META } from '@/lib/interview-status-ui';
 import type { FeedbackTag, InterviewResult } from '@/types/interview';
-
-const STATUS_LABEL: Record<InterviewResult['status'], string> = {
-  completed: '결과 준비 중',
-  feedback_completed: '피드백 완료',
-};
-
-const STATUS_TONE: Record<InterviewResult['status'], string> = {
-  completed: 'bg-amber-50 text-amber-700',
-  feedback_completed: 'bg-blue-50 text-blue-700',
-};
 
 const TAG_CATEGORY_LABEL: Record<FeedbackTag['tagCategory'], string> = {
   content: '내용',
@@ -102,8 +93,10 @@ export default function InterviewResultReport({
 
       <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[result.status]}`}>
-            {STATUS_LABEL[result.status]}
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-medium ${RESULT_STATUS_BADGE_META[result.status].tone}`}
+          >
+            {RESULT_STATUS_BADGE_META[result.status].label}
           </span>
           <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
             세션 #{result.sessionId}
