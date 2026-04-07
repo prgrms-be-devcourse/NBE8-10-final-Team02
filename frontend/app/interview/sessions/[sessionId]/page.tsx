@@ -265,12 +265,26 @@ function syncMessagesWithCurrentQuestion(
   return [...previousMessages, createQuestionMessage(session.currentQuestion)];
 }
 
+function getTranscriptMessages(messages: ChatMessage[], currentQuestionId: number | null): ChatMessage[] {
+  if (currentQuestionId === null) {
+    return messages;
+  }
+
+  const hasCurrentQuestionAnswer = messages.some(
+    (message) => message.role === 'answer' && message.questionId === currentQuestionId,
+  );
+
+  return messages.filter(
+    (message) => message.role !== 'question' || message.questionId !== currentQuestionId || hasCurrentQuestionAnswer,
+  );
+}
+
 export default function InterviewSessionPage() {
   const params = useParams();
   const router = useRouter();
   const sessionId = Number(params.sessionId);
   const skipNextDraftPersistRef = useRef(false);
-  const previousCompletionModeRef = useRef(false);
+  const transcriptInitializedRef = useRef(false);
   const answerSectionRef = useRef<HTMLDivElement | null>(null);
   const answerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingQuestionFocusRef = useRef<PendingQuestionFocusRequest | null>(null);
@@ -294,10 +308,18 @@ export default function InterviewSessionPage() {
   const currentQuestionId = session?.currentQuestion?.id ?? null;
   const completionFollowupContext = session?.completionFollowupContext ?? null;
   const isCompletionFollowupMode = !!completionFollowupContext;
-  const latestSystemMessage = [...messages].reverse().find((message) => message.role === 'system') ?? null;
+  const transcriptMessages = getTranscriptMessages(messages, currentQuestionId);
+  const latestTranscriptSystemMessage =
+    [...transcriptMessages].reverse().find((message) => message.role === 'system') ?? null;
+  const hasTranscriptHistory = transcriptMessages.length > 0;
 
   useEffect(() => {
     setMessages(readStoredMessages(sessionId));
+  }, [sessionId]);
+
+  useEffect(() => {
+    transcriptInitializedRef.current = false;
+    setTranscriptCollapsed(false);
   }, [sessionId]);
 
   useEffect(() => {
@@ -399,16 +421,13 @@ export default function InterviewSessionPage() {
   }, [loadSession]);
 
   useEffect(() => {
-    if (isCompletionFollowupMode && !previousCompletionModeRef.current) {
-      setTranscriptCollapsed(true);
+    if (!session || transcriptInitializedRef.current) {
+      return;
     }
 
-    if (!isCompletionFollowupMode && previousCompletionModeRef.current) {
-      setTranscriptCollapsed(false);
-    }
-
-    previousCompletionModeRef.current = isCompletionFollowupMode;
-  }, [isCompletionFollowupMode]);
+    setTranscriptCollapsed(hasTranscriptHistory);
+    transcriptInitializedRef.current = true;
+  }, [hasTranscriptHistory, session]);
 
   function formatApiError(err: unknown, fallbackMessage: string) {
     if (err instanceof InterviewApiError) {
@@ -690,6 +709,9 @@ export default function InterviewSessionPage() {
     !actionBusy;
   const showCompletionCard =
     session?.status === 'in_progress' || session?.status === 'paused';
+  const currentQuestionHint = session?.currentQuestion?.questionType === 'follow_up'
+    ? '직전 답변을 더 구체화해 설명하는 꼬리 질문입니다.'
+    : '지금 이 질문에 대한 답변을 작성하면 다음 질문은 서버의 currentQuestion 기준으로 이어집니다.';
   const completeButtonDescription = session?.status === 'completed'
     ? '세션 종료는 완료됐습니다. 결과 재확인으로 최신 리포트 상태를 확인합니다.'
     : session?.status === 'feedback_completed'
@@ -869,112 +891,99 @@ export default function InterviewSessionPage() {
           </div>
         )}
 
-        <div className="mt-6 rounded-3xl border border-zinc-200 bg-zinc-50/60 px-4 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-zinc-900">면접 채팅</p>
-              <p className="mt-1 text-xs text-zinc-500">
-                질문은 left bubble, 답변은 right bubble, 상태 안내는 system bubble로 표시합니다.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {isCompletionFollowupMode && (
-                <button
-                  type="button"
-                  onClick={() => setTranscriptCollapsed((current) => !current)}
-                  className="rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm"
-                >
-                  {transcriptCollapsed ? '기존 채팅 펼치기' : '기존 채팅 접기'}
-                </button>
-              )}
-              {session.currentQuestion && (
-                <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm">
-                  현재 Q{session.currentQuestion.questionOrder}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {transcriptCollapsed ? (
-            <div className="mt-4 rounded-3xl border border-dashed border-zinc-200 bg-white px-4 py-5 text-sm text-zinc-500">
-              <p>기존 질문/답변 기록은 접혀 있습니다. 필요하면 위 버튼으로 다시 펼쳐 확인할 수 있습니다.</p>
-              {latestSystemMessage && (
-                <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  {latestSystemMessage.text}
+        {hasTranscriptHistory && (
+          <div className="mt-6 rounded-3xl border border-zinc-200 bg-zinc-50/60 px-4 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-zinc-900">이전 문맥</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  이전 질문/답변과 상태 안내를 필요할 때만 펼쳐 확인합니다.
                 </p>
-              )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setTranscriptCollapsed((current) => !current)}
+                className="rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm"
+              >
+                {transcriptCollapsed ? '이전 문맥 펼치기' : '이전 문맥 접기'}
+              </button>
             </div>
-          ) : (
-            <div className="mt-4 max-h-[34rem] space-y-3 overflow-y-auto rounded-3xl bg-white px-3 py-4">
-              {messages.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500">
-                  현재 질문을 불러오면 여기서 채팅처럼 이어집니다.
-                </div>
-              )}
 
-              {messages.map((message) => {
-                if (message.role === 'system') {
-                  const toneClass = message.tone === 'success'
-                    ? 'border-green-200 bg-green-50 text-green-700'
-                    : message.tone === 'warning'
-                      ? 'border-amber-200 bg-amber-50 text-amber-800'
-                      : 'border-zinc-200 bg-zinc-50 text-zinc-600';
+            {transcriptCollapsed ? (
+              <div className="mt-4 rounded-3xl border border-dashed border-zinc-200 bg-white px-4 py-5 text-sm text-zinc-500">
+                <p>이전 질문/답변 기록은 접혀 있습니다. 필요하면 위 버튼으로 다시 펼쳐 확인할 수 있습니다.</p>
+                {latestTranscriptSystemMessage && (
+                  <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    {latestTranscriptSystemMessage.text}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="mt-4 max-h-[34rem] space-y-3 overflow-y-auto rounded-3xl bg-white px-3 py-4">
+                {transcriptMessages.map((message) => {
+                  if (message.role === 'system') {
+                    const toneClass = message.tone === 'success'
+                      ? 'border-green-200 bg-green-50 text-green-700'
+                      : message.tone === 'warning'
+                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                        : 'border-zinc-200 bg-zinc-50 text-zinc-600';
 
-                  return (
-                    <div key={message.id} className="flex justify-center">
-                      <div className={`max-w-xl rounded-full border px-4 py-2 text-xs ${toneClass}`}>
-                        {message.text}
+                    return (
+                      <div key={message.id} className="flex justify-center">
+                        <div className={`max-w-xl rounded-full border px-4 py-2 text-xs ${toneClass}`}>
+                          {message.text}
+                        </div>
                       </div>
-                    </div>
-                  );
-                }
+                    );
+                  }
 
-                if (message.role === 'answer') {
+                  if (message.role === 'answer') {
+                    return (
+                      <div key={message.id} className="flex justify-end">
+                        <div className="max-w-2xl rounded-3xl bg-zinc-900 px-4 py-3 text-sm leading-6 text-white shadow-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-[11px] font-medium text-zinc-300">
+                              {message.isSkipped ? '건너뛴 답변' : `답변 ${message.answerOrder ?? ''}`.trim()}
+                            </span>
+                            {message.pending && (
+                              <span className="text-[11px] text-zinc-400">저장 중...</span>
+                            )}
+                          </div>
+                          <p className="mt-2 whitespace-pre-wrap">{message.text}</p>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
-                    <div key={message.id} className="flex justify-end">
-                      <div className="max-w-2xl rounded-3xl bg-zinc-900 px-4 py-3 text-sm leading-6 text-white shadow-sm">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-[11px] font-medium text-zinc-300">
-                            {message.isSkipped ? '건너뛴 답변' : `답변 ${message.answerOrder ?? ''}`.trim()}
-                          </span>
-                          {message.pending && (
-                            <span className="text-[11px] text-zinc-400">저장 중...</span>
+                    <div key={message.id} className="flex justify-start">
+                      <div className="max-w-2xl rounded-3xl border border-zinc-200 bg-white px-4 py-3 text-sm leading-6 text-zinc-900 shadow-sm">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                          {typeof message.questionOrder === 'number' && (
+                            <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium text-zinc-700">
+                              Q{message.questionOrder}
+                            </span>
+                          )}
+                          {message.questionType && (
+                            <span className="rounded-full bg-zinc-100 px-2 py-0.5">
+                              {QUESTION_TYPE_LABEL[message.questionType]}
+                            </span>
+                          )}
+                          {message.difficultyLevel && (
+                            <span className="rounded-full bg-zinc-100 px-2 py-0.5">
+                              {DIFFICULTY_LABEL[message.difficultyLevel] ?? message.difficultyLevel}
+                            </span>
                           )}
                         </div>
                         <p className="mt-2 whitespace-pre-wrap">{message.text}</p>
                       </div>
                     </div>
                   );
-                }
-
-                return (
-                  <div key={message.id} className="flex justify-start">
-                    <div className="max-w-2xl rounded-3xl border border-zinc-200 bg-white px-4 py-3 text-sm leading-6 text-zinc-900 shadow-sm">
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                        {typeof message.questionOrder === 'number' && (
-                          <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium text-zinc-700">
-                            Q{message.questionOrder}
-                          </span>
-                        )}
-                        {message.questionType && (
-                          <span className="rounded-full bg-zinc-100 px-2 py-0.5">
-                            {QUESTION_TYPE_LABEL[message.questionType]}
-                          </span>
-                        )}
-                        {message.difficultyLevel && (
-                          <span className="rounded-full bg-zinc-100 px-2 py-0.5">
-                            {DIFFICULTY_LABEL[message.difficultyLevel] ?? message.difficultyLevel}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-2 whitespace-pre-wrap">{message.text}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {completionFollowupContext && (
           <div className="mt-6 rounded-3xl border border-blue-200 bg-blue-50 px-4 py-4">
@@ -1030,7 +1039,31 @@ export default function InterviewSessionPage() {
         )}
 
         <div className={`mt-6 grid gap-4 ${showCompletionCard ? 'lg:grid-cols-[minmax(0,1fr),19rem]' : ''}`}>
-          <div ref={answerSectionRef} className="rounded-3xl border border-zinc-200 px-4 py-4">
+          <div className="space-y-4">
+            {session.currentQuestion && (
+              <div className="rounded-3xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-700 shadow-sm">
+                    현재 Q{session.currentQuestion.questionOrder}
+                  </span>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm">
+                    {QUESTION_TYPE_LABEL[session.currentQuestion.questionType]}
+                  </span>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm">
+                    {DIFFICULTY_LABEL[session.currentQuestion.difficultyLevel] ?? session.currentQuestion.difficultyLevel}
+                  </span>
+                </div>
+                <p className="mt-4 text-sm font-semibold text-zinc-900">현재 질문</p>
+                <p className="mt-2 text-base font-medium leading-7 text-zinc-900">
+                  {session.currentQuestion.questionText}
+                </p>
+                <p className="mt-3 text-xs leading-5 text-zinc-500">
+                  {currentQuestionHint}
+                </p>
+              </div>
+            )}
+
+            <div ref={answerSectionRef} className="rounded-3xl border border-zinc-200 px-4 py-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-zinc-900">답변 입력</p>
@@ -1120,6 +1153,7 @@ export default function InterviewSessionPage() {
                 {submittingMode === 'skip' ? '건너뛰는 중...' : '건너뛰기'}
               </button>
             </div>
+          </div>
           </div>
 
           {showCompletionCard && (
