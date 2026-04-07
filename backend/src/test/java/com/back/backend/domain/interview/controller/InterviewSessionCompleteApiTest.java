@@ -553,7 +553,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                           "qualityFlags": []
                         }
                         """));
-        given(interviewResultGenerationService.generate(eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
+        given(interviewResultGenerationService.generate(anyLong(), eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
                 .willReturn(new InterviewResultGenerationService.GeneratedInterviewResult(
                         82,
                         "invalid parentQuestionOrder는 무시하고 결과를 생성했습니다.",

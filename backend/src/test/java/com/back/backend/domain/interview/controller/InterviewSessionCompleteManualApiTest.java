@@ -141,6 +141,7 @@ class InterviewSessionCompleteManualApiTest extends ApiTestBase {
         given(interviewResultGenerationService.generate(
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyString()
         )).willReturn(new InterviewResultGenerationService.GeneratedInterviewResult(
@@ -230,6 +231,7 @@ class InterviewSessionCompleteManualApiTest extends ApiTestBase {
 
         then(interviewResultGenerationService).should(never())
                 .generate(
+                        org.mockito.ArgumentMatchers.anyLong(),
                         org.mockito.ArgumentMatchers.anyLong(),
                         org.mockito.ArgumentMatchers.anyLong(),
                         org.mockito.ArgumentMatchers.anyList(),
