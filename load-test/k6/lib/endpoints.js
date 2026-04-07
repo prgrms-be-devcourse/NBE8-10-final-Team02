@@ -29,8 +29,9 @@ export const ENDPOINTS = {
   session:            (id) => `${BASE_URL}/api/v1/interview-sessions/${id}`,
   sessionAnswer:      (id) => `${BASE_URL}/api/v1/interview-sessions/${id}/answers`,
 
-  // ── 내부 관리 (스텁 모드 전환) ────────────────────────────────────────
+  // ── 내부 관리 (스텁 모드 전환 / 테스트 토큰 발급) ──────────────────────
   loadTestEnable:  `${BASE_URL}/internal/load-test/enable`,
   loadTestDisable: `${BASE_URL}/internal/load-test/disable`,
   loadTestStatus:  `${BASE_URL}/internal/load-test/status`,
+  loadTestToken:   `${BASE_URL}/internal/load-test/token`,
 };

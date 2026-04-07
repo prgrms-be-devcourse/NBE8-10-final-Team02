@@ -3,20 +3,33 @@ import { check } from 'k6';
 import { BASE_URL } from './endpoints.js';
 
 /**
- * 테스트용 JWT 토큰.
+ * 부하 테스트 시작 전 JWT 토큰을 확보한다.
  *
- * 부하 테스트는 OAuth2 흐름을 탈 수 없으므로 아래 방식 중 하나를 사용한다.
+ * - TEST_JWT_TOKEN 환경변수가 있으면 그대로 사용.
+ * - 없으면 /internal/load-test/token 엔드포인트에서 자동 발급 (load-test 프로파일 필요).
  *
- * 방법 A (권장): 미리 발급한 장기 토큰을 환경변수로 주입
- *   k6 run -e TEST_JWT_TOKEN=<token> scenarios/ramp-up.js
- *
- * 방법 B: /internal/load-test/token 엔드포인트로 테스트 전용 토큰 발급
- *   → Spring Boot에 해당 엔드포인트 추가 필요 (TODO: 구현 후 주석 해제)
+ * 각 시나리오의 export function setup() 에서 호출하고,
+ * 반환값을 default function(data) 의 data로 넘긴다.
  */
-export function getAuthHeaders() {
-  const token = __ENV.TEST_JWT_TOKEN || '';
+export function acquireToken() {
+  const envToken = __ENV.TEST_JWT_TOKEN || '';
+  if (envToken) {
+    return envToken;
+  }
+
+  const res = http.get(`${BASE_URL}/internal/load-test/token`);
+  const ok = check(res, {
+    'token endpoint 200': (r) => r.status === 200,
+  });
+  if (!ok) {
+    throw new Error(`토큰 발급 실패: ${res.status} ${res.body}`);
+  }
+
+  return res.json('data.token');
+}
+
+export function getAuthHeaders(token) {
   if (!token) {
-    // 토큰 없이도 인증 불필요 엔드포인트 테스트는 가능
     return {};
   }
   return {

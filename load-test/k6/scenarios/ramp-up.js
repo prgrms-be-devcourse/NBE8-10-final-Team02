@@ -10,7 +10,7 @@
 import http from 'k6/http';
 import { sleep } from 'k6';
 import { ENDPOINTS } from '../lib/endpoints.js';
-import { getAuthHeaders } from '../lib/auth.js';
+import { acquireToken, getAuthHeaders } from '../lib/auth.js';
 import { assertHealthy, assertResponse } from '../lib/checks.js';
 
 const MAX_VUS = parseInt(__ENV.VUS || '10');
@@ -34,8 +34,12 @@ export const options = {
   },
 };
 
-export default function () {
-  const auth = getAuthHeaders();
+export function setup() {
+  return { token: acquireToken() };
+}
+
+export default function ({ token }) {
+  const auth = getAuthHeaders(token);
 
   // 1. 헬스 체크
   const health = http.get(ENDPOINTS.health, { tags: { type: 'health' } });
