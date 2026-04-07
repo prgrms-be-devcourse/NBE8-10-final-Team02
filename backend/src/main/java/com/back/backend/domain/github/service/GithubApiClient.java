@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 /**
  * GitHub REST API를 호출하는 클라이언트.
@@ -748,6 +749,97 @@ public class GithubApiClient {
      *
      * @return 다음 페이지 URL, 없으면 null
      */
+    // ─────────────────────────────────────────────────
+    // GitHub GraphQL API — 메타데이터 파이프라인용
+    // ─────────────────────────────────────────────────
+
+    /**
+     * GitHub GraphQL API에 쿼리를 실행하고 파싱되지 않은 응답 Map을 반환한다.
+     *
+     * <p>GraphQL은 HTTP 200 + body 내 {@code errors} 배열로 오류를 전달하므로
+     * 응답 후 {@code errors} 키를 직접 확인해야 한다.
+     *
+     * @param query       GraphQL 쿼리 문자열
+     * @param variables   쿼리 변수 (없으면 빈 Map)
+     * @param accessToken OAuth 액세스 토큰 (로그에 남기지 않음)
+     * @return 파싱된 응답 Map ({@code data}, {@code errors} 포함 가능)
+     * @throws ServiceException GitHub API 호출 자체 실패 시
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> executeGraphQL(
+            String query,
+            Map<String, Object> variables,
+            String accessToken
+    ) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("query", query);
+        body.put("variables", variables);
+
+        try {
+            return restClient.post()
+                    .uri("/graphql")
+                    .header("Authorization", "Bearer " + accessToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+        } catch (RestClientException e) {
+            log.warn("GitHub GraphQL API call failed: {}", e.getMessage());
+            throw new ServiceException(
+                    ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "GitHub API를 일시적으로 사용할 수 없습니다."
+            );
+        }
+    }
+
+    /**
+     * GitHub REST API {@code GET /rate_limit}으로 현재 Rate Limit 상태를 조회한다.
+     *
+     * @param accessToken OAuth 액세스 토큰
+     * @return Rate Limit 정보
+     */
+    public RateLimitInfo getRateLimit(String accessToken) {
+        try {
+            RateLimitResponse response = restClient.get()
+                    .uri("/rate_limit")
+                    .header("Authorization", "Bearer " + accessToken)
+                    .retrieve()
+                    .body(RateLimitResponse.class);
+
+            if (response == null || response.resources() == null) {
+                return new RateLimitInfo(0, 0, Instant.now().plusSeconds(3600));
+            }
+            int graphqlRemaining = response.resources().graphql() != null
+                    ? response.resources().graphql().remaining() : 0;
+            int coreRemaining = response.resources().core() != null
+                    ? response.resources().core().remaining() : 0;
+            Instant resetAt = response.resources().graphql() != null
+                    ? Instant.ofEpochSecond(response.resources().graphql().reset())
+                    : Instant.now().plusSeconds(3600);
+
+            return new RateLimitInfo(graphqlRemaining, coreRemaining, resetAt);
+        } catch (RestClientException e) {
+            log.warn("GitHub rate_limit API call failed: {}", e.getMessage());
+            // 조회 실패 시 0으로 반환 → Guard에서 차단
+            return new RateLimitInfo(0, 0, Instant.now().plusSeconds(3600));
+        }
+    }
+
+    /** Rate Limit 상태 */
+    public record RateLimitInfo(int graphqlRemaining, int restRemaining, Instant resetAt) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record RateLimitResponse(RateLimitResources resources) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record RateLimitResources(RateLimitEntry graphql, RateLimitEntry core) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record RateLimitEntry(int remaining, int reset) {}
+
+    // ─────────────────────────────────────────────────
+
     private String extractNextUrl(String linkHeader) {
         if (linkHeader == null || linkHeader.isBlank()) return null;
 
