@@ -6,7 +6,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
@@ -16,10 +18,14 @@ class ImpactScoreCalculatorTest {
 
     private ImpactScoreCalculator calculator;
 
+    // 테스트 기준 시각 — 고정하여 recencyWeight를 결정론적으로 만든다
+    private static final Instant NOW = Instant.parse("2026-04-07T00:00:00Z");
+    private static final Clock   FIXED_CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+
     @BeforeEach
     void setUp() {
         GithubCollectionProperties properties = new GithubCollectionProperties();
-        calculator = new ImpactScoreCalculator(properties);
+        calculator = new ImpactScoreCalculator(properties, FIXED_CLOCK);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -179,8 +185,8 @@ class ImpactScoreCalculatorTest {
         private int number = 1;
         private String title = "feat: add feature";
         private String bodyText = "상세 설명이 포함된 PR 본문";
-        private Instant mergedAt = Instant.now().minus(30, ChronoUnit.DAYS);
-        private Instant createdAt = Instant.now();
+        private Instant mergedAt = NOW.minus(30, ChronoUnit.DAYS);
+        private Instant createdAt = NOW;
         private int additions = 200;
         private int deletions = 50;
         private int totalCommentsCount = 2;
