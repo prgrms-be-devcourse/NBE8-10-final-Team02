@@ -9,7 +9,7 @@
  *   - 허용 확장자: PDF, DOCX, MD, TXT
  *
  * 실행:
- *   VUS=20 BASE_URL=http://13.125.255.89:8080 ./run.sh document-upload
+ *   VUS=20 BASE_URL=http://13.125.255.89:8080 TEST_JWT_TOKEN=<token> TEST_API_KEY=<apiKey> ./run.sh document-upload
  */
 import http from 'k6/http';
 import { sleep } from 'k6';
@@ -55,12 +55,12 @@ export const options = {
 };
 
 export function setup() {
-  return { token: acquireToken() };
+  return acquireToken(); // { token, apiKey }
 }
 
-export default function ({ token }) {
-  const auth  = getAuthHeaders(token);
-  const spec  = FILES[__ITER % FILES.length]; // 소→중→대 순환
+export default function ({ token, apiKey }) {
+  const headers = getAuthHeaders({ token, apiKey });
+  const spec    = FILES[__ITER % FILES.length]; // 소→중→대 순환
 
   const uploadRes = http.post(
     ENDPOINTS.documents,
@@ -69,7 +69,7 @@ export default function ({ token }) {
       documentType: 'other',
     },
     {
-      headers: { Authorization: auth['Authorization'] },
+      headers: { Authorization: headers['Authorization'] },
       tags:    { type: `upload-${spec.label}` },
     }
   );
@@ -81,7 +81,7 @@ export default function ({ token }) {
       http.del(
         ENDPOINTS.document(docId),
         null,
-        { headers: auth, tags: { type: 'delete' } }
+        { headers: headers, tags: { type: 'delete' } }
       );
     }
   }

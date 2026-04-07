@@ -27,7 +27,7 @@ export const ENDPOINTS = {
   generateAnswers:        (id) => `${BASE_URL}/api/v1/applications/${id}/questions/generate-answers`,
 
   // ── CS / 면접 질문 목록 ───────────────────────────────────────────────
-  csQuestions: `${BASE_URL}/api/v1/interview/cs-questions`,
+  csQuestions: `${BASE_URL}/api/v1/practice/questions`,
 
   // ── 면접 질문 세트 ────────────────────────────────────────────────────
   questionSets: `${BASE_URL}/api/v1/interview/question-sets`,

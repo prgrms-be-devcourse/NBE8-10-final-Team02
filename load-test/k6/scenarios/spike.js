@@ -5,7 +5,7 @@
  *       자소서 생성(~17s)이 몰릴 때 503/timeout 발생 지점 확인.
  *
  * 실행:
- *   VUS=50 BASE_URL=http://<IP>:8080 TEST_JWT_TOKEN=<token> ./run.sh spike
+ *   VUS=50 BASE_URL=http://<IP>:8080 TEST_JWT_TOKEN=<token> TEST_API_KEY=<apiKey> ./run.sh spike
  */
 import http from 'k6/http';
 import { sleep } from 'k6';
@@ -34,12 +34,12 @@ export const options = {
 };
 
 export function setup() {
-  return { token: acquireToken() };
+  return acquireToken(); // { token, apiKey }
 }
 
-export default function ({ token }) {
-  const auth = getAuthHeaders(token);
-  if (!auth['Authorization']) {
+export default function ({ token, apiKey }) {
+  const headers = getAuthHeaders({ token, apiKey });
+  if (!headers['Authorization']) {
     sleep(1);
     return;
   }
@@ -53,7 +53,7 @@ export default function ({ token }) {
       jobRole: 'backend',
       applicationType: 'full_time',
     }),
-    { headers: auth, tags: { type: 'write' } }
+    { headers: headers, tags: { type: 'write' } }
   );
 
   if (!assertResponse(createRes, [200, 201], 2000)) {
@@ -81,19 +81,19 @@ export default function ({ token }) {
         },
       ],
     }),
-    { headers: auth, tags: { type: 'write' } }
+    { headers: headers, tags: { type: 'write' } }
   );
 
   // 자소서 AI 생성 — 이 호출이 동시에 몰리는 것이 스파이크의 핵심
   const aiRes = http.post(
     ENDPOINTS.generateAnswers(appId),
     JSON.stringify({ regenerate: false }),
-    { headers: auth, tags: { type: 'ai-self-intro' }, timeout: '120s' }
+    { headers: headers, tags: { type: 'ai-self-intro' }, timeout: '120s' }
   );
   assertResponse(aiRes, [200], AI_TIMEOUT.selfIntro);
 
   // Cleanup
-  http.del(ENDPOINTS.application(appId), null, { headers: auth });
+  http.del(ENDPOINTS.application(appId), null, { headers: headers });
 
   sleep(0.5);
 }
