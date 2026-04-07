@@ -96,6 +96,27 @@ public class PromptTemplateRegistry {
             new PromptTemplate.RetryPolicy(0, false)
         ));
 
+        // 문제은행 연습 — CS 답변 평가
+        // maxTokens: 한국어 feedback(3문장)+modelAnswer(3~5문장)가 영어 대비 토큰 2~3배 소비하므로 여유 확보
+        map.put("ai.practice.evaluate.cs.v1", new PromptTemplate(
+            "ai.practice.evaluate.cs.v1", "v1", "practice_evaluate_cs",
+            "system/common-system.txt",
+            "developer/ai.practice.evaluate.cs.v1.txt",
+            "practice-evaluate.schema.json",
+            0.3, 4000,
+            new PromptTemplate.RetryPolicy(2, true)
+        ));
+
+        // 문제은행 연습 — 인성 답변 평가
+        map.put("ai.practice.evaluate.behavioral.v1", new PromptTemplate(
+            "ai.practice.evaluate.behavioral.v1", "v1", "practice_evaluate_behavioral",
+            "system/common-system.txt",
+            "developer/ai.practice.evaluate.behavioral.v1.txt",
+            "practice-evaluate.schema.json",
+            0.3, 4000,
+            new PromptTemplate.RetryPolicy(2, true)
+        ));
+
         // Map.copyOf()로 불변 맵 생성 — 이후 수정 시도 시 UnsupportedOperationException
         return new PromptTemplateRegistry(Map.copyOf(map));
     }

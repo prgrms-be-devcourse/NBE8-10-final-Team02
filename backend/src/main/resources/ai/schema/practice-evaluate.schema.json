@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "score",
+    "feedback",
+    "modelAnswer",
+    "tagNames"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "feedback": {
+      "type": "string",
+      "minLength": 1
+    },
+    "modelAnswer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tagNames": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3
+    }
+  }
+}

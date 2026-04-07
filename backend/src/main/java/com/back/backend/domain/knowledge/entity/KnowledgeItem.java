@@ -40,6 +40,17 @@ public class KnowledgeItem extends BaseTimeEntity {
     @Column(name = "content_hash", nullable = false, length = 64)
     private String contentHash;
 
+    @Column(name = "model_answer", columnDefinition = "text")
+    private String modelAnswer;
+
+    public void cacheModelAnswer(String modelAnswer) {
+        this.modelAnswer = modelAnswer;
+    }
+
+    public boolean hasModelAnswer() {
+        return modelAnswer != null && !modelAnswer.isBlank();
+    }
+
     public static KnowledgeItem create(String sourceKey, String filePath, String title,
                                        String content, String contentHash) {
         return KnowledgeItem.builder()
