@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { getApplication } from '@/api/application';
 import { createQuestionSet, getQuestionSets } from '@/api/interview';
+import AiGenerationStatusCard from '@/components/AiGenerationStatusCard';
 import type { Application } from '@/types/application';
 import type {
   InterviewDifficultyLevel,
@@ -59,6 +60,7 @@ export default function NewQuestionSetPage() {
   // 생성 처리 상태
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [showLongWaitHint, setShowLongWaitHint] = useState(false);
 
   function navigateToQuestionSet(questionSetId: number) {
     router.push(`/interview/question-sets/${questionSetId}`);
@@ -106,6 +108,19 @@ export default function NewQuestionSetPage() {
     loadPageData();
   }, [loadPageData]);
 
+  useEffect(() => {
+    if (!creating) {
+      setShowLongWaitHint(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowLongWaitHint(true);
+    }, 8000);
+
+    return () => window.clearTimeout(timer);
+  }, [creating]);
+
   // ── 질문 유형 토글 ────────────────────────────────
   function toggleQuestionType(type: InterviewQuestionType) {
     setSelectedTypes((prev) => {
@@ -119,6 +134,10 @@ export default function NewQuestionSetPage() {
       return next;
     });
   }
+
+  const questionSetStatusDetail = showLongWaitHint
+    ? '조금 더 걸리고 있습니다. 곧 결과를 보여드립니다.'
+    : '질문 수와 유형에 따라 최대 30초 정도 걸릴 수 있습니다.';
 
   // ── AI 질문 세트 생성 ──────────────────────────────
   async function handleCreate() {
@@ -262,6 +281,7 @@ export default function NewQuestionSetPage() {
               placeholder="예: 네이버 백엔드 1차 기술면접"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              disabled={creating}
               className="w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
             />
           </div>
@@ -278,6 +298,7 @@ export default function NewQuestionSetPage() {
                 max={20}
                 value={questionCount}
                 onChange={(e) => setQuestionCount(Number(e.target.value))}
+                disabled={creating}
                 className="flex-1 accent-zinc-800"
               />
               <span className="w-12 text-center text-sm font-medium text-zinc-900">
@@ -304,11 +325,12 @@ export default function NewQuestionSetPage() {
                   key={opt.value}
                   type="button"
                   onClick={() => setDifficultyLevel(opt.value)}
+                  disabled={creating}
                   className={`flex-1 rounded border px-3 py-2 text-sm font-medium transition-colors ${
                     difficultyLevel === opt.value
                       ? 'border-zinc-900 bg-zinc-900 text-white'
                       : 'border-zinc-300 text-zinc-600 hover:border-zinc-400'
-                  }`}
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
                 >
                   {opt.label}
                 </button>
@@ -330,12 +352,13 @@ export default function NewQuestionSetPage() {
                     selectedTypes.has(opt.value)
                       ? 'border-zinc-900 bg-zinc-50'
                       : 'border-zinc-200 hover:border-zinc-300'
-                  }`}
+                  } ${creating ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
                   <input
                     type="checkbox"
                     checked={selectedTypes.has(opt.value)}
                     onChange={() => toggleQuestionType(opt.value)}
+                    disabled={creating}
                     className="h-4 w-4 accent-zinc-800"
                   />
                   <div>
@@ -347,21 +370,36 @@ export default function NewQuestionSetPage() {
             </div>
           </div>
 
-          {/* 에러 메시지 */}
-          {createError && (
-            <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {createError}
-            </div>
-          )}
-
           {/* 생성 버튼 */}
           <button
             onClick={handleCreate}
             disabled={creating || selectedTypes.size === 0}
             className="w-full rounded bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
           >
-            {creating ? '질문 세트 만드는 중... (최대 30초 소요)' : '질문 세트 만들기'}
+            {creating ? '질문 세트 만드는 중...' : '질문 세트 만들기'}
           </button>
+
+          {creating && (
+            <AiGenerationStatusCard
+              ariaLabel="AI 질문 생성 진행 상태"
+              tone="pending"
+              eyebrow="AI 생성 진행 중"
+              title="질문 세트를 준비하고 있습니다"
+              message="AI가 질문 세트를 구성하는 중입니다."
+              detail={questionSetStatusDetail}
+            />
+          )}
+
+          {createError && !creating && (
+            <AiGenerationStatusCard
+              ariaLabel="AI 질문 생성 오류 상태"
+              tone="error"
+              eyebrow="질문 생성 실패"
+              title="질문 세트를 만들지 못했습니다"
+              message={createError}
+              detail="같은 화면에서 설정을 조정하거나 다시 시도할 수 있습니다."
+            />
+          )}
 
           <p className="text-xs text-zinc-400 text-center">
             질문 수 {questionCount}개, 선택한 {selectedTypes.size}개 유형 기준으로 AI가 면접 질문을 준비합니다.
