@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { getApplication, getQuestions, generateAnswers } from '@/api/application';
+import AiGenerationStatusCard from '@/components/AiGenerationStatusCard';
 import type { ApplicationQuestion, GeneratedAnswerItem } from '@/types/application';
 
 // 톤/길이 옵션 한글 라벨
@@ -34,6 +35,7 @@ export default function GeneratePage() {
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [result, setResult] = useState<GeneratedAnswerItem[] | null>(null);
   const [generatedCount, setGeneratedCount] = useState(0);
+  const [showLongWaitHint, setShowLongWaitHint] = useState(false);
 
   // 옵션
   const [regenerate, setRegenerate] = useState(false);
@@ -60,6 +62,19 @@ export default function GeneratePage() {
   useEffect(() => {
     loadPageData();
   }, [loadPageData]);
+
+  useEffect(() => {
+    if (!generating) {
+      setShowLongWaitHint(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowLongWaitHint(true);
+    }, 8000);
+
+    return () => window.clearTimeout(timer);
+  }, [generating]);
 
   // ── AI 답변 생성 ──────────────────────────────────
   async function handleGenerate() {
@@ -118,6 +133,10 @@ export default function GeneratePage() {
   }
 
   const hasAnyAnswer = questions.some((q) => q.generatedAnswer !== null);
+  const generateButtonLabel = hasAnyAnswer ? 'AI 답변 재생성' : 'AI 답변 생성';
+  const generateStatusDetail = showLongWaitHint
+    ? '조금 더 걸리고 있습니다. 곧 결과를 보여드립니다.'
+    : '보통 10~30초 정도 걸립니다. 중복으로 누를 필요 없습니다.';
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
@@ -193,6 +212,7 @@ export default function GeneratePage() {
               type="checkbox"
               checked={regenerate}
               onChange={(e) => setRegenerate(e.target.checked)}
+              disabled={generating}
               className="h-4 w-4 accent-zinc-800"
             />
             <span className="text-sm text-zinc-700">
@@ -209,21 +229,54 @@ export default function GeneratePage() {
           disabled={generating}
           className="w-full rounded bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
         >
-          {generating ? 'AI 답변 생성 중...' : 'AI 답변 생성'}
+          {generating ? `${generateButtonLabel} 중...` : generateButtonLabel}
         </button>
 
-        {/* 생성 에러 */}
-        {generateError && (
-          <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {generateError}
-          </div>
+        {generating && (
+          <AiGenerationStatusCard
+            ariaLabel="AI 답변 생성 진행 상태"
+            tone="pending"
+            eyebrow="AI 생성 진행 중"
+            title="답변 초안을 생성하고 있습니다"
+            message="AI가 문항별 답변 초안을 생성하는 중입니다."
+            detail={generateStatusDetail}
+          />
         )}
 
-        {/* 생성 결과 요약 */}
+        {generateError && !generating && (
+          <AiGenerationStatusCard
+            ariaLabel="AI 답변 생성 오류 상태"
+            tone="error"
+            eyebrow="AI 생성 실패"
+            title="답변 생성에 실패했습니다"
+            message={generateError}
+            detail="같은 화면에서 다시 생성할 수 있습니다."
+          />
+        )}
+
         {result && (
-          <p className="mt-3 text-sm text-green-700">
-            {generatedCount}개 문항의 답변이 생성되었습니다.
-          </p>
+          <AiGenerationStatusCard
+            ariaLabel="AI 답변 생성 완료 상태"
+            tone="success"
+            eyebrow="AI 생성 완료"
+            title="자기소개서 답변이 저장되었습니다"
+            message={`${generatedCount}개 문항 생성 완료 · 저장됨`}
+            detail={
+              applicationStatus === 'ready'
+                ? '답변을 검토한 뒤 바로 면접 준비로 넘어갈 수 있습니다.'
+                : '답변을 검토하고 필요한 문항을 더 정리해 주세요.'
+            }
+            actions={
+              applicationStatus === 'ready' ? (
+                <Link
+                  href={`/applications/${applicationId}/question-sets/new`}
+                  className="rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white"
+                >
+                  면접 준비로 이동
+                </Link>
+              ) : null
+            }
+          />
         )}
 
         {applicationStatus === 'draft' && hasAnyAnswer && (

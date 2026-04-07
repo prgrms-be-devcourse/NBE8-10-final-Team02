@@ -129,6 +129,7 @@ MVP 화면 구조, 라우트, 상태, 검증 규칙, 화면 간 전환 기준을
 - 준비 현황 요약 위젯은 상세 대시보드 전체를 그대로 반복하지 않고 축약형만 노출한다.
 - 데스크톱에서는 우측 sticky 패널, 모바일에서는 본문 하단 요약 카드로 배치한다.
 - 로그인 전 화면에는 위젯을 노출하지 않는다.
+- 공통 레이아웃은 `/`, `/login`, `SCR-17 준비 현황 대시보드`를 제외한 로그인 이후 앱 화면 전반에 적용한다.
 - 상세 준비 현황 대시보드인 SCR-17에서는 전역 위젯을 중복 노출하지 않는다.
 - 전역 위젯과 SCR-17은 같은 `GET /api/v1/portfolios/me/readiness` 응답을 공용으로 사용한다.
 
@@ -504,6 +505,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - `초안 생성`
 - `재생성`
 - `저장`
+- 생성 상태 카드 + 스피너
 
 ### 상태
 - 초기: 문항 없음
@@ -519,7 +521,9 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 회사별 특수 문항은 수동 추가
 - 자소서 생성과 재생성은 이 화면 안에서만 수행한다.
 - 중복 생성 요청은 차단 또는 큐 처리 안내
-- 10초 이상 지연 시 재시도 또는 잠시 후 재확인 안내
+- 생성 중에는 상태 카드 + 스피너 + 버튼 잠금으로 현재 진행 상태를 보여준다.
+- 생성 완료 후에는 `생성 완료 · 저장됨`과 다음 단계 CTA를 함께 보여준다.
+- 8초 이상 지연 시 상태 카드 안에서 `조금 더 걸리고 있습니다` 보조 안내를 보여준다.
 - **AI 서비스 비가용 시**:
   - 페이지 진입 시 `GET /api/v1/ai/status` 폴링
   - `available=false`이면 `[초안 생성]`, `[재생성]` 버튼 비활성화 + 상태 배지 표시
@@ -548,6 +552,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 난이도 선택
 - 생성 버튼
 - 생성 결과 미리보기
+- 생성 상태 카드 + 스피너
 
 ### 상태
 - 기본
@@ -560,7 +565,9 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 자소서가 없으면 먼저 SCR-10으로 유도
 - 질문 수는 최대 20개
 - 품질 저하 가능 시 사전 경고
-- 생성 실패 시 재시도 제공
+- 생성 중에는 상태 카드 + 스피너 + 버튼 잠금으로 현재 진행 상태를 보여준다.
+- 8초 이상 지연 시 상태 카드 안에서 `조금 더 걸리고 있습니다` 보조 안내를 보여준다.
+- 생성 실패 시 현재 화면에서 에러 상태와 재시도 CTA를 유지한다.
 - **AI 서비스 비가용 시**:
   - 페이지 진입 시 `GET /api/v1/ai/status` 폴링
   - `available=false`이면 `[생성 시작]` 버튼 비활성화 + 상태 배지 표시
@@ -623,7 +630,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 ### 주요 구성요소
 - 질문/답변 채팅 버블
 - system 상태 메시지
-- completion follow-up 미니 세션 카드
+- 보완 질문 배경 카드
 - 답변 입력 textarea
 - 글자 수 카운터
 - `제출`
@@ -665,13 +672,22 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - `세션 종료`는 상태 제어와 다른 단계 액션이므로 별도 카드로 유지하고, `in_progress`, `paused` 상태에서만 노출한다.
 - `자동 저장 상태`는 서버 draft API가 아니라 브라우저 임시 저장 기준으로만 표기한다.
 - 다음 질문은 프론트 로컬 순번 계산이 아니라 `GET /interview/sessions/{sessionId}`의 `currentQuestion`만 기준으로 갱신한다.
+- 현재 답할 질문은 transcript와 분리해 `답변 입력` 바로 위의 별도 `현재 질문` 카드로 보여준다.
+- `현재 질문` 카드는 `Q번호`, `questionType`, `difficulty`, 질문 본문을 담고, `follow_up`이면 짧은 보조 안내를 함께 보여준다.
+- transcript 영역은 `면접 채팅`이 아니라 `이전 문맥` 성격으로 다루고, 현재 미응답 질문은 transcript에서 제외해 중복 노출하지 않는다.
+- 이전 문맥 transcript는 세션 화면 초기 진입 시 1회만 기본 접힘으로 시작하고, 사용자가 펼치거나 접은 상태는 이후 새 질문 전환이나 completion follow-up 전환으로 덮어쓰지 않는다.
+- 초기 진입 시 이전 문맥이 사실상 없으면 transcript 영역은 축약하거나 숨기고, 현재 질문 카드 중심으로 보여준다.
 - 답변 제출 후 채팅 transcript는 `POST /answers -> GET /interview/sessions/{sessionId}` 재조회 결과를 기준으로 다음 질문을 이어 붙인다.
-- 마지막 일반 답변 제출 뒤 재조회 결과가 `currentQuestion=null`, `remainingQuestionCount=0`이면 프론트는 `POST /interview/sessions/{sessionId}/complete`를 자동 호출해 마지막 completion follow-up 보완 여부를 먼저 확인한다.
+- 답변 제출 또는 `건너뛰기` 후 재조회 결과로 새 `currentQuestion`이 열리면, 프론트는 입력창이 다시 보이도록 `scrollIntoView + focus`로 포커스를 복귀한다.
+- 마지막 일반 답변 제출 뒤 재조회 결과가 `currentQuestion=null`, `remainingQuestionCount=0`이면 프론트는 `POST /interview/sessions/{sessionId}/complete`를 자동 호출해 보완 질문 필요 여부를 먼저 확인한다.
 - 자동 또는 수동 `complete` 호출이 `REQUEST_VALIDATION_FAILED + remainingQuestionCount=incomplete`를 반환하면, 프론트는 이를 단순 오류로만 처리하지 않고 즉시 `GET /interview/sessions/{sessionId}`를 재조회한다.
-- 재조회 결과에 `completionFollowupContext`가 있으면 기존 세션 화면 안에서 completion follow-up 모드로 전환한다.
-- completion follow-up 모드에서는 입력창 위에 `마지막 보완 질문` 카드로 root 질문/답변, 있으면 runtime follow-up 질문/답변, 현재 completion follow-up 질문을 함께 보여준다.
-- completion follow-up 모드 진입 시 기존 메인 채팅 transcript는 기본 접힘 상태로 두고, 사용자가 펼치기/접기를 토글할 수 있게 한다.
-- completion follow-up 답변 제출 후 재조회 결과가 `currentQuestion=null`, `remainingQuestionCount=0`이면 자동 종료를 다시 호출하지 않는다. 대신 `세션 종료를 다시 눌러 결과를 생성하세요` 안내를 보여주고 사용자가 명시적으로 종료 버튼을 다시 누르게 한다.
+- 재조회 결과에 `completionFollowupContext`가 있으면 기존 세션 화면 안에서 `보완 질문` 모드로 전환한다.
+- 보완 질문 모드에서도 사용자가 실제로 답하는 대상은 계속 `현재 질문` 카드 하나로 유지한다.
+- 보완 질문 모드의 별도 blue 카드는 질문 본문을 다시 보여주지 않고, 기준 질문/답변과 있으면 이전 꼬리 질문/답변만 `보완 질문 배경`으로 요약해 보여준다.
+- 보완 질문 모드에서도 transcript의 펼침/접힘 상태는 새로 강제하지 않고, 현재 화면에서 사용자가 마지막으로 선택한 상태를 유지한다.
+- 보완 질문 전환도 새 질문 전환으로 간주해 같은 입력창 포커스 복귀 규칙을 적용한다.
+- 보완 질문 답변 제출 후 재조회 결과가 `currentQuestion=null`, `remainingQuestionCount=0`이면 자동 종료를 다시 호출하지 않는다. 대신 `세션 종료를 다시 눌러 결과를 생성하세요` 안내를 보여주고 사용자가 명시적으로 종료 버튼을 다시 누르게 한다.
+- 초기 진입, 단순 재조회, `pause/resume`만으로는 입력창 포커스를 강제로 이동하지 않는다.
 - **AI 기능 (꼬리질문, 실시간 피드백 등) 호출 중 429 에러**:
   - 해당 AI 기능만 비활성화, 세션 계속 진행 가능 (예: 꼬리질문 버튼 비활성화, 하지만 다음 질문 진행 가능)
   - 섹션 4.6 에러 처리 규칙 적용
@@ -683,7 +699,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 세션 완료: SCR-14
 - 일시정지 후 복귀: 동일 세션
 - 활성 세션 재진입: SCR-15 또는 직접 세션 라우트
-- completion follow-up 삽입: 같은 SCR-13 안에서 미니 세션 카드와 현재 질문만 갱신
+- 보완 질문 삽입: 같은 SCR-13 안에서 배경 카드와 현재 질문만 갱신
 
 ---
 

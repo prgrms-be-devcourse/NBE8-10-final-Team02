@@ -1,7 +1,7 @@
 import type { ComponentPropsWithoutRef, ReactNode } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getApplication } from '@/api/application';
 import { createQuestionSet, getQuestionSets } from '@/api/interview';
 import NewQuestionSetPage from './page';
@@ -47,6 +47,16 @@ const getApplicationMock = vi.mocked(getApplication);
 const createQuestionSetMock = vi.mocked(createQuestionSet);
 const getQuestionSetsMock = vi.mocked(getQuestionSets);
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('NewQuestionSetPage', () => {
   beforeEach(() => {
     paramsMock.mockReturnValue({ id: '1' });
@@ -85,6 +95,10 @@ describe('NewQuestionSetPage', () => {
     ]);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('면접 준비 흐름의 제목과 생성 버튼 라벨을 노출한다', async () => {
     render(<NewQuestionSetPage />);
 
@@ -113,5 +127,76 @@ describe('NewQuestionSetPage', () => {
     await user.click(within(setCards[1]).getByText('먼저 만든 세트'));
     expect(pushMock).toHaveBeenCalledTimes(2);
     expect(pushMock).toHaveBeenNthCalledWith(2, '/interview/question-sets/11');
+  });
+
+  it('생성 중에는 버튼과 질문 수 입력을 잠그고 pending 상태 카드를 노출한다', async () => {
+    const deferred = createDeferred<Awaited<ReturnType<typeof createQuestionSet>>>();
+    createQuestionSetMock.mockReturnValueOnce(deferred.promise);
+
+    render(<NewQuestionSetPage />);
+
+    await screen.findByRole('button', { name: '질문 세트 만들기' });
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: '질문 세트 만들기' }));
+
+    expect(screen.getByRole('button', { name: '질문 세트 만드는 중...' })).toBeDisabled();
+    expect(screen.getByRole('slider')).toBeDisabled();
+    expect(screen.getByRole('status', { name: 'AI 질문 생성 진행 상태' })).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByText('AI가 질문 세트를 구성하는 중입니다.')).toBeInTheDocument();
+    expect(screen.getByText('질문 수와 유형에 따라 최대 30초 정도 걸릴 수 있습니다.')).toBeInTheDocument();
+  });
+
+  it('생성이 8초 이상 걸리면 long-wait 안내를 노출한다', async () => {
+    const deferred = createDeferred<Awaited<ReturnType<typeof createQuestionSet>>>();
+    createQuestionSetMock.mockReturnValueOnce(deferred.promise);
+
+    render(<NewQuestionSetPage />);
+
+    await screen.findByRole('button', { name: '질문 세트 만들기' });
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: '질문 세트 만들기' }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(8000);
+    });
+
+    expect(screen.getByText('조금 더 걸리고 있습니다. 곧 결과를 보여드립니다.')).toBeInTheDocument();
+  });
+
+  it('생성 실패 시 현재 화면에서 에러 상태와 재시도 가능 상태를 유지한다', async () => {
+    createQuestionSetMock.mockRejectedValueOnce(new Error('질문 생성에 실패했습니다.'));
+
+    render(<NewQuestionSetPage />);
+
+    await screen.findByRole('button', { name: '질문 세트 만들기' });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '질문 세트 만들기' }));
+
+    expect(await screen.findByRole('status', { name: 'AI 질문 생성 오류 상태' })).toBeInTheDocument();
+    expect(screen.getByText('질문 생성에 실패했습니다.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '질문 세트 만들기' })).toBeEnabled();
+  });
+
+  it('생성 성공 시 질문 세트 상세 화면으로 이동한다', async () => {
+    createQuestionSetMock.mockResolvedValueOnce({
+      questionSetId: 25,
+      applicationId: 1,
+      title: '새 질문 세트',
+      questionCount: 5,
+      difficultyLevel: 'medium',
+      createdAt: '2026-04-07T00:00:00Z',
+    });
+
+    render(<NewQuestionSetPage />);
+
+    await screen.findByRole('button', { name: '질문 세트 만들기' });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '질문 세트 만들기' }));
+
+    expect(pushMock).toHaveBeenCalledWith('/interview/question-sets/25');
   });
 });
