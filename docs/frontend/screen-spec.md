@@ -628,11 +628,12 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 글자 수 카운터
 - `제출`
 - `건너뛰기`
-- `일시정지`
 - 진행률
 - 남은 질문 수
 - 자동 저장 상태
 - 세션 상태 배지
+- 세션 상태 요약 카드
+- 상태 기반 CTA (`일시정지`/`재개`/`결과 재확인`/`결과 보기`)
 
 ### 세션 상태 표기
 - ready
@@ -659,6 +660,9 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 새로고침/브라우저 이탈 후 30분 이내 복원 안내
 - 30분 이상 미입력 시 자동 일시정지
 - 완료된 세션에는 추가 입력 불가
+- 상단 `세션 상태 요약` 영역은 현재 상태 설명과 가장 자연스러운 다음 행동 1개를 함께 보여준다.
+- 상태 기반 CTA는 `in_progress -> 일시정지`, `paused -> 재개`, `completed -> 결과 재확인`, `feedback_completed -> 결과 보기`로 고정한다.
+- `세션 종료`는 상태 제어와 다른 단계 액션이므로 별도 카드로 유지하고, `in_progress`, `paused` 상태에서만 노출한다.
 - `자동 저장 상태`는 서버 draft API가 아니라 브라우저 임시 저장 기준으로만 표기한다.
 - 다음 질문은 프론트 로컬 순번 계산이 아니라 `GET /interview/sessions/{sessionId}`의 `currentQuestion`만 기준으로 갱신한다.
 - 답변 제출 후 채팅 transcript는 `POST /answers -> GET /interview/sessions/{sessionId}` 재조회 결과를 기준으로 다음 질문을 이어 붙인다.
