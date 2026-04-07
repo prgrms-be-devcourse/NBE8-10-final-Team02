@@ -400,7 +400,7 @@ describe('InterviewSessionPage', () => {
     await renderPage();
 
     expect(screen.getByText('수동 일시정지')).toBeInTheDocument();
-    expect(screen.getAllByText('현재 일시정지된 세션입니다.').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('현재 일시정지된 세션입니다.')).toHaveLength(1);
     expect(screen.getByRole('button', { name: '재개' })).toBeInTheDocument();
     expect(screen.queryByText('세션 상태')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '세션 종료' })).toBeInTheDocument();
@@ -418,7 +418,7 @@ describe('InterviewSessionPage', () => {
     await renderPage();
 
     expect(screen.getByText('자동 일시정지')).toBeInTheDocument();
-    expect(screen.getAllByText('자동 일시정지된 것으로 보입니다.').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('자동 일시정지된 것으로 보입니다.')).toHaveLength(1);
     expect(screen.getByRole('button', { name: '재개' })).toBeInTheDocument();
     expect(screen.queryByText('세션 상태')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '세션 종료' })).toBeInTheDocument();
