@@ -193,6 +193,8 @@ describe('InterviewSessionPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '이전 문맥 펼치기' })).toBeInTheDocument();
     });
+    expect(screen.getByText('질문 1개')).toBeInTheDocument();
+    expect(screen.getByText('답변 1개')).toBeInTheDocument();
     expect(
       screen.getByText('이전 질문/답변 기록은 접혀 있습니다. 필요하면 위 버튼으로 다시 펼쳐 확인할 수 있습니다.'),
     ).toBeInTheDocument();
@@ -203,6 +205,53 @@ describe('InterviewSessionPage', () => {
     const currentQuestionText = screen.getByText('지금 답해야 하는 현재 질문입니다.');
     const answerInput = screen.getByRole('textbox');
     expect(currentQuestionText.compareDocumentPosition(answerInput) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  });
+
+  it('접힌 이전 문맥은 최근 상태 안내를 요약 정보와 함께 보여준다', async () => {
+    window.sessionStorage.setItem(
+      'interview-session-chat:1',
+      JSON.stringify([
+        {
+          id: 'question-77',
+          role: 'question',
+          text: '이전 질문 기록',
+          questionId: 77,
+          questionOrder: 7,
+          questionType: 'behavioral',
+          difficultyLevel: 'medium',
+          createdAt: '2026-04-07T10:00:00Z',
+        },
+        {
+          id: 'answer-77',
+          role: 'answer',
+          text: '이전 답변 기록',
+          questionId: 77,
+          answerOrder: 7,
+          isSkipped: false,
+          pending: false,
+          createdAt: '2026-04-07T10:01:00Z',
+        },
+        {
+          id: 'system-1',
+          role: 'system',
+          text: '세션을 재개했습니다. 이어서 답변을 제출할 수 있습니다.',
+          tone: 'default',
+          createdAt: '2026-04-07T10:02:00Z',
+        },
+      ]),
+    );
+    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+
+    await renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '이전 문맥 펼치기' })).toBeInTheDocument();
+    });
+    expect(screen.getByText('질문 1개')).toBeInTheDocument();
+    expect(screen.getByText('답변 1개')).toBeInTheDocument();
+    expect(screen.getByText('상태 안내 1건')).toBeInTheDocument();
+    expect(screen.getByText('상태 안내')).toBeInTheDocument();
+    expect(screen.getByText('세션을 재개했습니다. 이어서 답변을 제출할 수 있습니다.')).toBeInTheDocument();
   });
 
   it('이전 기록이 거의 없는 초기 상태에서는 이전 문맥 영역을 과하게 노출하지 않는다', async () => {
@@ -418,6 +467,58 @@ describe('InterviewSessionPage', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('이전 문맥을 펼치면 질문/답변/system bubble에 역할 라벨이 붙는다', async () => {
+    window.sessionStorage.setItem(
+      'interview-session-chat:1',
+      JSON.stringify([
+        {
+          id: 'question-77',
+          role: 'question',
+          text: '이전 질문 기록',
+          questionId: 77,
+          questionOrder: 7,
+          questionType: 'behavioral',
+          difficultyLevel: 'medium',
+          createdAt: '2026-04-07T10:00:00Z',
+        },
+        {
+          id: 'answer-77',
+          role: 'answer',
+          text: '이전 답변 기록',
+          questionId: 77,
+          answerOrder: 7,
+          isSkipped: false,
+          pending: false,
+          createdAt: '2026-04-07T10:01:00Z',
+        },
+        {
+          id: 'system-1',
+          role: 'system',
+          text: '세션을 일시정지했습니다. 같은 세션으로 다시 돌아와 재개할 수 있습니다.',
+          tone: 'warning',
+          createdAt: '2026-04-07T10:02:00Z',
+        },
+      ]),
+    );
+    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+
+    await renderPage();
+
+    const user = userEvent.setup();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '이전 문맥 펼치기' })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: '이전 문맥 펼치기' }));
+
+    expect(screen.getByText('면접관')).toBeInTheDocument();
+    expect(screen.getByText('내 답변')).toBeInTheDocument();
+    expect(screen.getByText('상태 안내')).toBeInTheDocument();
+    expect(screen.getByText('이전 질문 기록')).toBeInTheDocument();
+    expect(screen.getByText('이전 답변 기록')).toBeInTheDocument();
+    expect(screen.getByText('현재 질문')).toBeInTheDocument();
+    expect(screen.getByText('답변 입력')).toBeInTheDocument();
+  });
+
   it('completion follow-up 진입 시에도 이전 문맥 펼침 상태를 덮어쓰지 않는다', async () => {
     const completionContext = createCompletionContext();
     window.sessionStorage.setItem(
@@ -470,6 +571,7 @@ describe('InterviewSessionPage', () => {
     });
     await user.click(screen.getByRole('button', { name: '이전 문맥 펼치기' }));
     expect(screen.getByText('이전 질문 기록')).toBeInTheDocument();
+    expect(screen.getByText('면접관')).toBeInTheDocument();
 
     await user.type(
       screen.getByRole('textbox'),
