@@ -6,7 +6,7 @@
  *       가상 스레드 ON 환경에서 DB 커넥션 풀 고갈 지점 확인.
  *
  * 실행:
- *   VUS=20 DURATION=3m BASE_URL=http://<IP>:8080 TEST_JWT_TOKEN=<token> ./run.sh constant
+ *   VUS=20 DURATION=3m BASE_URL=http://<IP>:8080 TEST_JWT_TOKEN=<token> TEST_API_KEY=<apiKey> ./run.sh constant
  *
  * 주의: AI Stub이 활성화된 load-test profile 서버에서만 실행.
  *       Stub 지연: 자소서 ~17s(Gemini), 면접질문 ~8s(Gemini)
@@ -38,13 +38,13 @@ export const options = {
 };
 
 export function setup() {
-  return { token: acquireToken() };
+  return acquireToken(); // { token, apiKey }
 }
 
-export default function ({ token }) {
-  const auth = getAuthHeaders(token);
-  if (!auth['Authorization']) {
-    console.warn('TEST_JWT_TOKEN 없음 — AI 엔드포인트 테스트 skip');
+export default function ({ token, apiKey }) {
+  const headers = getAuthHeaders({ token, apiKey });
+  if (!headers['Authorization']) {
+    console.warn('인증 정보 없음 — AI 엔드포인트 테스트 skip');
     sleep(1);
     return;
   }
@@ -58,7 +58,7 @@ export default function ({ token }) {
       jobRole: 'backend',
       applicationType: 'full_time',
     }),
-    { headers: auth, tags: { type: 'write' } }
+    { headers: headers, tags: { type: 'write' } }
   );
 
   if (!assertResponse(createRes, [200, 201], 2000)) {
@@ -93,7 +93,7 @@ export default function ({ token }) {
         },
       ],
     }),
-    { headers: auth, tags: { type: 'write' } }
+    { headers: headers, tags: { type: 'write' } }
   );
   assertResponse(questionsRes, [200, 201], 2000);
 
@@ -101,7 +101,7 @@ export default function ({ token }) {
   const selfIntroRes = http.post(
     ENDPOINTS.generateAnswers(appId),
     JSON.stringify({ regenerate: false }),
-    { headers: auth, tags: { type: 'ai-self-intro' }, timeout: '120s' }
+    { headers: headers, tags: { type: 'ai-self-intro' }, timeout: '120s' }
   );
   assertResponse(selfIntroRes, [200], AI_TIMEOUT.selfIntro);
 
@@ -115,13 +115,13 @@ export default function ({ token }) {
       difficultyLevel: 'medium',
       questionTypes: ['technical_cs', 'behavioral'],
     }),
-    { headers: auth, tags: { type: 'ai-interview' }, timeout: '120s' }
+    { headers: headers, tags: { type: 'ai-interview' }, timeout: '120s' }
   );
   assertResponse(interviewRes, [200, 201], AI_TIMEOUT.interviewQuestions);
 
   // ── Step 5: Cleanup ─────────────────────────────────────────────────────
   http.del(ENDPOINTS.application(appId), null, {
-    headers: auth,
+    headers: headers,
     tags: { type: 'write' },
   });
 

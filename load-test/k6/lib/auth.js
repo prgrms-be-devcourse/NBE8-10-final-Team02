@@ -3,18 +3,22 @@ import { check } from 'k6';
 import { BASE_URL } from './endpoints.js';
 
 /**
- * 부하 테스트 시작 전 JWT 토큰을 확보한다.
+ * 부하 테스트 시작 전 JWT 토큰과 API Key를 확보한다.
  *
- * - TEST_JWT_TOKEN 환경변수가 있으면 그대로 사용.
+ * - TEST_JWT_TOKEN + TEST_API_KEY 환경변수가 모두 있으면 그대로 사용.
  * - 없으면 /internal/load-test/token 엔드포인트에서 자동 발급 (load-test 프로파일 필요).
+ *
+ * 반환값: { token, apiKey }
+ * Authorization 헤더 형식: Bearer {apiKey} {accessToken}
  *
  * 각 시나리오의 export function setup() 에서 호출하고,
  * 반환값을 default function(data) 의 data로 넘긴다.
  */
 export function acquireToken() {
-  const envToken = __ENV.TEST_JWT_TOKEN || '';
-  if (envToken) {
-    return envToken;
+  const envToken  = __ENV.TEST_JWT_TOKEN || '';
+  const envApiKey = __ENV.TEST_API_KEY   || '';
+  if (envToken && envApiKey) {
+    return { token: envToken, apiKey: envApiKey };
   }
 
   const res = http.get(`${BASE_URL}/internal/load-test/token`);
@@ -25,15 +29,22 @@ export function acquireToken() {
     throw new Error(`토큰 발급 실패: ${res.status} ${res.body}`);
   }
 
-  return res.json('data.token');
+  return {
+    token:  res.json('data.token'),
+    apiKey: res.json('data.apiKey'),
+  };
 }
 
-export function getAuthHeaders(token) {
-  if (!token) {
+/**
+ * { token, apiKey } 객체를 받아 Authorization 헤더 맵을 반환한다.
+ * 필터가 요구하는 형식: Authorization: Bearer {apiKey} {accessToken}
+ */
+export function getAuthHeaders({ token, apiKey } = {}) {
+  if (!token || !apiKey) {
     return {};
   }
   return {
-    'Authorization': `Bearer ${token}`,
+    'Authorization': `Bearer ${apiKey} ${token}`,
     'Content-Type': 'application/json',
   };
 }

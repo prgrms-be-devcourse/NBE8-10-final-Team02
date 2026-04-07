@@ -132,13 +132,13 @@ export default function GeneratePage() {
               href={`/applications/${applicationId}/question-sets/new`}
               className="rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700"
             >
-              질문 생성으로 이동
+              면접 준비로 이동
             </Link>
           )}
         </div>
         <h1 className="text-xl font-semibold">AI 자기소개서 생성</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          등록된 {questions.length}개 문항에 대해 AI가 답변을 생성합니다.
+          이 화면에서만 등록된 {questions.length}개 문항의 답변 생성과 전체 재생성을 진행합니다.
         </p>
       </div>
 

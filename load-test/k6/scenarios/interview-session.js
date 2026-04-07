@@ -6,13 +6,13 @@
  *
  * 흐름:
  *   setup()  → Application + QuestionSet 준비 (AI 1회 호출)
- *   default  → 세션 시작 → 질문 조회 → 답변 제출 × N → 완료 → 결과 조회
+ *   default  → 세션 시작 → currentQuestion 조회 → 답변 제출 × N → 완료 → 결과 조회
  *   teardown → setup에서 만든 Application 삭제
  *
  * 주의: AI Stub이 활성화된 load-test profile 서버에서 실행 권장.
  *
  * 실행:
- *   VUS=10 DURATION=3m BASE_URL=http://13.125.255.89:8080 ./run.sh interview-session
+ *   VUS=10 DURATION=3m BASE_URL=http://13.125.255.89:8080 TEST_JWT_TOKEN=<token> TEST_API_KEY=<apiKey> ./run.sh interview-session
  */
 import http from 'k6/http';
 import { sleep } from 'k6';
@@ -20,7 +20,7 @@ import { ENDPOINTS } from '../lib/endpoints.js';
 import { acquireToken, getAuthHeaders } from '../lib/auth.js';
 import { assertResponse, AI_TIMEOUT } from '../lib/checks.js';
 
-const MAX_VUS      = parseInt(__ENV.VUS || '5');
+const MAX_VUS        = parseInt(__ENV.VUS || '5');
 const QUESTION_COUNT = 5;
 
 export const options = {
@@ -38,8 +38,8 @@ export const options = {
 };
 
 export function setup() {
-  const token = acquireToken();
-  const auth  = getAuthHeaders(token);
+  const { token, apiKey } = acquireToken();
+  const headers = getAuthHeaders({ token, apiKey });
 
   // ── 1. Application 생성 ─────────────────────────────────────────────
   const appRes = http.post(
@@ -50,7 +50,7 @@ export function setup() {
       jobRole:          'backend',
       applicationType:  'full_time',
     }),
-    { headers: auth }
+    { headers: headers }
   );
   if (!assertResponse(appRes, [200, 201], 3000)) {
     throw new Error(`Application 생성 실패: ${appRes.status} ${appRes.body}`);
@@ -71,38 +71,39 @@ export function setup() {
         },
       ],
     }),
-    { headers: auth }
+    { headers: headers }
   );
 
   // ── 3. 면접 질문 세트 생성 (AI 1회) ─────────────────────────────────
   const qsRes = http.post(
     ENDPOINTS.questionSets,
     JSON.stringify({
-      applicationId:  appId,
-      title:          'load-test-question-set',
-      questionCount:  QUESTION_COUNT,
+      applicationId:   appId,
+      title:           'load-test-question-set',
+      questionCount:   QUESTION_COUNT,
       difficultyLevel: 'medium',
-      questionTypes:  ['technical_cs', 'behavioral'],
+      questionTypes:   ['technical_cs', 'behavioral'],
     }),
-    { headers: auth, timeout: '120s' }
+    { headers: headers, timeout: '120s' }
   );
   if (!assertResponse(qsRes, [200, 201], AI_TIMEOUT.interviewQuestions)) {
     throw new Error(`질문 세트 생성 실패: ${qsRes.status} ${qsRes.body}`);
   }
-  const questionSetId = qsRes.json('data.id');
+  // QuestionSetSummaryResponse 필드명은 questionSetId
+  const questionSetId = qsRes.json('data.questionSetId');
 
   console.log(`[setup] appId=${appId}, questionSetId=${questionSetId}`);
-  return { token, questionSetId, appId };
+  return { token, apiKey, questionSetId, appId };
 }
 
-export default function ({ token, questionSetId }) {
-  const auth = getAuthHeaders(token);
+export default function ({ token, apiKey, questionSetId }) {
+  const headers = getAuthHeaders({ token, apiKey });
 
   // ── 세션 시작 ───────────────────────────────────────────────────────
   const sessionRes = http.post(
     ENDPOINTS.interviewSessions,
     JSON.stringify({ questionSetId }),
-    { headers: auth, tags: { type: 'start-session' } }
+    { headers: headers, tags: { type: 'start-session' } }
   );
   if (!assertResponse(sessionRes, [200, 201], 3000)) {
     sleep(1);
@@ -110,30 +111,33 @@ export default function ({ token, questionSetId }) {
   }
   const sessionId = sessionRes.json('data.id');
 
-  // ── 세션 상세 조회 (질문 목록 확보) ────────────────────────────────
-  const detailRes = http.get(
-    ENDPOINTS.interviewSession(sessionId),
-    { headers: auth, tags: { type: 'get-session-detail' } }
-  );
-  if (!assertResponse(detailRes, [200], 2000)) {
-    sleep(1);
-    return;
-  }
-  const questions = detailRes.json('data.questions') || [];
+  // ── currentQuestion 기반 순차 답변 제출 ────────────────────────────
+  // InterviewSessionDetailResponse: currentQuestion(단건), remainingQuestionCount
+  for (let i = 0; i < QUESTION_COUNT; i++) {
+    const detailRes = http.get(
+      ENDPOINTS.interviewSession(sessionId),
+      { headers: headers, tags: { type: 'get-session-detail' } }
+    );
+    if (!assertResponse(detailRes, [200], 2000)) {
+      sleep(1);
+      return;
+    }
 
-  // ── 각 질문에 순차 답변 제출 ────────────────────────────────────────
-  for (let i = 0; i < questions.length; i++) {
-    const q = questions[i];
+    const remaining       = detailRes.json('data.remainingQuestionCount');
+    const currentQuestion = detailRes.json('data.currentQuestion');
+
+    if (!currentQuestion || remaining === 0) break;
+
     http.post(
       ENDPOINTS.interviewSessionAnswers(sessionId),
       JSON.stringify({
-        questionId:  q.id,
+        questionId:  currentQuestion.id,
         answerOrder: i + 1,
         answerText:  `부하테스트 답변입니다. ${i + 1}번 질문에 대한 답변으로, ` +
                      '충분한 길이의 답변 텍스트를 포함합니다. '.repeat(8),
         isSkipped:   false,
       }),
-      { headers: auth, tags: { type: 'submit-answer' } }
+      { headers: headers, tags: { type: 'submit-answer' } }
     );
     sleep(0.2);
   }
@@ -142,23 +146,23 @@ export default function ({ token, questionSetId }) {
   const completeRes = http.post(
     ENDPOINTS.interviewSessionComplete(sessionId),
     null,
-    { headers: auth, tags: { type: 'complete-session' }, timeout: '120s' }
+    { headers: headers, tags: { type: 'complete-session' }, timeout: '120s' }
   );
   assertResponse(completeRes, [200], AI_TIMEOUT.evaluate);
 
   // ── 결과 리포트 조회 ────────────────────────────────────────────────
   const resultRes = http.get(
     ENDPOINTS.interviewSessionResult(sessionId),
-    { headers: auth, tags: { type: 'get-result' } }
+    { headers: headers, tags: { type: 'get-result' } }
   );
   assertResponse(resultRes, [200], 5000);
 
   sleep(0.5);
 }
 
-export function teardown({ token, appId }) {
+export function teardown({ token, apiKey, appId }) {
   if (!appId) return;
-  const auth = getAuthHeaders(token);
-  http.del(ENDPOINTS.application(appId), null, { headers: auth });
+  const headers = getAuthHeaders({ token, apiKey });
+  http.del(ENDPOINTS.application(appId), null, { headers: headers });
   console.log(`[teardown] appId=${appId} 삭제 완료`);
 }

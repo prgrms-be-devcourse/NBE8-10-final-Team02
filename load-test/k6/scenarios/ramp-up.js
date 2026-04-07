@@ -5,7 +5,7 @@
  *       AI 시나리오 실행 전 서버 기본 성능 확인용.
  *
  * 실행:
- *   VUS=50 BASE_URL=http://<IP>:8080 TEST_JWT_TOKEN=<token> ./run.sh ramp-up
+ *   VUS=50 BASE_URL=http://<IP>:8080 TEST_JWT_TOKEN=<token> TEST_API_KEY=<apiKey> ./run.sh ramp-up
  */
 import http from 'k6/http';
 import { sleep } from 'k6';
@@ -35,11 +35,11 @@ export const options = {
 };
 
 export function setup() {
-  return { token: acquireToken() };
+  return acquireToken(); // { token, apiKey }
 }
 
-export default function ({ token }) {
-  const auth = getAuthHeaders(token);
+export default function ({ token, apiKey }) {
+  const headers = getAuthHeaders({ token, apiKey });
 
   // 1. 헬스 체크
   const health = http.get(ENDPOINTS.health, { tags: { type: 'health' } });
@@ -47,7 +47,7 @@ export default function ({ token }) {
 
   // 2. CS 질문 목록 조회 (공개 엔드포인트)
   const cs = http.get(ENDPOINTS.csQuestions, {
-    headers: auth,
+    headers: headers,
     tags: { type: 'read' },
   });
   assertResponse(cs, [200], 1000);
@@ -55,9 +55,9 @@ export default function ({ token }) {
   sleep(0.5);
 
   // 3. 내 프로필 조회 (JWT 필요 — 토큰 없으면 skip)
-  if (auth['Authorization']) {
+  if (headers['Authorization']) {
     const me = http.get(ENDPOINTS.me, {
-      headers: auth,
+      headers: headers,
       tags: { type: 'read' },
     });
     assertResponse(me, [200], 1000);
@@ -71,20 +71,20 @@ export default function ({ token }) {
         jobRole: 'backend',
         applicationType: 'full_time',
       }),
-      { headers: auth, tags: { type: 'write' } }
+      { headers: headers, tags: { type: 'write' } }
     );
 
     if (assertResponse(createRes, [200, 201], 2000)) {
       const appId = JSON.parse(createRes.body).data?.id;
       if (appId) {
         const getRes = http.get(ENDPOINTS.application(appId), {
-          headers: auth,
+          headers: headers,
           tags: { type: 'read' },
         });
         assertResponse(getRes, [200], 1000);
 
         http.del(ENDPOINTS.application(appId), null, {
-          headers: auth,
+          headers: headers,
           tags: { type: 'write' },
         });
       }
