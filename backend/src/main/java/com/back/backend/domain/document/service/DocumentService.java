@@ -33,8 +33,9 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class DocumentService {
 
-    /** 허용되는 최대 파일 크기 (15MB). */
-    public static final long MAX_FILE_SIZE_BYTES = 15L * 1024 * 1024;
+    /** 허용되는 최대 파일 크기 (50MB). */
+    public static final long MAX_MB = 50;
+    public static final long MAX_FILE_SIZE_BYTES = MAX_MB * 1024 * 1024L;
 
     /** 사용자 1명이 보유할 수 있는 최대 문서 수. */
     public static final int MAX_DOCUMENT_COUNT = 5;
@@ -42,10 +43,15 @@ public class DocumentService {
     /** 업로드 허용 MIME type 목록: PDF, DOCX, Markdown, Text.
      * Markdown은 OS/브라우저마다 MIME type이 달라 여러 값을 허용한다.
      * (text/markdown: RFC 7763 표준, text/x-markdown: 구형 클라이언트,
-     *  text/plain: TXT 파일, application/octet-stream: Windows 등에서 미등록 MIME type) */
+     *  text/plain: TXT 파일, application/octet-stream: Windows 등에서 미등록 MIME type)
+     * DOCX는 ZIP 기반 포맷이라 일부 클라이언트가 application/zip 또는
+     * application/x-zip-compressed 로 전송한다. 확장자 검사(.docx)가 최종 게이트 역할을
+     * 하므로 이 값들을 허용해도 임의의 ZIP 파일 업로드는 차단된다. */
     static final Set<String> ALLOWED_MIME_TYPES = Set.of(
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/zip",
+        "application/x-zip-compressed",
         "text/markdown",
         "text/x-markdown",
         "text/plain",
@@ -70,8 +76,8 @@ public class DocumentService {
      * <ul>
      *   <li>허용되지 않는 MIME type</li>
      *   <li>허용되지 않는 파일 확장자</li>
-     *   <li>파일 크기가 10MB 초과</li>
-     *   <li>해당 사용자의 문서가 이미 5개 이상</li>
+     *   <li>파일 크기가 50MB(혹은 정해진 다른 크기) 초과</li>
+     *   <li>해당 사용자의 문서가 이미 5개(혹은 정해진 다른 크기) 이상</li>
      * </ul>
      *
      * @param userId        업로드 요청 사용자 ID
@@ -101,14 +107,14 @@ public class DocumentService {
             throw new ServiceException(
                 ErrorCode.DOCUMENT_FILE_TOO_LARGE,
                 HttpStatus.UNPROCESSABLE_CONTENT,
-                "파일 크기는 15MB를 초과할 수 없습니다."
+                "파일 크기는 " + MAX_MB + "MB를 초과할 수 없습니다."
             );
         }
         if (documentRepository.countByUserId(userId) >= MAX_DOCUMENT_COUNT) {
             throw new ServiceException(
                 ErrorCode.DOCUMENT_UPLOAD_FAILED,
                 HttpStatus.UNPROCESSABLE_CONTENT,
-                "문서는 최대 5개까지 업로드할 수 있습니다."
+                "문서는 최대 " + MAX_DOCUMENT_COUNT + "개까지 업로드할 수 있습니다."
             );
         }
     }
