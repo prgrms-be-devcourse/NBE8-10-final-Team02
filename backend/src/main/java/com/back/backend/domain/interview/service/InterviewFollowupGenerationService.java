@@ -13,8 +13,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
-import java.util.List;
-import java.util.stream.StreamSupport;
 
 @Service
 @RequiredArgsConstructor
@@ -25,7 +23,7 @@ public class InterviewFollowupGenerationService {
     private final AiPipeline aiPipeline;
     private final InterviewFollowupPayloadBuilder payloadBuilder;
 
-    public GeneratedInterviewFollowup generate(FollowupGenerationRequest request) {
+    public FollowupQuestionDraft generate(FollowupGenerationRequest request) {
         if (request.currentAnswer().isSkipped() || request.followUpDepth() >= request.maxDepth()) {
             return null;
         }
@@ -61,14 +59,8 @@ public class InterviewFollowupGenerationService {
         }
     }
 
-    private GeneratedInterviewFollowup mapGeneratedFollowup(JsonNode responseNode, int expectedParentQuestionOrder) {
+    private FollowupQuestionDraft mapGeneratedFollowup(JsonNode responseNode, int expectedParentQuestionOrder) {
         JsonNode followUpQuestion = responseNode.path("followUpQuestion");
-        List<String> qualityFlags = responseNode.path("qualityFlags").isArray()
-                ? StreamSupport.stream(responseNode.path("qualityFlags").spliterator(), false)
-                        .map(JsonNode::asText)
-                        .toList()
-                : List.of();
-
         if (followUpQuestion.isMissingNode() || followUpQuestion.isNull()) {
             return null;
         }
@@ -82,12 +74,10 @@ public class InterviewFollowupGenerationService {
             );
         }
 
-        return new GeneratedInterviewFollowup(
+        return new FollowupQuestionDraft(
                 parseQuestionType(followUpQuestion.path("questionType").asText()),
                 parseDifficultyLevel(followUpQuestion.path("difficultyLevel").asText()),
-                followUpQuestion.path("questionText").asText().trim(),
-                parentQuestionOrder,
-                qualityFlags
+                followUpQuestion.path("questionText").asText()
         );
     }
 
@@ -112,15 +102,6 @@ public class InterviewFollowupGenerationService {
             InterviewFollowupPayloadBuilder.CurrentAnswer currentAnswer,
             int followUpDepth,
             int maxDepth
-    ) {
-    }
-
-    public record GeneratedInterviewFollowup(
-            InterviewQuestionType questionType,
-            DifficultyLevel difficultyLevel,
-            String questionText,
-            int parentQuestionOrder,
-            List<String> qualityFlags
     ) {
     }
 }

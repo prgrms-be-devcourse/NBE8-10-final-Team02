@@ -17,6 +17,8 @@ public interface InterviewSessionQuestionRepository extends JpaRepository<Interv
 
     Optional<InterviewSessionQuestion> findByIdAndSessionId(Long id, Long sessionId);
 
+    Optional<InterviewSessionQuestion> findBySessionIdAndQuestionOrder(Long sessionId, Integer questionOrder);
+
     List<InterviewSessionQuestion> findAllBySessionIdOrderByQuestionOrderAsc(Long sessionId);
 
     @Query("""

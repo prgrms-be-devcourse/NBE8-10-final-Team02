@@ -55,13 +55,12 @@ class InterviewFollowupGenerationServiceTest {
                         }
                         """));
 
-        InterviewFollowupGenerationService.GeneratedInterviewFollowup generatedFollowup =
+        FollowupQuestionDraft generatedFollowup =
                 interviewFollowupGenerationService.generate(baseRequest());
 
         assertThat(generatedFollowup).isNotNull();
         assertThat(generatedFollowup.questionType()).isEqualTo(InterviewQuestionType.FOLLOW_UP);
         assertThat(generatedFollowup.difficultyLevel()).isEqualTo(DifficultyLevel.MEDIUM);
-        assertThat(generatedFollowup.parentQuestionOrder()).isEqualTo(3);
         assertThat(generatedFollowup.questionText()).isEqualTo("그 선택 기준을 조금 더 구체적으로 설명해주실 수 있나요?");
     }
 
@@ -75,7 +74,7 @@ class InterviewFollowupGenerationServiceTest {
                         }
                         """));
 
-        InterviewFollowupGenerationService.GeneratedInterviewFollowup generatedFollowup =
+        FollowupQuestionDraft generatedFollowup =
                 interviewFollowupGenerationService.generate(baseRequest());
 
         assertThat(generatedFollowup).isNull();

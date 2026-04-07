@@ -612,6 +612,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 ### 주요 구성요소
 - 질문/답변 채팅 버블
 - system 상태 메시지
+- completion follow-up 미니 세션 카드
 - 답변 입력 textarea
 - 글자 수 카운터
 - `제출`
@@ -650,6 +651,12 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - `자동 저장 상태`는 서버 draft API가 아니라 브라우저 임시 저장 기준으로만 표기한다.
 - 다음 질문은 프론트 로컬 순번 계산이 아니라 `GET /interview/sessions/{sessionId}`의 `currentQuestion`만 기준으로 갱신한다.
 - 답변 제출 후 채팅 transcript는 `POST /answers -> GET /interview/sessions/{sessionId}` 재조회 결과를 기준으로 다음 질문을 이어 붙인다.
+- 마지막 일반 답변 제출 뒤 재조회 결과가 `currentQuestion=null`, `remainingQuestionCount=0`이면 프론트는 `POST /interview/sessions/{sessionId}/complete`를 자동 호출해 마지막 completion follow-up 보완 여부를 먼저 확인한다.
+- 자동 또는 수동 `complete` 호출이 `REQUEST_VALIDATION_FAILED + remainingQuestionCount=incomplete`를 반환하면, 프론트는 이를 단순 오류로만 처리하지 않고 즉시 `GET /interview/sessions/{sessionId}`를 재조회한다.
+- 재조회 결과에 `completionFollowupContext`가 있으면 기존 세션 화면 안에서 completion follow-up 모드로 전환한다.
+- completion follow-up 모드에서는 입력창 위에 `마지막 보완 질문` 카드로 root 질문/답변, 있으면 runtime follow-up 질문/답변, 현재 completion follow-up 질문을 함께 보여준다.
+- completion follow-up 모드 진입 시 기존 메인 채팅 transcript는 기본 접힘 상태로 두고, 사용자가 펼치기/접기를 토글할 수 있게 한다.
+- completion follow-up 답변 제출 후 재조회 결과가 `currentQuestion=null`, `remainingQuestionCount=0`이면 자동 종료를 다시 호출하지 않는다. 대신 `세션 종료를 다시 눌러 결과를 생성하세요` 안내를 보여주고 사용자가 명시적으로 종료 버튼을 다시 누르게 한다.
 - **AI 기능 (꼬리질문, 실시간 피드백 등) 호출 중 429 에러**:
   - 해당 AI 기능만 비활성화, 세션 계속 진행 가능 (예: 꼬리질문 버튼 비활성화, 하지만 다음 질문 진행 가능)
   - 섹션 4.6 에러 처리 규칙 적용
@@ -661,6 +668,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 세션 완료: SCR-14
 - 일시정지 후 복귀: 동일 세션
 - 활성 세션 재진입: SCR-15 또는 직접 세션 라우트
+- completion follow-up 삽입: 같은 SCR-13 안에서 미니 세션 카드와 현재 질문만 갱신
 
 ---
 

@@ -70,11 +70,35 @@ export interface InterviewSessionCurrentQuestion {
   questionText: string;
 }
 
+export interface CompletionFollowupQuestionSummary {
+  id: number;
+  questionOrder: number;
+  questionType: InterviewQuestionType;
+  difficultyLevel: InterviewDifficultyLevel;
+  questionText: string;
+}
+
+export interface CompletionFollowupAnswerSummary {
+  answerOrder: number;
+  answerText: string | null;
+  isSkipped: boolean;
+}
+
+export interface CompletionFollowupContext {
+  rootQuestion: CompletionFollowupQuestionSummary;
+  rootAnswer: CompletionFollowupAnswerSummary;
+  runtimeFollowupQuestion: CompletionFollowupQuestionSummary | null;
+  runtimeFollowupAnswer: CompletionFollowupAnswerSummary | null;
+  completionFollowupQuestion: CompletionFollowupQuestionSummary;
+  parentQuestionOrder: number;
+}
+
 export interface InterviewSessionDetail {
   id: number;
   questionSetId: number;
   status: InterviewSessionStatus;
   currentQuestion: InterviewSessionCurrentQuestion | null;
+  completionFollowupContext: CompletionFollowupContext | null;
   totalQuestionCount: number;
   answeredQuestionCount: number;
   remainingQuestionCount: number;

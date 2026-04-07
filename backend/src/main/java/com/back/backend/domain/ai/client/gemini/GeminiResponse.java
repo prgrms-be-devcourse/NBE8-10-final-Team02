@@ -15,7 +15,8 @@ public record GeminiResponse(
     @JsonProperty("usageMetadata") UsageMetadata usageMetadata
 ) {
     public record Candidate(
-        Content content
+        Content content,
+        String finishReason
     ) {
     }
 
@@ -31,14 +32,14 @@ public record GeminiResponse(
     }
 
     public record UsageMetadata(
-        @JsonProperty("promptTokenCount") int promptTokenCount,
-        @JsonProperty("candidatesTokenCount") int candidatesTokenCount,
-        @JsonProperty("totalTokenCount") int totalTokenCount
+        @JsonProperty("promptTokenCount") Integer promptTokenCount,
+        @JsonProperty("candidatesTokenCount") Integer candidatesTokenCount,
+        @JsonProperty("totalTokenCount") Integer totalTokenCount
     ) {
     }
 
     /**
-     * 첫 번째 candidate의 텍스트를 추출
+     * 첫 번째 candidate의 모든 text part를 순서대로 합쳐 추출
      * 유효한 응답이 없으면 빈 Optional을 반환
      */
     public Optional<String> extractText() {
@@ -49,7 +50,17 @@ public record GeminiResponse(
         if (content == null || content.parts() == null || content.parts().isEmpty()) {
             return Optional.empty();
         }
-        return Optional.ofNullable(content.parts().getFirst().text());
+
+        StringBuilder merged = new StringBuilder();
+        boolean hasText = false;
+        for (Part part : content.parts()) {
+            if (part == null || part.text() == null) {
+                continue;
+            }
+            merged.append(part.text());
+            hasText = true;
+        }
+        return hasText ? Optional.of(merged.toString()) : Optional.empty();
     }
 
     /**
@@ -61,9 +72,13 @@ public record GeminiResponse(
             return new AiResponse.TokenUsage(0, 0, 0);
         }
         return new AiResponse.TokenUsage(
-            usageMetadata.promptTokenCount(),
-            usageMetadata.candidatesTokenCount(),
-            usageMetadata.totalTokenCount()
+            zeroIfNull(usageMetadata.promptTokenCount()),
+            zeroIfNull(usageMetadata.candidatesTokenCount()),
+            zeroIfNull(usageMetadata.totalTokenCount())
         );
+    }
+
+    private int zeroIfNull(Integer value) {
+        return value == null ? 0 : value;
     }
 }

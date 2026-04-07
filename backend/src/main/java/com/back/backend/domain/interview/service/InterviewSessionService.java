@@ -2,10 +2,12 @@ package com.back.backend.domain.interview.service;
 
 import com.back.backend.domain.followup.config.FollowupRulesProperties;
 import com.back.backend.domain.followup.dto.response.FollowupAnalyzeResponse;
+import com.back.backend.domain.followup.model.CandidateQuestionType;
 import com.back.backend.domain.followup.model.FinalAction;
 import com.back.backend.domain.followup.model.QuestionType;
 import com.back.backend.domain.followup.service.FollowupRuleService;
 import com.back.backend.domain.interview.dto.request.StartInterviewSessionRequest;
+import com.back.backend.domain.interview.dto.response.InterviewSessionCompletionFollowupContextResponse;
 import com.back.backend.domain.interview.dto.response.InterviewResultResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionCompletionResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionDetailResponse;
@@ -78,7 +80,9 @@ public class InterviewSessionService {
     private final InterviewSessionRepository interviewSessionRepository;
     private final FollowupRuleService followupRuleService;
     private final FollowupRulesProperties followupRulesProperties;
+    private final CandidateFollowupQuestionFactory candidateFollowupQuestionFactory;
     private final InterviewFollowupGenerationService interviewFollowupGenerationService;
+    private final InterviewCompletionFollowupGenerationService interviewCompletionFollowupGenerationService;
     private final InterviewResultGenerationService interviewResultGenerationService;
     private final InterviewResponseMapper interviewResponseMapper;
     private final Clock clock;
@@ -142,10 +146,13 @@ public class InterviewSessionService {
         long answeredQuestionCount = interviewAnswerRepository.countBySessionId(session.getId());
         long remainingQuestionCount = Math.max(totalQuestionCount - answeredQuestionCount, 0);
         InterviewSessionQuestion currentQuestion = resolveCurrentQuestion(session, answeredQuestionCount, remainingQuestionCount);
+        InterviewSessionCompletionFollowupContextResponse completionFollowupContext =
+                buildCompletionFollowupContext(session, currentQuestion);
 
         return interviewResponseMapper.toInterviewSessionDetailResponse(
                 session,
                 currentQuestion,
+                completionFollowupContext,
                 totalQuestionCount,
                 answeredQuestionCount,
                 remainingQuestionCount,
@@ -306,16 +313,15 @@ public class InterviewSessionService {
 
         List<InterviewAnswer> answers = interviewAnswerRepository
                 .findAllWithSessionQuestionBySessionIdOrderByAnswerOrderAsc(session.getId());
-        CompletionReviewCandidate candidate = selectCompletionReviewCandidate(session, answers);
-        if (candidate == null) {
+        List<AnsweredQuestionThread> answeredThreads = buildAnsweredQuestionThreads(answers);
+        if (answeredThreads.isEmpty()) {
             session.markCompletionFollowupReviewed(clock.instant());
             return CompletionFollowupReviewPreparation.reviewSkipped(session.getId());
         }
 
         return CompletionFollowupReviewPreparation.reviewPending(
                 session.getId(),
-                candidate.parentSessionQuestionId(),
-                candidate.request()
+                buildCompletionFollowupGenerationRequest(session, answeredThreads)
         );
     }
 
@@ -330,19 +336,20 @@ public class InterviewSessionService {
             return CompletionFollowupReviewOutcome.notInserted();
         }
 
-        InterviewFollowupGenerationService.GeneratedInterviewFollowup generatedFollowup;
+        List<InterviewCompletionFollowupGenerationService.CompletionFollowupDecision> completionDecisions;
         try {
-            generatedFollowup = interviewFollowupGenerationService.generate(completionReviewPreparation.request());
+            completionDecisions = interviewCompletionFollowupGenerationService.generate(completionReviewPreparation.request());
         } catch (ServiceException exception) {
-            generatedFollowup = null;
+            completionDecisions = List.of();
         } catch (RuntimeException exception) {
-            generatedFollowup = null;
+            completionDecisions = List.of();
         }
 
         try {
-            InterviewFollowupGenerationService.GeneratedInterviewFollowup finalGeneratedFollowup = generatedFollowup;
+            List<InterviewCompletionFollowupGenerationService.CompletionFollowupDecision> finalCompletionDecisions =
+                    completionDecisions;
             return executeInTransaction(
-                    () -> finalizeCompletionFollowupReview(completionReviewPreparation, finalGeneratedFollowup)
+                    () -> finalizeCompletionFollowupReview(completionReviewPreparation, finalCompletionDecisions)
             );
         } finally {
             completionFollowupReviewInFlight.remove(completionReviewPreparation.sessionId());
@@ -351,7 +358,7 @@ public class InterviewSessionService {
 
     private CompletionFollowupReviewOutcome finalizeCompletionFollowupReview(
             CompletionFollowupReviewPreparation completionReviewPreparation,
-            InterviewFollowupGenerationService.GeneratedInterviewFollowup generatedFollowup
+            List<InterviewCompletionFollowupGenerationService.CompletionFollowupDecision> completionDecisions
     ) {
         InterviewSession session = interviewSessionRepository.findById(completionReviewPreparation.sessionId())
                 .orElse(null);
@@ -365,20 +372,28 @@ public class InterviewSessionService {
 
         Instant reviewedAt = clock.instant();
         boolean inserted = false;
-        if (generatedFollowup != null) {
-            InterviewSessionQuestion parentQuestion = interviewSessionQuestionRepository.findByIdAndSessionId(
-                            completionReviewPreparation.parentSessionQuestionId(),
-                            session.getId()
-                    )
-                    .orElse(null);
-            if (parentQuestion != null
-                    && !interviewSessionQuestionRepository.existsBySessionIdAndParentSessionQuestionId(
-                            session.getId(),
-                            parentQuestion.getId()
-                    )) {
-                insertGeneratedFollowupQuestion(parentQuestion, generatedFollowup);
-                inserted = true;
+        for (InterviewCompletionFollowupGenerationService.CompletionFollowupDecision completionDecision : completionDecisions
+                .stream()
+                .sorted(Comparator.comparingInt(
+                        InterviewCompletionFollowupGenerationService.CompletionFollowupDecision::parentQuestionOrder
+                ).reversed())
+                .toList()) {
+            InterviewSessionQuestion parentQuestion = interviewSessionQuestionRepository.findBySessionIdAndQuestionOrder(
+                    session.getId(),
+                    completionDecision.parentQuestionOrder()
+            ).orElse(null);
+            if (parentQuestion == null) {
+                continue;
             }
+            if (interviewSessionQuestionRepository.existsBySessionIdAndParentSessionQuestionId(
+                    session.getId(),
+                    parentQuestion.getId()
+            )) {
+                continue;
+            }
+
+            insertFollowupQuestionDraft(parentQuestion, completionDecision.followupDraft());
+            inserted = true;
         }
 
         InterviewSession managedSession = interviewSessionRepository.findById(session.getId()).orElse(null);
@@ -616,6 +631,68 @@ public class InterviewSessionService {
                 .orElse(null);
     }
 
+    private InterviewSessionCompletionFollowupContextResponse buildCompletionFollowupContext(
+            InterviewSession session,
+            InterviewSessionQuestion currentQuestion
+    ) {
+        if (!isCurrentCompletionFollowup(session, currentQuestion)) {
+            return null;
+        }
+
+        InterviewSessionQuestion parentQuestion = currentQuestion.getParentSessionQuestion();
+        if (parentQuestion == null) {
+            return null;
+        }
+
+        InterviewSessionQuestion runtimeFollowupQuestion =
+                parentQuestion.getQuestionType() == InterviewQuestionType.FOLLOW_UP ? parentQuestion : null;
+        InterviewSessionQuestion rootQuestion = runtimeFollowupQuestion == null
+                ? parentQuestion
+                : runtimeFollowupQuestion.getParentSessionQuestion();
+
+        if (rootQuestion == null || rootQuestion.getQuestionType() == InterviewQuestionType.FOLLOW_UP) {
+            return null;
+        }
+
+        Map<Long, InterviewAnswer> answerByQuestionId = interviewAnswerRepository
+                .findAllWithSessionQuestionBySessionIdOrderByAnswerOrderAsc(session.getId())
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        answer -> answer.getSessionQuestion().getId(),
+                        answer -> answer
+                ));
+
+        InterviewAnswer rootAnswer = answerByQuestionId.get(rootQuestion.getId());
+        if (rootAnswer == null) {
+            return null;
+        }
+
+        InterviewAnswer runtimeFollowupAnswer = runtimeFollowupQuestion == null
+                ? null
+                : answerByQuestionId.get(runtimeFollowupQuestion.getId());
+        if (runtimeFollowupQuestion != null && runtimeFollowupAnswer == null) {
+            return null;
+        }
+
+        return interviewResponseMapper.toInterviewSessionCompletionFollowupContextResponse(
+                rootQuestion,
+                rootAnswer,
+                runtimeFollowupQuestion,
+                runtimeFollowupAnswer,
+                currentQuestion,
+                parentQuestion.getQuestionOrder()
+        );
+    }
+
+    private boolean isCurrentCompletionFollowup(
+            InterviewSession session,
+            InterviewSessionQuestion currentQuestion
+    ) {
+        return currentQuestion != null
+                && currentQuestion.getQuestionType() == InterviewQuestionType.FOLLOW_UP
+                && session.getCompletionFollowupReviewedAt() != null;
+    }
+
     private void resolvePendingFollowupIfNeeded(long userId, long sessionId) {
         PendingFollowupResolution pendingFollowup = executeNullableInTransaction(
                 () -> preparePendingFollowupResolution(userId, sessionId)
@@ -624,7 +701,14 @@ public class InterviewSessionService {
             return;
         }
 
-        if (!pendingFollowup.aiRequired()) {
+        if (pendingFollowup.followupDraft() != null) {
+            executeWithoutResultInTransaction(
+                    () -> finalizePendingFollowup(sessionId, pendingFollowup, pendingFollowup.followupDraft())
+            );
+            return;
+        }
+
+        if (pendingFollowup.aiRequest() == null) {
             executeWithoutResultInTransaction(() -> markFollowupResolved(sessionId, pendingFollowup.answerId()));
             return;
         }
@@ -634,10 +718,10 @@ public class InterviewSessionService {
         }
 
         try {
-            InterviewFollowupGenerationService.GeneratedInterviewFollowup generatedFollowup =
-                    interviewFollowupGenerationService.generate(pendingFollowup.request());
+            FollowupQuestionDraft followupDraft =
+                    interviewFollowupGenerationService.generate(pendingFollowup.aiRequest());
             executeWithoutResultInTransaction(
-                    () -> finalizePendingFollowup(sessionId, pendingFollowup, generatedFollowup)
+                    () -> finalizePendingFollowup(sessionId, pendingFollowup, followupDraft)
             );
         } catch (ServiceException exception) {
             executeWithoutResultInTransaction(() -> markFollowupResolved(sessionId, pendingFollowup.answerId()));
@@ -672,25 +756,58 @@ public class InterviewSessionService {
                 parentQuestion.getId()
         );
         FollowupAnalyzeResponse analysis = analyzeFollowup(parentQuestion, answer);
+        if (analysis == null) {
+            return PendingFollowupResolution.resolveOnly(
+                    answer.getId(),
+                    parentQuestion.getId(),
+                    FinalAction.NO_FOLLOW_UP
+            );
+        }
 
-        return new PendingFollowupResolution(
+        boolean runtimeFollowupEligible = !(childAlreadyExists
+                || parentQuestion.getQuestionType() == InterviewQuestionType.FOLLOW_UP
+                || answer.isSkipped()
+                || followUpDepth >= MAX_FOLLOWUP_DEPTH);
+        if (!runtimeFollowupEligible || analysis.finalAction() == FinalAction.NO_FOLLOW_UP) {
+            return PendingFollowupResolution.resolveOnly(
+                    answer.getId(),
+                    parentQuestion.getId(),
+                    analysis.finalAction()
+            );
+        }
+
+        if (analysis.finalAction() == FinalAction.USE_CANDIDATE) {
+            CandidateQuestionType firstCandidateQuestionType = analysis.candidateQuestionTypes().stream()
+                    .findFirst()
+                    .orElse(null);
+            return PendingFollowupResolution.withLocalDraft(
+                    answer.getId(),
+                    parentQuestion.getId(),
+                    analysis.finalAction(),
+                    candidateFollowupQuestionFactory.create(firstCandidateQuestionType)
+            );
+        }
+
+        if (analysis.finalAction() == FinalAction.USE_DYNAMIC && !hasRuntimeDynamicBudgetBeenUsed(sessionId)) {
+            return PendingFollowupResolution.withAiRequest(
+                    answer.getId(),
+                    parentQuestion.getId(),
+                    analysis.finalAction(),
+                    buildFollowupGenerationRequest(session, parentQuestion, answer, followUpDepth)
+            );
+        }
+
+        return PendingFollowupResolution.resolveOnly(
                 answer.getId(),
                 parentQuestion.getId(),
-                analysis != null
-                        && analysis.finalAction() == FinalAction.USE_DYNAMIC
-                        && !hasRuntimeDynamicBudgetBeenUsed(sessionId)
-                        && !(childAlreadyExists
-                        || parentQuestion.getQuestionType() == InterviewQuestionType.FOLLOW_UP
-                        || answer.isSkipped()
-                        || followUpDepth >= MAX_FOLLOWUP_DEPTH),
-                buildFollowupGenerationRequest(session, parentQuestion, answer, followUpDepth)
+                analysis.finalAction()
         );
     }
 
     private void finalizePendingFollowup(
             long sessionId,
             PendingFollowupResolution pendingFollowup,
-            InterviewFollowupGenerationService.GeneratedInterviewFollowup generatedFollowup
+            FollowupQuestionDraft followupDraft
     ) {
         InterviewAnswer answer = interviewAnswerRepository.findByIdAndSessionId(
                         pendingFollowup.answerId(),
@@ -701,7 +818,7 @@ public class InterviewSessionService {
             return;
         }
 
-        if (generatedFollowup != null) {
+        if (followupDraft != null) {
             InterviewSessionQuestion parentQuestion = interviewSessionQuestionRepository.findByIdAndSessionId(
                             pendingFollowup.parentSessionQuestionId(),
                             sessionId
@@ -712,16 +829,16 @@ public class InterviewSessionService {
                             sessionId,
                             parentQuestion.getId()
                     )) {
-                insertGeneratedFollowupQuestion(parentQuestion, generatedFollowup);
+                insertFollowupQuestionDraft(parentQuestion, followupDraft);
             }
         }
 
         markFollowupResolved(sessionId, pendingFollowup.answerId());
     }
 
-    private void insertGeneratedFollowupQuestion(
+    private void insertFollowupQuestionDraft(
             InterviewSessionQuestion parentQuestion,
-            InterviewFollowupGenerationService.GeneratedInterviewFollowup generatedFollowup
+            FollowupQuestionDraft followupDraft
     ) {
         int parentQuestionOrder = parentQuestion.getQuestionOrder();
         interviewSessionQuestionRepository.addQuestionOrderOffsetAfter(
@@ -741,9 +858,9 @@ public class InterviewSessionService {
                         .sourceQuestion(null)
                         .parentSessionQuestion(parentQuestion)
                         .questionOrder(parentQuestionOrder + 1)
-                        .questionType(generatedFollowup.questionType())
-                        .difficultyLevel(generatedFollowup.difficultyLevel())
-                        .questionText(generatedFollowup.questionText())
+                        .questionType(followupDraft.questionType())
+                        .difficultyLevel(followupDraft.difficultyLevel())
+                        .questionText(followupDraft.questionText())
                         .build()
         );
     }
@@ -764,41 +881,114 @@ public class InterviewSessionService {
         return depth;
     }
 
-    private CompletionReviewCandidate selectCompletionReviewCandidate(
-            InterviewSession session,
-            List<InterviewAnswer> answers
-    ) {
-        return answers.stream()
-                .filter(answer -> !answer.isSkipped())
-                .filter(answer -> answer.getSessionQuestion().getQuestionType() != InterviewQuestionType.FOLLOW_UP)
-                .filter(answer -> !interviewSessionQuestionRepository.existsBySessionIdAndParentSessionQuestionId(
-                        session.getId(),
-                        answer.getSessionQuestion().getId()
-                ))
-                .map(answer -> toCompletionReviewCandidate(session, answer))
-                .filter(Objects::nonNull)
-                .sorted(Comparator
-                        .comparingInt(CompletionReviewCandidate::priority)
-                        .reversed()
-                        .thenComparing(Comparator.comparingInt(CompletionReviewCandidate::answerOrder).reversed()))
-                .findFirst()
-                .orElse(null);
+    private List<AnsweredQuestionThread> buildAnsweredQuestionThreads(List<InterviewAnswer> answers) {
+        Map<Long, InterviewAnswer> runtimeFollowupAnswerByRootQuestionId = new LinkedHashMap<>();
+        for (InterviewAnswer answer : answers) {
+            InterviewSessionQuestion sessionQuestion = answer.getSessionQuestion();
+            if (sessionQuestion.getQuestionType() != InterviewQuestionType.FOLLOW_UP
+                    || sessionQuestion.getParentSessionQuestion() == null) {
+                continue;
+            }
+
+            InterviewSessionQuestion rootQuestion = findRootSessionQuestion(sessionQuestion);
+            if (rootQuestion.getQuestionType() == InterviewQuestionType.FOLLOW_UP) {
+                continue;
+            }
+            runtimeFollowupAnswerByRootQuestionId.put(rootQuestion.getId(), answer);
+        }
+
+        List<AnsweredQuestionThread> answeredThreads = new ArrayList<>();
+        for (InterviewAnswer answer : answers) {
+            InterviewSessionQuestion rootQuestion = answer.getSessionQuestion();
+            if (rootQuestion.getQuestionType() == InterviewQuestionType.FOLLOW_UP
+                    || answer.isSkipped()
+                    || answer.getAnswerText() == null
+                    || answer.getAnswerText().isBlank()) {
+                continue;
+            }
+
+            InterviewAnswer runtimeFollowupAnswer = runtimeFollowupAnswerByRootQuestionId.get(rootQuestion.getId());
+            InterviewSessionQuestion runtimeFollowupQuestion =
+                    runtimeFollowupAnswer != null ? runtimeFollowupAnswer.getSessionQuestion() : null;
+            answeredThreads.add(new AnsweredQuestionThread(
+                    rootQuestion,
+                    answer,
+                    analyzeFollowup(rootQuestion, answer),
+                    runtimeFollowupQuestion,
+                    runtimeFollowupAnswer
+            ));
+        }
+        return answeredThreads;
     }
 
-    private CompletionReviewCandidate toCompletionReviewCandidate(InterviewSession session, InterviewAnswer answer) {
-        InterviewSessionQuestion parentQuestion = answer.getSessionQuestion();
-        FollowupAnalyzeResponse analysis = analyzeFollowup(parentQuestion, answer);
-        if (analysis == null || analysis.finalAction() == FinalAction.NO_FOLLOW_UP) {
+    private InterviewCompletionFollowupGenerationService.CompletionFollowupGenerationRequest
+    buildCompletionFollowupGenerationRequest(
+            InterviewSession session,
+            List<AnsweredQuestionThread> answeredThreads
+    ) {
+        return new InterviewCompletionFollowupGenerationService.CompletionFollowupGenerationRequest(
+                session.getQuestionSet().getApplication().getJobRole(),
+                session.getQuestionSet().getApplication().getCompanyName(),
+                answeredThreads.stream()
+                        .map(this::toCompletionAnsweredThread)
+                        .toList()
+        );
+    }
+
+    private com.back.backend.domain.ai.pipeline.payload.InterviewCompletionFollowupPayloadBuilder.AnsweredThread
+    toCompletionAnsweredThread(AnsweredQuestionThread answeredThread) {
+        return new com.back.backend.domain.ai.pipeline.payload.InterviewCompletionFollowupPayloadBuilder.AnsweredThread(
+                answeredThread.tailQuestionOrder(),
+                new com.back.backend.domain.ai.pipeline.payload.InterviewCompletionFollowupPayloadBuilder.ThreadQuestion(
+                        answeredThread.rootQuestion().getQuestionOrder(),
+                        answeredThread.rootQuestion().getQuestionType().getValue(),
+                        answeredThread.rootQuestion().getQuestionText(),
+                        answeredThread.rootQuestion().getDifficultyLevel().getValue()
+                ),
+                new com.back.backend.domain.ai.pipeline.payload.InterviewCompletionFollowupPayloadBuilder.ThreadAnswer(
+                        answeredThread.rootAnswer().getAnswerText(),
+                        answeredThread.rootAnswer().isSkipped()
+                ),
+                toCompletionRuntimeRuleSummary(answeredThread.runtimeRuleSummary()),
+                answeredThread.runtimeFollowupQuestion() == null
+                        ? null
+                        : new com.back.backend.domain.ai.pipeline.payload.InterviewCompletionFollowupPayloadBuilder.ThreadQuestion(
+                                answeredThread.runtimeFollowupQuestion().getQuestionOrder(),
+                                answeredThread.runtimeFollowupQuestion().getQuestionType().getValue(),
+                                answeredThread.runtimeFollowupQuestion().getQuestionText(),
+                                answeredThread.runtimeFollowupQuestion().getDifficultyLevel().getValue()
+                        ),
+                answeredThread.runtimeFollowupAnswer() == null
+                        ? null
+                        : new com.back.backend.domain.ai.pipeline.payload.InterviewCompletionFollowupPayloadBuilder.ThreadAnswer(
+                                answeredThread.runtimeFollowupAnswer().getAnswerText(),
+                                answeredThread.runtimeFollowupAnswer().isSkipped()
+                        )
+        );
+    }
+
+    private com.back.backend.domain.ai.pipeline.payload.InterviewCompletionFollowupPayloadBuilder.RuntimeRuleSummary
+    toCompletionRuntimeRuleSummary(FollowupAnalyzeResponse analysis) {
+        if (analysis == null) {
             return null;
         }
 
-        return new CompletionReviewCandidate(
-                answer.getId(),
-                answer.getAnswerOrder(),
-                parentQuestion.getId(),
-                analysis.finalAction() == FinalAction.USE_DYNAMIC ? 2 : 1,
-                buildFollowupGenerationRequest(session, parentQuestion, answer, calculateFollowupDepth(parentQuestion))
+        return new com.back.backend.domain.ai.pipeline.payload.InterviewCompletionFollowupPayloadBuilder.RuntimeRuleSummary(
+                analysis.finalAction().name(),
+                analysis.primaryGap() != null ? analysis.primaryGap().name() : null,
+                analysis.secondaryGap() != null ? analysis.secondaryGap().name() : null,
+                analysis.candidateQuestionTypes().stream()
+                        .map(Enum::name)
+                        .toList()
         );
+    }
+
+    private InterviewSessionQuestion findRootSessionQuestion(InterviewSessionQuestion sessionQuestion) {
+        InterviewSessionQuestion current = sessionQuestion;
+        while (current.getParentSessionQuestion() != null) {
+            current = current.getParentSessionQuestion();
+        }
+        return current;
     }
 
     private FollowupAnalyzeResponse analyzeFollowup(InterviewSessionQuestion sessionQuestion, InterviewAnswer answer) {
@@ -859,10 +1049,36 @@ public class InterviewSessionService {
     }
 
     private boolean hasRuntimeDynamicBudgetBeenUsed(long sessionId) {
-        return interviewSessionQuestionRepository.existsBySessionIdAndQuestionTypeAndSourceQuestionIsNull(
-                sessionId,
-                InterviewQuestionType.FOLLOW_UP
-        );
+        List<InterviewSessionQuestion> runtimeFollowupQuestions = interviewSessionQuestionRepository
+                .findAllBySessionIdOrderByQuestionOrderAsc(sessionId)
+                .stream()
+                .filter(sessionQuestion -> sessionQuestion.getQuestionType() == InterviewQuestionType.FOLLOW_UP)
+                .filter(sessionQuestion -> sessionQuestion.getSourceQuestion() == null)
+                .filter(sessionQuestion -> sessionQuestion.getParentSessionQuestion() != null)
+                .toList();
+        if (runtimeFollowupQuestions.isEmpty()) {
+            return false;
+        }
+
+        Map<Long, InterviewAnswer> answersBySessionQuestionId = new LinkedHashMap<>();
+        for (InterviewAnswer answer : interviewAnswerRepository.findAllWithSessionQuestionBySessionIdOrderByAnswerOrderAsc(sessionId)) {
+            answersBySessionQuestionId.put(answer.getSessionQuestion().getId(), answer);
+        }
+
+        for (InterviewSessionQuestion runtimeFollowupQuestion : runtimeFollowupQuestions) {
+            InterviewSessionQuestion parentQuestion = runtimeFollowupQuestion.getParentSessionQuestion();
+            if (parentQuestion == null) {
+                continue;
+            }
+
+            InterviewAnswer parentAnswer = answersBySessionQuestionId.get(parentQuestion.getId());
+            FollowupAnalyzeResponse analysis = parentAnswer == null ? null : analyzeFollowup(parentQuestion, parentAnswer);
+            if (analysis != null && analysis.finalAction() == FinalAction.USE_DYNAMIC) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private InterviewFollowupGenerationService.FollowupGenerationRequest buildFollowupGenerationRequest(
@@ -1128,21 +1344,19 @@ public class InterviewSessionService {
 
     private record CompletionFollowupReviewPreparation(
             long sessionId,
-            long parentSessionQuestionId,
             boolean reviewNeeded,
-            InterviewFollowupGenerationService.FollowupGenerationRequest request
+            InterviewCompletionFollowupGenerationService.CompletionFollowupGenerationRequest request
     ) {
 
         private static CompletionFollowupReviewPreparation reviewSkipped(long sessionId) {
-            return new CompletionFollowupReviewPreparation(sessionId, 0L, false, null);
+            return new CompletionFollowupReviewPreparation(sessionId, false, null);
         }
 
         private static CompletionFollowupReviewPreparation reviewPending(
                 long sessionId,
-                long parentSessionQuestionId,
-                InterviewFollowupGenerationService.FollowupGenerationRequest request
+                InterviewCompletionFollowupGenerationService.CompletionFollowupGenerationRequest request
         ) {
-            return new CompletionFollowupReviewPreparation(sessionId, parentSessionQuestionId, true, request);
+            return new CompletionFollowupReviewPreparation(sessionId, true, request);
         }
     }
 
@@ -1157,20 +1371,52 @@ public class InterviewSessionService {
         }
     }
 
-    private record CompletionReviewCandidate(
-            long answerId,
-            int answerOrder,
-            long parentSessionQuestionId,
-            int priority,
-            InterviewFollowupGenerationService.FollowupGenerationRequest request
+    private record AnsweredQuestionThread(
+            InterviewSessionQuestion rootQuestion,
+            InterviewAnswer rootAnswer,
+            FollowupAnalyzeResponse runtimeRuleSummary,
+            InterviewSessionQuestion runtimeFollowupQuestion,
+            InterviewAnswer runtimeFollowupAnswer
     ) {
+        private int tailQuestionOrder() {
+            return runtimeFollowupQuestion != null
+                    ? runtimeFollowupQuestion.getQuestionOrder()
+                    : rootQuestion.getQuestionOrder();
+        }
     }
 
     private record PendingFollowupResolution(
             long answerId,
             long parentSessionQuestionId,
-            boolean aiRequired,
-            InterviewFollowupGenerationService.FollowupGenerationRequest request
+            FinalAction finalAction,
+            FollowupQuestionDraft followupDraft,
+            InterviewFollowupGenerationService.FollowupGenerationRequest aiRequest
     ) {
+
+        private static PendingFollowupResolution resolveOnly(
+                long answerId,
+                long parentSessionQuestionId,
+                FinalAction finalAction
+        ) {
+            return new PendingFollowupResolution(answerId, parentSessionQuestionId, finalAction, null, null);
+        }
+
+        private static PendingFollowupResolution withLocalDraft(
+                long answerId,
+                long parentSessionQuestionId,
+                FinalAction finalAction,
+                FollowupQuestionDraft followupDraft
+        ) {
+            return new PendingFollowupResolution(answerId, parentSessionQuestionId, finalAction, followupDraft, null);
+        }
+
+        private static PendingFollowupResolution withAiRequest(
+                long answerId,
+                long parentSessionQuestionId,
+                FinalAction finalAction,
+                InterviewFollowupGenerationService.FollowupGenerationRequest aiRequest
+        ) {
+            return new PendingFollowupResolution(answerId, parentSessionQuestionId, finalAction, null, aiRequest);
+        }
     }
 }

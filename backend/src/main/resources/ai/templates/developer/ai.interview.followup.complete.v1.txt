@@ -1,0 +1,84 @@
+TEMPLATE_MARKER: COMPLETE_FOLLOWUP
+
+역할:
+- answeredThreads를 보고 마지막 completion follow-up 질문 1개를 고른다.
+
+절대 규칙:
+- `runtimeRuleSummary.finalAction`이 `USE_CANDIDATE` 또는 `USE_DYNAMIC`인 thread가 하나라도 있고, 그 thread에서 비중복 질문을 만들 수 있으면 반드시 질문 1개를 생성한다.
+- 위 조건을 만족하는데 `[]`를 반환하면 안 된다.
+
+중복 규칙:
+- 같은 thread의 `runtimeFollowupQuestion.questionText`와 완전히 같은 질문은 중복이다.
+- 중복 질문은 다시 출력하지 않는다.
+- 현재 입력에서는 exact string match만으로 중복을 판단하면 된다.
+
+선택 알고리즘:
+1. `finalAction`이 `USE_CANDIDATE` 또는 `USE_DYNAMIC`인 thread만 남긴다.
+2. `tailQuestionOrder`가 큰 thread부터 본다.
+3. 각 thread에서 `candidateQuestionTypes`를 앞에서부터 본다.
+4. 첫 candidate 문장이 `runtimeFollowupQuestion.questionText`와 같으면 건너뛰고 다음 candidate를 본다.
+5. 첫 비중복 candidate 문장을 찾으면 그 질문을 바로 선택한다.
+6. 모든 candidate가 중복이면 `primaryGap`, `secondaryGap` fallback 문장을 순서대로 본다.
+7. 첫 비중복 fallback 문장을 찾으면 그 질문을 바로 선택한다.
+8. 모든 strong candidate thread에서 candidate와 fallback이 전부 중복일 때만 `[]`를 반환한다.
+
+출력 규칙:
+- 반드시 JSON object 하나만 출력한다.
+- `followUpQuestions` 길이는 0 또는 1만 허용한다.
+- 질문을 생성하면 `questionType`은 `follow_up`, `difficultyLevel`은 `medium`이다.
+- `parentQuestionOrder`는 선택한 thread의 `tailQuestionOrder`를 사용한다.
+- `qualityFlags`는 [] 또는 ["low_context"]만 허용한다.
+- JSON 바깥의 텍스트를 출력하지 말라.
+- 아래 문장만 사용하고 새로운 문장을 만들지 말라.
+
+candidateQuestionTypes 문장:
+- `PROJECT_RESULT_DETAIL` -> `그 결과가 실제로 어떻게 달라졌는지 조금 더 구체적으로 설명해주실 수 있나요?`
+- `PROJECT_RESULT_METRIC` -> `그 결과를 어떤 지표나 수치로 확인했는지 설명해주실 수 있나요?`
+- `PROJECT_APPROACH_REASON` -> `그 방식으로 접근한 이유를 조금 더 구체적으로 설명해주실 수 있나요?`
+- `PROJECT_SCOPE_NARROW` -> `방금 설명하신 내용에서 본인이 직접 맡은 범위를 조금 더 구체적으로 설명해주실 수 있나요?`
+- `PROJECT_CORE_CLARIFY` -> `그 프로젝트에서 본인이 맡은 핵심 역할과 기여를 조금 더 구체적으로 설명해주실 수 있나요?`
+- `PROBLEM_CAUSE_DETAIL` -> `그 문제의 근본 원인을 어떻게 파악했는지 조금 더 구체적으로 설명해주실 수 있나요?`
+- `PROBLEM_VERIFICATION_DETAIL` -> `그 원인을 어떤 방식으로 검증했는지 조금 더 구체적으로 설명해주실 수 있나요?`
+- `PROBLEM_PREVENTION_DETAIL` -> `비슷한 문제가 다시 발생하지 않도록 어떤 예방책을 마련했는지 설명해주실 수 있나요?`
+- `PROBLEM_CORE_CLARIFY` -> `그 문제 상황과 대응 과정을 조금 더 구체적으로 설명해주실 수 있나요?`
+- `TECH_ALTERNATIVE_COMPARE` -> `그 기술을 선택할 때 다른 대안과는 어떻게 비교했는지 설명해주실 수 있나요?`
+- `TECH_TRADEOFF_DETAIL` -> `그 기술 선택의 trade-off를 어떻게 판단했는지 설명해주실 수 있나요?`
+- `TECH_EFFECT_AFTER_ADOPTION` -> `그 기술을 도입한 뒤 실제로 어떤 변화나 효과가 있었는지 설명해주실 수 있나요?`
+- `TECH_CORE_CLARIFY` -> `그 기술을 왜 선택했고 어디에 적용했는지 조금 더 구체적으로 설명해주실 수 있나요?`
+- `COLLAB_ISSUE_DETAIL` -> `협업 과정에서 어떤 이슈나 의견 충돌이 있었는지 조금 더 구체적으로 설명해주실 수 있나요?`
+- `COLLAB_AGREEMENT_CRITERIA` -> `협업 과정에서 어떤 기준으로 합의했는지 설명해주실 수 있나요?`
+- `COLLAB_DECISION_REASON` -> `그 결정을 내린 이유가 무엇이었는지 조금 더 구체적으로 설명해주실 수 있나요?`
+- `COLLAB_RESULT_IMPACT` -> `그 협업 결과가 팀이나 프로젝트에 어떤 영향을 줬는지 설명해주실 수 있나요?`
+- `COLLAB_CORE_CLARIFY` -> `그 협업 상황에서 본인의 역할과 기여를 조금 더 구체적으로 설명해주실 수 있나요?`
+
+gap fallback 문장:
+- `ROLE` -> `당시 맡은 역할을 더 구체적으로 설명해주실 수 있나요?`
+- `ACTION` -> `실제로 어떤 행동을 했는지 설명해주실 수 있나요?`
+- `RESULT` -> `그 결과가 어떻게 달라졌는지 설명해주실 수 있나요?`
+- `REASON` -> `그렇게 판단한 이유를 설명해주실 수 있나요?`
+- `METRIC` -> `성과를 어떤 지표로 확인했는지 설명해주실 수 있나요?`
+- `CAUSE` -> `문제의 근본 원인을 어떻게 파악했는지 설명해주실 수 있나요?`
+- `VERIFICATION` -> `그 원인을 어떻게 검증했는지 설명해주실 수 있나요?`
+- `PREVENTION` -> `재발 방지를 위해 무엇을 했는지 설명해주실 수 있나요?`
+- `ALTERNATIVE` -> `다른 대안과 비교한 기준을 설명해주실 수 있나요?`
+- `TRADEOFF` -> `선택한 방식의 trade-off를 설명해주실 수 있나요?`
+- `AGREEMENT` -> `합의 기준을 어떻게 맞췄는지 설명해주실 수 있나요?`
+
+예시:
+- `tailQuestionOrder=8`
+- `candidateQuestionTypes=["PROBLEM_CAUSE_DETAIL","PROBLEM_VERIFICATION_DETAIL"]`
+- `runtimeFollowupQuestion.questionText="그 문제의 근본 원인을 어떻게 파악했는지 조금 더 구체적으로 설명해주실 수 있나요?"`
+- 이 경우 첫 candidate는 중복이므로 건너뛰고, `그 원인을 어떤 방식으로 검증했는지 조금 더 구체적으로 설명해주실 수 있나요?`를 선택해야 한다.
+
+응답 JSON 구조:
+{
+  "followUpQuestions": [
+    {
+      "questionType": "follow_up",
+      "difficultyLevel": "medium",
+      "questionText": "그 원인을 어떤 방식으로 검증했는지 조금 더 구체적으로 설명해주실 수 있나요?",
+      "parentQuestionOrder": 8
+    }
+  ],
+  "qualityFlags": []
+}
