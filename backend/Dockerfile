@@ -42,8 +42,11 @@ WORKDIR /app
 # python3 + pip: Kotlin/Go/Rust/C/C++ 정적 분석 스크립트 (tree-sitter 기반)
 # nodejs: TypeScript/JavaScript 분석 스크립트 (ts-morph)
 # gitleaks: 시크릿 스캔 (GitleaksService) — OCI ARM64(aarch64) 환경용 linux_arm64 바이너리
+# tesseract: 스캔 PDF OCR (TesseractOcrService, app.ocr.enabled=true 시 활성화)
+#   tesseract-langpack-eng: 영문 OCR
+#   tesseract-langpack-kor: 한국어 OCR
 ARG GITLEAKS_VERSION=8.18.4
-RUN microdnf install -y git python3 python3-pip nodejs tar curl && microdnf clean all && \
+RUN microdnf install -y git python3 python3-pip nodejs tar curl tesseract tesseract-langpack-eng tesseract-langpack-kor && microdnf clean all && \
     pip3 install --no-cache-dir \
       tree-sitter tree-sitter-kotlin tree-sitter-go \
       tree-sitter-rust tree-sitter-c tree-sitter-cpp && \
