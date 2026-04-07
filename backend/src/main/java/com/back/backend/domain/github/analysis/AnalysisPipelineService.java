@@ -6,6 +6,7 @@ import com.back.backend.domain.github.portfolio.MergedSummaryService;
 import com.back.backend.domain.github.portfolio.RepoSummaryGeneratorService;
 import com.back.backend.domain.github.repository.GithubCommitRepository;
 import com.back.backend.domain.github.repository.GithubRepositoryRepository;
+import com.back.backend.domain.portfolio.service.FailedJobRedisStore;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.repository.UserRepository;
 import com.back.backend.global.exception.ErrorCode;
@@ -86,6 +87,7 @@ public class AnalysisPipelineService {
     private final RepoFileFilterService repoFileFilterService;
     private final GitleaksService gitleaksService;
     private final ObjectMapper objectMapper;
+    private final FailedJobRedisStore failedJobRedisStore;
 
     // Self-injection: @Async 프록시를 통해 executeAsync를 호출하기 위함
     private AnalysisPipelineService self;
@@ -108,7 +110,8 @@ public class AnalysisPipelineService {
             Executor parallelAnalysisExecutor,
             RepoFileFilterService repoFileFilterService,
             GitleaksService gitleaksService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            FailedJobRedisStore failedJobRedisStore
     ) {
         this.userRepository = userRepository;
         this.repositoryRepository = repositoryRepository;
@@ -127,6 +130,7 @@ public class AnalysisPipelineService {
         this.repoFileFilterService = repoFileFilterService;
         this.gitleaksService = gitleaksService;
         this.objectMapper = objectMapper;
+        this.failedJobRedisStore = failedJobRedisStore;
     }
 
     // Spring이 주입한 자기 자신 (프록시) — @Lazy로 순환 참조 방지
@@ -207,6 +211,9 @@ public class AnalysisPipelineService {
             log.error("Batch pipeline aborted: user not found. userId={}", userId);
             repositoryIds.forEach(repoId ->
                     syncStatusService.setFailed(userId, repoId, "사용자를 찾을 수 없습니다."));
+            // 사용자 조회 실패를 실패 로그에 기록
+            failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
+                    ErrorCode.AUTH_REQUIRED.name(), "배치 분석 실패: 사용자를 찾을 수 없습니다.");
             return;
         }
 
@@ -233,6 +240,9 @@ public class AnalysisPipelineService {
                     GithubRepository repo = repositoryRepository.findByIdWithConnection(repositoryId).orElse(null);
                     if (repo == null) {
                         syncStatusService.setFailed(userId, repositoryId, "저장소를 찾을 수 없습니다.");
+                        // 저장소 조회 실패를 실패 로그에 기록
+                        failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
+                                ErrorCode.GITHUB_REPOSITORY_NOT_FOUND.name(), "배치 분석 실패: 저장소를 찾을 수 없습니다.");
                         activeThreads.remove(key);
                         return;
                     }
@@ -246,6 +256,9 @@ public class AnalysisPipelineService {
                     } catch (Exception e) {
                         log.error("Batch: static analysis failed for repoId={}: {}", repositoryId, e.getMessage(), e);
                         syncStatusService.setFailed(userId, repositoryId, summarizeError(e));
+                        // 정적 분석 실패를 실패 로그에 기록
+                        failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
+                                ErrorCode.GITHUB_COMMIT_SYNC_FAILED.name(), "정적 분석 실패: " + summarizeError(e));
                         try {
                             codeIndexService.deleteByRepository(repo);
                         } catch (Exception cleanupEx) {
@@ -300,6 +313,9 @@ public class AnalysisPipelineService {
             String errorMsg = "배치 AI 호출 실패: " + summarizeError(e);
             analyzedRepos.forEach(repo ->
                     syncStatusService.setFailed(userId, repo.getId(), errorMsg));
+            // 배치 AI 호출 실패를 실패 로그에 기록 (repo 수에 관계없이 1건)
+            failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
+                    ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE.name(), errorMsg);
             // AI 호출 실패 시 이번 run에서 새로 저장한 CodeIndex를 정리
             analyzedRepos.forEach(repo -> {
                 try {
@@ -446,6 +462,9 @@ public class AnalysisPipelineService {
         if (user == null || repo == null) {
             log.error("Pipeline aborted: user or repo not found. userId={}, repoId={}", userId, repositoryId);
             syncStatusService.setFailed(userId, repositoryId, "사용자 또는 저장소를 찾을 수 없습니다.");
+            // 엔티티 조회 실패를 실패 로그에 기록
+            failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
+                    ErrorCode.AUTH_REQUIRED.name(), "분석 실패: 사용자 또는 저장소를 찾을 수 없습니다.");
             activeThreads.remove(threadKey(userId, repositoryId));
             return;
         }
@@ -455,6 +474,9 @@ public class AnalysisPipelineService {
         } catch (Exception e) {
             log.error("Pipeline failed: userId={}, repoId={}, error={}", userId, repositoryId, e.getMessage(), e);
             syncStatusService.setFailed(userId, repositoryId, summarizeError(e));
+            // 파이프라인 실패를 실패 로그에 기록
+            failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
+                    ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE.name(), "분석 파이프라인 실패: " + summarizeError(e));
         } finally {
             activeThreads.remove(threadKey(userId, repositoryId));
             repoCloneService.deleteRepo(userId, repositoryId);

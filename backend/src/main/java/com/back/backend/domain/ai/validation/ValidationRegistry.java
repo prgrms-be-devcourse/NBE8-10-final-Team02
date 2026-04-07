@@ -47,7 +47,10 @@ public class ValidationRegistry {
             new InterviewEvaluateValidator(jsonSchemaValidator),
             new InterviewSummaryValidator(jsonSchemaValidator),
             // Batch 포트폴리오 요약 검증기 — BatchRepoSummaryGeneratorService에서 사용
-            new BatchPortfolioSummaryValidator()
+            new BatchPortfolioSummaryValidator(),
+            // 문제은행 연습 평가 검증기
+            new PracticeEvaluateCsValidator(jsonSchemaValidator),
+            new PracticeEvaluateBehavioralValidator(jsonSchemaValidator)
         };
 
         for (AiResponseValidator validator : validators) {

@@ -5,6 +5,7 @@ import com.back.backend.domain.ai.pipeline.AiPipeline;
 import com.back.backend.domain.interview.entity.FeedbackTag;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
 import com.back.backend.domain.interview.repository.FeedbackTagRepository;
+import com.back.backend.domain.portfolio.service.FailedJobRedisStore;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -32,9 +33,39 @@ public class InterviewResultGenerationService {
 
     private final AiPipeline aiPipeline;
     private final FeedbackTagRepository feedbackTagRepository;
+    private final FailedJobRedisStore failedJobRedisStore;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public GeneratedInterviewResult generate(long sessionId, long questionSetId, List<InterviewAnswer> answers, String jobRole) {
+    /**
+     * 면접 결과를 생성하고, 실패 시 Redis 실패 로그를 기록한 뒤 예외를 다시 던진다.
+     *
+     * @param userId 결과를 생성할 사용자 ID (실패 로그 기록용)
+     */
+    public GeneratedInterviewResult generate(Long userId, long sessionId, long questionSetId, List<InterviewAnswer> answers, String jobRole) {
+        try {
+            return doGenerate(sessionId, questionSetId, answers, jobRole);
+        } catch (ServiceException exception) {
+            // ServiceException은 에러 코드가 명확하므로 해당 코드로 실패 로그 기록
+            failedJobRedisStore.push(
+                    userId,
+                    FailedJobRedisStore.JobType.INTERVIEW_RESULT,
+                    exception.getErrorCode().name(),
+                    exception.getMessage() != null ? exception.getMessage() : "면접 결과 생성 실패"
+            );
+            throw exception;
+        } catch (Exception exception) {
+            failedJobRedisStore.push(
+                    userId,
+                    FailedJobRedisStore.JobType.INTERVIEW_RESULT,
+                    ErrorCode.INTERVIEW_RESULT_GENERATION_FAILED.name(),
+                    exception.getMessage() != null ? exception.getMessage() : "면접 결과 생성 중 오류가 발생했습니다."
+            );
+            throw exception;
+        }
+    }
+
+    /** generate()에서 실제 로직을 수행한다. 실패 로그 기록은 generate()가 담당한다. */
+    private GeneratedInterviewResult doGenerate(long sessionId, long questionSetId, List<InterviewAnswer> answers, String jobRole) {
         List<FeedbackTag> tagMaster = feedbackTagRepository.findAllByOrderByIdAsc();
         if (tagMaster.isEmpty()) {
             throw generationFailed();
