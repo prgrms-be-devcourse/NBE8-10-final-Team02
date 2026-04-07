@@ -16,29 +16,17 @@ import {
   shouldRequireManualCompleteAfterAnswer,
   shouldShowCompletionFollowupMode,
 } from '@/lib/interview-session-flow';
+import {
+  getSessionActionLabel,
+  getSessionStatusSummary,
+  SESSION_STATUS_BADGE_META,
+} from '@/lib/interview-status-ui';
 import type {
   CompletionFollowupAnswerSummary,
   InterviewQuestionType,
   InterviewSessionCurrentQuestion,
   InterviewSessionDetail,
-  InterviewSessionStatus,
 } from '@/types/interview';
-
-const STATUS_LABEL: Record<InterviewSessionStatus, string> = {
-  ready: '준비',
-  in_progress: '진행 중',
-  paused: '일시정지',
-  completed: '종료',
-  feedback_completed: '피드백 완료',
-};
-
-const STATUS_TONE: Record<InterviewSessionStatus, string> = {
-  ready: 'bg-zinc-100 text-zinc-700',
-  in_progress: 'bg-green-50 text-green-700',
-  paused: 'bg-amber-50 text-amber-700',
-  completed: 'bg-zinc-100 text-zinc-700',
-  feedback_completed: 'bg-blue-50 text-blue-700',
-};
 
 const QUESTION_TYPE_LABEL: Record<InterviewQuestionType, string> = {
   experience: '경험',
@@ -294,6 +282,7 @@ export default function InterviewSessionPage() {
   const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
   const [needsManualCompleteAfterCompletionAnswer, setNeedsManualCompleteAfterCompletionAnswer] =
     useState(false);
+  const [justResumed, setJustResumed] = useState(false);
   const currentQuestionId = session?.currentQuestion?.id ?? null;
   const completionFollowupContext = session?.completionFollowupContext ?? null;
   const isCompletionFollowupMode = !!completionFollowupContext;
@@ -379,6 +368,9 @@ export default function InterviewSessionPage() {
     try {
       const data = await getSessionDetail(sessionId);
       setSession(data);
+      if (data.status !== 'in_progress') {
+        setJustResumed(false);
+      }
       setMessages((previousMessages) => syncMessagesWithCurrentQuestion(previousMessages, data));
       if (options?.resetAnswerText) {
         setAnswerText('');
@@ -611,6 +603,8 @@ export default function InterviewSessionPage() {
         ? await pauseSession(session.id)
         : await resumeSession(session.id);
 
+      setJustResumed(result.status === 'in_progress');
+
       setMessages((previousMessages) => [
         ...previousMessages,
         createSystemMessage(
@@ -641,6 +635,13 @@ export default function InterviewSessionPage() {
   const answerLength = answerText.trim().length;
   const actionBusy = submittingMode !== null || transitionMode !== null || completingSession;
   const autoPauseLikely = session ? isAutoPauseLikely(session) : false;
+  const sessionStatusSummary = session
+    ? getSessionStatusSummary({
+      status: session.status,
+      autoPauseLikely,
+      justResumed: justResumed && session.status === 'in_progress',
+    })
+    : null;
   const draftStatusText =
     !session?.currentQuestion
       ? '현재 질문 없음'
@@ -664,11 +665,24 @@ export default function InterviewSessionPage() {
     session.remainingQuestionCount === 0 &&
     (session.status === 'in_progress' || session.status === 'paused') &&
     !actionBusy;
-  const completeButtonDescription = needsManualCompleteAfterCompletionAnswer
+  const completeButtonDescription = session?.status === 'completed'
+    ? '세션 종료는 완료됐습니다. 결과 재확인으로 최신 리포트 상태를 확인합니다.'
+    : session?.status === 'feedback_completed'
+    ? '세션 종료와 피드백 생성이 모두 끝났습니다.'
+    : needsManualCompleteAfterCompletionAnswer
     ? '보완 질문 답변이 끝났습니다. 종료 버튼을 다시 눌러 결과를 생성합니다.'
     : isCompletionFollowupMode
     ? '보완 질문 답변 후 다시 종료를 눌러 결과를 생성합니다.'
     : '질문이 모두 끝나면 자동으로 마지막 보완 검토가 시작될 수 있습니다.';
+  const statusActionDescription = session?.status === 'in_progress'
+    ? '현재 진행 중인 세션입니다. 필요하면 일시정지하고 같은 세션으로 돌아와 재개할 수 있습니다.'
+    : session?.status === 'paused'
+    ? '현재 일시정지 상태입니다. 재개 액션으로만 다시 진행 상태로 돌아갈 수 있습니다.'
+    : session?.status === 'completed'
+    ? '세션 상태 전이는 끝났습니다. 이제 결과 재확인 흐름으로 최신 리포트 상태를 확인합니다.'
+    : session?.status === 'feedback_completed'
+    ? '세션과 결과가 모두 완료됐습니다. 결과 보기로 리포트를 다시 확인하세요.'
+    : '현재 질문이 준비되면 진행 상태로 전환됩니다.';
 
   if (loading) {
     return (
@@ -713,9 +727,9 @@ export default function InterviewSessionPage() {
       <section className="rounded-3xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
           <span
-            className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[session.status]}`}
+            className={`rounded-full px-2 py-0.5 text-xs font-medium ${SESSION_STATUS_BADGE_META[session.status].tone}`}
           >
-            상태 {STATUS_LABEL[session.status]}
+            상태 {SESSION_STATUS_BADGE_META[session.status].label}
           </span>
           <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
             진행 {session.answeredQuestionCount}/{session.totalQuestionCount}
@@ -745,6 +759,20 @@ export default function InterviewSessionPage() {
             </p>
           </div>
         </div>
+
+        {sessionStatusSummary && (
+          <div className={`mt-5 rounded-2xl border px-4 py-4 ${sessionStatusSummary.tone}`}>
+            <p className={`text-xs font-semibold uppercase tracking-[0.12em] ${sessionStatusSummary.eyebrowTone}`}>
+              {sessionStatusSummary.eyebrow}
+            </p>
+            <p className={`mt-2 text-base font-semibold ${sessionStatusSummary.titleTone}`}>
+              {sessionStatusSummary.title}
+            </p>
+            <p className={`mt-2 text-sm leading-6 ${sessionStatusSummary.descriptionTone}`}>
+              {sessionStatusSummary.description}
+            </p>
+          </div>
+        )}
 
         {session.status === 'paused' && (
           <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
@@ -1015,7 +1043,7 @@ export default function InterviewSessionPage() {
             <div className="rounded-3xl border border-zinc-200 px-4 py-4">
               <p className="text-sm font-semibold text-zinc-900">세션 상태</p>
               <p className="mt-1 text-xs text-zinc-500">
-                진행 중에는 일시정지, 일시정지 상태에서는 재개만 허용합니다.
+                {statusActionDescription}
               </p>
 
               <div className="mt-4 flex flex-wrap gap-3">
@@ -1054,7 +1082,7 @@ export default function InterviewSessionPage() {
                     href={`/interview/sessions/${session.id}/result`}
                     className="rounded-full border border-blue-300 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-800"
                   >
-                    결과 확인
+                    {getSessionActionLabel(session.status)}
                   </Link>
                 )}
                 {(session.status === 'in_progress' || session.status === 'paused') && (
@@ -1083,14 +1111,14 @@ export default function InterviewSessionPage() {
               )}
 
               {session.status === 'completed' && (
-                <p className="mt-3 text-sm text-zinc-600">
-                  세션은 종료됐지만 결과가 아직 준비 중일 수 있습니다. 결과 화면에서 다시 확인할 수 있습니다.
+                <p className="mt-3 text-sm text-cyan-700">
+                  세션은 종료됐고 결과는 재확인 흐름으로 확인합니다. 세션 종료를 다시 보내지 않고 결과 화면에서 최신 상태를 조회하세요.
                 </p>
               )}
 
               {session.status === 'feedback_completed' && (
                 <p className="mt-3 text-sm text-blue-700">
-                  결과 리포트가 준비되었습니다. 결과 확인 버튼으로 이동하세요.
+                  결과 리포트가 준비되었습니다. 결과 보기 버튼으로 이동하세요.
                 </p>
               )}
             </div>
