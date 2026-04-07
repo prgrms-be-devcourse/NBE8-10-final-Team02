@@ -1026,14 +1026,6 @@ export default function InterviewSessionPage() {
           </div>
         )}
 
-        <div className="mt-6 flex items-center gap-3">
-          <div className="h-px flex-1 bg-zinc-200" />
-          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
-            현재 작업
-          </span>
-          <div className="h-px flex-1 bg-zinc-200" />
-        </div>
-
         {completionFollowupContext && (
           <div className="mt-4 rounded-3xl border border-blue-200 bg-blue-50 px-4 py-4">
             <div className="flex items-center justify-between gap-3">
@@ -1080,120 +1072,137 @@ export default function InterviewSessionPage() {
 
         <div className={`mt-4 grid gap-4 ${showCompletionCard ? 'lg:grid-cols-[minmax(0,1fr),19rem]' : ''}`}>
           <div className="space-y-4">
-            {session.currentQuestion && (
-              <div className="rounded-3xl border border-zinc-200 bg-zinc-50 px-4 py-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-700 shadow-sm">
-                    현재 Q{session.currentQuestion.questionOrder}
-                  </span>
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm">
-                    {currentQuestionTypeLabel}
-                  </span>
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm">
-                    {DIFFICULTY_LABEL[session.currentQuestion.difficultyLevel] ?? session.currentQuestion.difficultyLevel}
-                  </span>
-                </div>
-                <p className="mt-4 text-sm font-semibold text-zinc-900">현재 질문</p>
-                <p className="mt-2 text-base font-medium leading-7 text-zinc-900">
-                  {session.currentQuestion.questionText}
+            <section
+              aria-labelledby="current-answer-work-heading"
+              className="overflow-hidden rounded-[2rem] border border-zinc-300 bg-white shadow-sm ring-1 ring-zinc-950/5"
+            >
+              <div className="border-b border-zinc-200 bg-zinc-50/80 px-5 py-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                  현재 작업
                 </p>
-                <p className="mt-3 text-xs leading-5 text-zinc-500">
-                  {currentQuestionHint}
+                <h2 id="current-answer-work-heading" className="mt-2 text-base font-semibold text-zinc-900">
+                  현재 답변 작업
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-zinc-600">
+                  현재 질문을 확인하고 바로 아래에서 답변을 작성한 뒤 제출합니다.
                 </p>
               </div>
-            )}
 
-            <div ref={answerSectionRef} className="rounded-3xl border border-zinc-200 px-4 py-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-zinc-900">답변 입력</p>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    일반 답변은 {MIN_ANSWER_LENGTH}자 이상 {MAX_ANSWER_LENGTH}자 이하로 입력합니다.
+              {session.currentQuestion && (
+                <div className="border-b border-zinc-200 bg-zinc-50/60 px-5 py-5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-700 shadow-sm">
+                      현재 Q{session.currentQuestion.questionOrder}
+                    </span>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm">
+                      {currentQuestionTypeLabel}
+                    </span>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm">
+                      {DIFFICULTY_LABEL[session.currentQuestion.difficultyLevel] ?? session.currentQuestion.difficultyLevel}
+                    </span>
+                  </div>
+                  <p className="mt-4 text-sm font-semibold text-zinc-900">현재 질문</p>
+                  <p className="mt-2 text-base font-medium leading-7 text-zinc-900">
+                    {session.currentQuestion.questionText}
                   </p>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    자동 저장 상태: {draftStatusText}
+                  <p className="mt-3 text-xs leading-5 text-zinc-500">
+                    {currentQuestionHint}
                   </p>
                 </div>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    answerLength > MAX_ANSWER_LENGTH
-                      ? 'bg-red-50 text-red-700'
-                      : answerLength >= MIN_ANSWER_LENGTH
-                        ? 'bg-green-50 text-green-700'
-                        : 'bg-zinc-100 text-zinc-600'
-                  }`}
-                >
-                  {answerLength}/{MAX_ANSWER_LENGTH}
-                </span>
+              )}
+
+              <div ref={answerSectionRef} className="bg-white px-5 py-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-zinc-900">답변 입력</p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      일반 답변은 {MIN_ANSWER_LENGTH}자 이상 {MAX_ANSWER_LENGTH}자 이하로 입력합니다.
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      자동 저장 상태: {draftStatusText}
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      answerLength > MAX_ANSWER_LENGTH
+                        ? 'bg-red-50 text-red-700'
+                        : answerLength >= MIN_ANSWER_LENGTH
+                          ? 'bg-green-50 text-green-700'
+                          : 'bg-zinc-100 text-zinc-600'
+                    }`}
+                  >
+                    {answerLength}/{MAX_ANSWER_LENGTH}
+                  </span>
+                </div>
+
+                <textarea
+                  ref={answerTextareaRef}
+                  rows={9}
+                  value={answerText}
+                  onChange={(event) => setAnswerText(event.target.value)}
+                  disabled={session.status !== 'in_progress' || !session.currentQuestion || actionBusy}
+                  placeholder={
+                    session.status === 'paused'
+                      ? '일시정지된 세션은 재개 후 답변을 제출할 수 있습니다.'
+                      : session.status !== 'in_progress'
+                        ? '현재 상태에서는 답변을 제출할 수 없습니다.'
+                        : session.currentQuestion?.questionType === 'follow_up'
+                          ? '방금 답변을 더 구체화해서 이어서 적어보세요.'
+                          : '면접 답변을 입력하세요.'
+                  }
+                  className="mt-4 w-full rounded-3xl border border-zinc-300 px-4 py-3 text-sm leading-6 text-zinc-900 focus:border-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-200/80 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
+                />
+
+                {submitError && (
+                  <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {submitError}
+                  </div>
+                )}
+
+                {transitionError && (
+                  <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {transitionError}
+                  </div>
+                )}
+
+                {completeError && (
+                  <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {completeError}
+                  </div>
+                )}
+
+                {needsManualCompleteAfterCompletionAnswer && (
+                  <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                    세션 종료를 다시 눌러 결과를 생성하세요.
+                  </div>
+                )}
+
+                {(session.status === 'completed' || session.status === 'feedback_completed') && (
+                  <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+                    이 세션은 종료되었습니다. 결과 화면에서 리포트를 다시 확인할 수 있습니다.
+                  </div>
+                )}
+
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void handleSubmitAnswer(false)}
+                    disabled={!canSubmitAnswer}
+                    className="rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {submittingMode === 'answer' ? '제출 중...' : '제출'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSubmitAnswer(true)}
+                    disabled={!canSkip}
+                    className="rounded-full border border-zinc-300 px-4 py-2.5 text-sm font-medium text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {submittingMode === 'skip' ? '건너뛰는 중...' : '건너뛰기'}
+                  </button>
+                </div>
               </div>
-
-              <textarea
-                ref={answerTextareaRef}
-                rows={9}
-                value={answerText}
-                onChange={(event) => setAnswerText(event.target.value)}
-                disabled={session.status !== 'in_progress' || !session.currentQuestion || actionBusy}
-                placeholder={
-                  session.status === 'paused'
-                    ? '일시정지된 세션은 재개 후 답변을 제출할 수 있습니다.'
-                    : session.status !== 'in_progress'
-                      ? '현재 상태에서는 답변을 제출할 수 없습니다.'
-                      : session.currentQuestion?.questionType === 'follow_up'
-                        ? '방금 답변을 더 구체화해서 이어서 적어보세요.'
-                        : '면접 답변을 입력하세요.'
-                }
-                className="mt-4 w-full rounded-3xl border border-zinc-300 px-4 py-3 text-sm leading-6 text-zinc-900 focus:border-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
-              />
-
-              {submitError && (
-                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {submitError}
-                </div>
-              )}
-
-              {transitionError && (
-                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {transitionError}
-                </div>
-              )}
-
-              {completeError && (
-                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {completeError}
-                </div>
-              )}
-
-              {needsManualCompleteAfterCompletionAnswer && (
-                <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                  세션 종료를 다시 눌러 결과를 생성하세요.
-                </div>
-              )}
-
-              {(session.status === 'completed' || session.status === 'feedback_completed') && (
-                <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-                  이 세션은 종료되었습니다. 결과 화면에서 리포트를 다시 확인할 수 있습니다.
-                </div>
-              )}
-
-              <div className="mt-4 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => void handleSubmitAnswer(false)}
-                  disabled={!canSubmitAnswer}
-                  className="rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {submittingMode === 'answer' ? '제출 중...' : '제출'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSubmitAnswer(true)}
-                  disabled={!canSkip}
-                  className="rounded-full border border-zinc-300 px-4 py-2.5 text-sm font-medium text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {submittingMode === 'skip' ? '건너뛰는 중...' : '건너뛰기'}
-                </button>
-              </div>
-            </div>
+            </section>
           </div>
 
           {showCompletionCard && (
