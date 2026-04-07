@@ -337,13 +337,20 @@ describe('InterviewSessionPage', () => {
     );
     await user.click(screen.getByRole('button', { name: '제출' }));
 
-    await screen.findByText('마지막 보완 질문');
+    await screen.findByText('보완 질문 배경');
 
     expect(screen.getByRole('button', { name: '이전 문맥 접기' })).toBeInTheDocument();
     expect(screen.queryByText('이전 질문/답변 기록은 접혀 있습니다. 필요하면 위 버튼으로 다시 펼쳐 확인할 수 있습니다.')).not.toBeInTheDocument();
-    expect(screen.getByText('마지막 보완 질문이 추가되었습니다. 이어서 답변을 제출해주세요.')).toBeInTheDocument();
+    expect(screen.getByText('보완 질문이 추가되었습니다. 이어서 답변을 제출해주세요.')).toBeInTheDocument();
+    expect(screen.getByText('보완 질문 배경')).toBeInTheDocument();
+    expect(screen.getByText('보완 질문')).toBeInTheDocument();
+    expect(
+      screen.getByText('이 질문은 이전 답변 전체를 바탕으로 AI가 추가 확인이 필요하다고 판단한 보완 질문입니다.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('기준 질문 Q7')).toBeInTheDocument();
+    expect(screen.getByText('이전 꼬리 질문 Q8')).toBeInTheDocument();
     expect(screen.getByText(completionContext.rootQuestion.questionText)).toBeInTheDocument();
-    expect(screen.getAllByText(completionContext.completionFollowupQuestion.questionText).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(completionContext.completionFollowupQuestion.questionText)).toHaveLength(1);
     await waitFor(() => {
       expect(screen.getByRole('textbox')).toHaveFocus();
     });
@@ -470,7 +477,7 @@ describe('InterviewSessionPage', () => {
     );
     await user.click(screen.getByRole('button', { name: '제출' }));
 
-    await screen.findByText('마지막 보완 질문');
+    await screen.findByText('보완 질문 배경');
 
     expect(screen.getByRole('button', { name: '이전 문맥 접기' })).toBeInTheDocument();
     expect(screen.getByText('이전 질문 기록')).toBeInTheDocument();
@@ -558,6 +565,26 @@ describe('InterviewSessionPage', () => {
     await user.click(screen.getByRole('button', { name: '이전 문맥 접기' }));
     expect(screen.getByRole('button', { name: '이전 문맥 펼치기' })).toBeInTheDocument();
     expect(screen.queryByText('이전 질문 기록')).not.toBeInTheDocument();
+  });
+
+  it('일반 follow_up 질문은 completion context가 없으면 꼬리 질문 표시를 유지한다', async () => {
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        currentQuestion: createCurrentQuestion({
+          id: 120,
+          questionOrder: 5,
+          questionType: 'follow_up',
+          questionText: '직전 답변의 핵심 근거를 조금 더 구체적으로 설명해주세요.',
+        }),
+        completionFollowupContext: null,
+      }),
+    );
+
+    await renderPage();
+
+    expect(screen.getByText('꼬리 질문')).toBeInTheDocument();
+    expect(screen.getByText('직전 답변을 더 구체화해 설명하는 꼬리 질문입니다.')).toBeInTheDocument();
+    expect(screen.queryByText('보완 질문 배경')).not.toBeInTheDocument();
   });
 
   it('completion follow-up 답변 제출 후에는 수동 종료 배너를 보여주고 명시적 종료 시 결과로 이동한다', async () => {
