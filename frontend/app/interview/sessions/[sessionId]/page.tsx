@@ -74,6 +74,11 @@ interface StoredDraft {
   savedAt: string;
 }
 
+interface PendingQuestionFocusRequest {
+  previousQuestionId: number | null;
+  previousCompletionMode: boolean;
+}
+
 function formatDateTime(value: string | null) {
   if (!value) {
     return '기록 없음';
@@ -266,6 +271,9 @@ export default function InterviewSessionPage() {
   const sessionId = Number(params.sessionId);
   const skipNextDraftPersistRef = useRef(false);
   const previousCompletionModeRef = useRef(false);
+  const answerSectionRef = useRef<HTMLDivElement | null>(null);
+  const answerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const pendingQuestionFocusRef = useRef<PendingQuestionFocusRequest | null>(null);
 
   const [session, setSession] = useState<InterviewSessionDetail | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredMessages(sessionId));
@@ -446,11 +454,13 @@ export default function InterviewSessionPage() {
         err instanceof InterviewApiError &&
         (err.retryable || err.code === 'INTERVIEW_SESSION_ALREADY_COMPLETED')
       ) {
+        pendingQuestionFocusRef.current = null;
         router.push(`/interview/sessions/${session.id}/result`);
         return;
       }
 
       if (err instanceof InterviewApiError && err.code === 'INTERVIEW_SESSION_STATUS_CONFLICT') {
+        pendingQuestionFocusRef.current = null;
         await loadSession({ showPageLoading: false });
         return;
       }
@@ -477,6 +487,7 @@ export default function InterviewSessionPage() {
         }
       }
 
+      pendingQuestionFocusRef.current = null;
       setCompleteError(formatApiError(err, '세션을 종료하지 못했습니다.'));
     } finally {
       setCompletingSession(false);
@@ -548,6 +559,11 @@ export default function InterviewSessionPage() {
         });
       }));
 
+      pendingQuestionFocusRef.current = {
+        previousQuestionId: currentQuestion.id,
+        previousCompletionMode: wasCompletionFollowup,
+      };
+
       const refreshed = await loadSession({ resetAnswerText: true, showPageLoading: false });
       if (
         shouldAutoCompleteAfterAnswer({
@@ -565,13 +581,20 @@ export default function InterviewSessionPage() {
           refreshedSession: refreshed,
         })
       ) {
+        pendingQuestionFocusRef.current = null;
         setNeedsManualCompleteAfterCompletionAnswer(true);
         setMessages((previousMessages) => [
           ...previousMessages,
           createSystemMessage('마지막 보완 질문 답변이 저장되었습니다. 세션 종료를 다시 눌러 결과를 생성하세요.', 'warning'),
         ]);
+        return;
+      }
+
+      if (!refreshed || refreshed.status !== 'in_progress' || !refreshed.currentQuestion) {
+        pendingQuestionFocusRef.current = null;
       }
     } catch (err) {
+      pendingQuestionFocusRef.current = null;
       setMessages((previousMessages) =>
         previousMessages.filter((message) => message.id !== pendingMessageId),
       );
@@ -685,6 +708,33 @@ export default function InterviewSessionPage() {
     : session?.status === 'feedback_completed'
     ? '세션과 결과가 모두 완료됐습니다. 결과 보기로 리포트를 다시 확인하세요.'
     : '현재 질문이 준비되면 진행 상태로 전환됩니다.';
+
+  useEffect(() => {
+    const pendingFocus = pendingQuestionFocusRef.current;
+
+    if (
+      !pendingFocus ||
+      !session ||
+      actionBusy ||
+      session.status !== 'in_progress' ||
+      !session.currentQuestion
+    ) {
+      return;
+    }
+
+    const enteredCompletionFollowup = isCompletionFollowupMode && !pendingFocus.previousCompletionMode;
+    const questionChanged = pendingFocus.previousQuestionId !== session.currentQuestion.id;
+
+    pendingQuestionFocusRef.current = null;
+
+    if (!questionChanged && !enteredCompletionFollowup) {
+      return;
+    }
+
+    const anchor = answerSectionRef.current ?? answerTextareaRef.current;
+    anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    answerTextareaRef.current?.focus();
+  }, [actionBusy, isCompletionFollowupMode, session]);
 
   if (loading) {
     return (
@@ -980,7 +1030,7 @@ export default function InterviewSessionPage() {
         )}
 
         <div className={`mt-6 grid gap-4 ${showCompletionCard ? 'lg:grid-cols-[minmax(0,1fr),19rem]' : ''}`}>
-          <div className="rounded-3xl border border-zinc-200 px-4 py-4">
+          <div ref={answerSectionRef} className="rounded-3xl border border-zinc-200 px-4 py-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-zinc-900">답변 입력</p>
@@ -1005,6 +1055,7 @@ export default function InterviewSessionPage() {
             </div>
 
             <textarea
+              ref={answerTextareaRef}
               rows={9}
               value={answerText}
               onChange={(event) => setAnswerText(event.target.value)}
