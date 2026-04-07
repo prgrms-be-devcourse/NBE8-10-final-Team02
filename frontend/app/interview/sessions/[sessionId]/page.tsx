@@ -819,19 +819,6 @@ export default function InterviewSessionPage() {
           </div>
         )}
 
-        {session.status === 'paused' && (
-          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-            <p className="text-sm font-semibold text-amber-900">
-              {autoPauseLikely ? '자동 일시정지된 것으로 보입니다.' : '현재 일시정지된 세션입니다.'}
-            </p>
-            <p className="mt-2 text-sm leading-6 text-amber-800">
-              {autoPauseLikely
-                ? `마지막 활동 후 ${AUTO_PAUSE_THRESHOLD_MINUTES}분 이상 지나 현재 세션이 일시정지 상태로 보입니다. 재개 후 같은 질문부터 이어서 답변을 제출하세요.`
-                : '같은 세션에서 그대로 재개할 수 있습니다. 아래 재개 버튼으로 바로 이어서 진행하세요.'}
-            </p>
-          </div>
-        )}
-
         <div className="mt-6 rounded-3xl border border-zinc-200 bg-zinc-50/60 px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
