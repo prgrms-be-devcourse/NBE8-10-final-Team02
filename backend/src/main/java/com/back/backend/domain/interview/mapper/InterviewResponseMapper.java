@@ -1,6 +1,8 @@
 package com.back.backend.domain.interview.mapper;
 
 import com.back.backend.domain.interview.dto.response.InterviewAnswerResultResponse;
+import com.back.backend.domain.interview.dto.response.InterviewSessionAnswerSummaryResponse;
+import com.back.backend.domain.interview.dto.response.InterviewSessionCompletionFollowupContextResponse;
 import com.back.backend.domain.interview.dto.response.InterviewAnswerSubmitResponse;
 import com.back.backend.domain.interview.dto.response.InterviewFeedbackTagResponse;
 import com.back.backend.domain.interview.dto.response.InterviewQuestionResponse;
@@ -76,6 +78,7 @@ public class InterviewResponseMapper {
     public InterviewSessionDetailResponse toInterviewSessionDetailResponse(
             InterviewSession session,
             InterviewSessionQuestion currentQuestion,
+            InterviewSessionCompletionFollowupContextResponse completionFollowupContext,
             long totalQuestionCount,
             long answeredQuestionCount,
             long remainingQuestionCount,
@@ -86,6 +89,7 @@ public class InterviewResponseMapper {
                 session.getQuestionSet().getId(),
                 session.getStatus().getValue(),
                 toInterviewSessionCurrentQuestionResponse(currentQuestion),
+                completionFollowupContext,
                 totalQuestionCount,
                 answeredQuestionCount,
                 remainingQuestionCount,
@@ -93,6 +97,36 @@ public class InterviewResponseMapper {
                 session.getLastActivityAt(),
                 session.getStartedAt(),
                 session.getEndedAt()
+        );
+    }
+
+    public InterviewSessionAnswerSummaryResponse toInterviewSessionAnswerSummaryResponse(InterviewAnswer answer) {
+        if (answer == null) {
+            return null;
+        }
+
+        return new InterviewSessionAnswerSummaryResponse(
+                answer.getAnswerOrder(),
+                answer.getAnswerText(),
+                answer.isSkipped()
+        );
+    }
+
+    public InterviewSessionCompletionFollowupContextResponse toInterviewSessionCompletionFollowupContextResponse(
+            InterviewSessionQuestion rootQuestion,
+            InterviewAnswer rootAnswer,
+            InterviewSessionQuestion runtimeFollowupQuestion,
+            InterviewAnswer runtimeFollowupAnswer,
+            InterviewSessionQuestion completionFollowupQuestion,
+            int parentQuestionOrder
+    ) {
+        return new InterviewSessionCompletionFollowupContextResponse(
+                toInterviewSessionCurrentQuestionResponse(rootQuestion),
+                toInterviewSessionAnswerSummaryResponse(rootAnswer),
+                toInterviewSessionCurrentQuestionResponse(runtimeFollowupQuestion),
+                toInterviewSessionAnswerSummaryResponse(runtimeFollowupAnswer),
+                toInterviewSessionCurrentQuestionResponse(completionFollowupQuestion),
+                parentQuestionOrder
         );
     }
 

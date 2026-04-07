@@ -7,6 +7,7 @@ public record InterviewSessionDetailResponse(
         Long questionSetId,
         String status,
         InterviewSessionCurrentQuestionResponse currentQuestion,
+        InterviewSessionCompletionFollowupContextResponse completionFollowupContext,
         long totalQuestionCount,
         long answeredQuestionCount,
         long remainingQuestionCount,

@@ -11,6 +11,8 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.util.List;
+
 /**
  * Gemini API 구현체
  * 공통 AiRequest를 Gemini 형식으로 변환하여 호출하고
@@ -39,6 +41,7 @@ public class GeminiClient implements AiClient {
         // 공통 → Gemini 변환 → 호출 → 텍스트 추출 → 공통 변환
         GeminiRequest geminiRequest = GeminiRequest.from(request);
         GeminiResponse geminiResponse = doCall(geminiRequest);
+        logResponseSummary(geminiResponse);
 
         String content = geminiResponse.extractText()
             .orElseThrow(() -> {
@@ -129,6 +132,81 @@ public class GeminiClient implements AiClient {
                 e
             );
         }
+    }
+
+    private void logResponseSummary(GeminiResponse geminiResponse) {
+        if (!log.isDebugEnabled()) {
+            return;
+        }
+
+        List<GeminiResponse.Candidate> candidates = geminiResponse.candidates();
+        int candidateCount = candidates == null ? 0 : candidates.size();
+        if (candidateCount == 0) {
+            log.debug("[Gemini] 응답 요약: candidates=0");
+            return;
+        }
+
+        GeminiResponse.Candidate firstCandidate = candidates.getFirst();
+        GeminiResponse.Content content = firstCandidate != null ? firstCandidate.content() : null;
+        List<GeminiResponse.Part> parts = content != null ? content.parts() : null;
+        int partsCount = parts == null ? 0 : parts.size();
+
+        StringBuilder partLengths = new StringBuilder("[");
+        StringBuilder combinedText = new StringBuilder();
+        String lastPartText = null;
+
+        if (parts != null) {
+            for (int i = 0; i < parts.size(); i++) {
+                GeminiResponse.Part part = parts.get(i);
+                String text = part != null ? part.text() : null;
+                if (i > 0) {
+                    partLengths.append(", ");
+                }
+                partLengths.append(text == null ? "null" : text.length());
+
+                if (text != null) {
+                    combinedText.append(text);
+                    lastPartText = text;
+                }
+            }
+        }
+        partLengths.append(']');
+
+        String merged = combinedText.toString();
+        log.debug(
+            "[Gemini] 응답 요약: candidates={}, finishReason={}, parts={}, partLengths={}, mergedLength={}, head=\"{}\", tail=\"{}\", lastPartTail=\"{}\"",
+            candidateCount,
+            firstCandidate != null ? firstCandidate.finishReason() : null,
+            partsCount,
+            partLengths,
+            merged.length(),
+            previewHead(merged, 120),
+            previewTail(merged, 120),
+            previewTail(lastPartText, 120)
+        );
+    }
+
+    private String previewHead(String text, int maxLength) {
+        String normalized = normalizePreviewText(text);
+        if (normalized.length() <= maxLength) {
+            return normalized;
+        }
+        return normalized.substring(0, maxLength) + "...";
+    }
+
+    private String previewTail(String text, int maxLength) {
+        String normalized = normalizePreviewText(text);
+        if (normalized.length() <= maxLength) {
+            return normalized;
+        }
+        return "..." + normalized.substring(normalized.length() - maxLength);
+    }
+
+    private String normalizePreviewText(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        return text.replaceAll("\\s+", " ").trim();
     }
 
     /**

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "followUpQuestions",
+    "qualityFlags"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "followUpQuestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "questionType",
+          "difficultyLevel",
+          "questionText",
+          "parentQuestionOrder"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "questionType": {
+            "type": "string",
+            "enum": [
+              "follow_up"
+            ]
+          },
+          "difficultyLevel": {
+            "type": "string",
+            "enum": [
+              "easy",
+              "medium",
+              "hard"
+            ]
+          },
+          "questionText": {
+            "type": "string",
+            "minLength": 1
+          },
+          "parentQuestionOrder": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "qualityFlags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

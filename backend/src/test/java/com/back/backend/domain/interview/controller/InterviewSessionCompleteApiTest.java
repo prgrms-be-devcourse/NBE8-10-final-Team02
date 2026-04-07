@@ -57,9 +57,19 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
     private static final Instant FIXED_NOW = Instant.parse("2026-03-25T09:00:00Z");
     private static final Clock FIXED_CLOCK = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
     private static final String FOLLOWUP_TEMPLATE_ID = "ai.interview.followup.generate.v1";
+    private static final String COMPLETION_FOLLOWUP_TEMPLATE_ID = "ai.interview.followup.complete.v1";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String VALID_ANSWER =
             "장애 원인을 추적할 때 로그와 메트릭을 비교하고, 사용자 영향 범위를 수치로 확인한 뒤 복구 순서를 정했습니다.";
+    private static final String NO_FOLLOW_UP_PROJECT_ANSWER =
+            "반려동물 병원 예약 서비스를 출시한 경험이 있습니다. "
+                    + "초기에는 전화 예약 비중이 높아서 예약 누락이 많았고, "
+                    + "저는 백엔드 담당으로 예약 상태 머신과 알림 스케줄러를 맡았습니다. "
+                    + "병원별 영업시간이 달라 예외 처리가 많았는데, 예약 가능 슬롯을 미리 계산하는 구조로 바꾸고 "
+                    + "예약·취소·노쇼 상태를 이벤트 기반으로 관리했습니다. "
+                    + "QA 단계에서는 실제 병원 운영팀과 시나리오를 돌려 보면서 예외 케이스를 계속 보완했고, "
+                    + "출시 첫 달에 온라인 예약 비중이 20%대에서 60% 가까이 올라갔습니다. "
+                    + "중복 예약 문의도 눈에 띄게 줄어서 이후 추가 지점 확장 때 같은 구조를 재사용했습니다.";
 
     @Autowired
     private EntityManager entityManager;
@@ -86,6 +96,13 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 .willReturn(OBJECT_MAPPER.readTree("""
                         {
                           "followUpQuestion": null,
+                          "qualityFlags": ["low_context"]
+                        }
+                        """));
+        given(aiPipeline.execute(eq(COMPLETION_FOLLOWUP_TEMPLATE_ID), anyString()))
+                .willReturn(OBJECT_MAPPER.readTree("""
+                        {
+                          "followUpQuestions": [],
                           "qualityFlags": ["low_context"]
                         }
                         """));
@@ -187,6 +204,149 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
     }
 
     @Test
+    void completeSession_candidateRuntimeThreadCanAddCompletionSupplement() throws Exception {
+        UserFixture fixture = persistAnsweredSessionWithCandidateRuntimeFollowup("complete-candidate-runtime-success");
+        InterviewSession session = fixture.session();
+
+        given(aiPipeline.execute(
+                eq(COMPLETION_FOLLOWUP_TEMPLATE_ID),
+                org.mockito.ArgumentMatchers.argThat(payload ->
+                        hasCompletionThread(payload, 1, 2, true, "USE_CANDIDATE")
+                )
+        )).willReturn(OBJECT_MAPPER.readTree("""
+                {
+                  "followUpQuestions": [
+                    {
+                      "questionType": "follow_up",
+                      "difficultyLevel": "medium",
+                      "questionText": "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
+                      "parentQuestionOrder": 2
+                    }
+                  ],
+                  "qualityFlags": []
+                }
+                """));
+
+        mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.REQUEST_VALIDATION_FAILED.name()))
+                .andExpect(jsonPath("$.error.fieldErrors[0].field").value("remainingQuestionCount"));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        InterviewSession refreshedSession = interviewSessionRepository.findById(session.getId()).orElseThrow();
+        assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.IN_PROGRESS);
+        assertThat(refreshedSession.getCompletionFollowupReviewedAt()).isNotNull();
+        assertThat(entityManager.createQuery(
+                        "select count(q) from InterviewSessionQuestion q where q.session.id = :sessionId",
+                        Long.class
+                )
+                .setParameter("sessionId", session.getId())
+                .getSingleResult()).isEqualTo(5L);
+        then(interviewResultGenerationService).shouldHaveNoInteractions();
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentQuestion.questionOrder").value(3))
+                .andExpect(jsonPath("$.data.currentQuestion.questionType").value("follow_up"))
+                .andExpect(jsonPath("$.data.currentQuestion.questionText")
+                        .value("그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?"))
+                .andExpect(jsonPath("$.data.completionFollowupContext.parentQuestionOrder").value(2))
+                .andExpect(jsonPath("$.data.completionFollowupContext.rootQuestion.questionOrder").value(1))
+                .andExpect(jsonPath("$.data.completionFollowupContext.rootQuestion.questionText")
+                        .value("첫 번째 질문"))
+                .andExpect(jsonPath("$.data.completionFollowupContext.rootAnswer.answerOrder").value(1))
+                .andExpect(jsonPath("$.data.completionFollowupContext.runtimeFollowupQuestion.questionOrder").value(2))
+                .andExpect(jsonPath("$.data.completionFollowupContext.runtimeFollowupQuestion.questionText")
+                        .value("그 방식으로 접근한 이유를 조금 더 구체적으로 설명해주실 수 있나요?"))
+                .andExpect(jsonPath("$.data.completionFollowupContext.runtimeFollowupAnswer.answerOrder").value(2))
+                .andExpect(jsonPath("$.data.completionFollowupContext.completionFollowupQuestion.questionOrder").value(3))
+                .andExpect(jsonPath("$.data.completionFollowupContext.completionFollowupQuestion.questionText")
+                        .value("그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?"));
+    }
+
+    @Test
+    void completeSession_canInsertMultipleCompletionSupplementsAcrossThreads() throws Exception {
+        UserFixture fixture = persistAnsweredSessionWithCandidateRuntimeFollowup("complete-multi-completion-followups");
+        InterviewSession session = fixture.session();
+
+        given(aiPipeline.execute(
+                eq(COMPLETION_FOLLOWUP_TEMPLATE_ID),
+                org.mockito.ArgumentMatchers.argThat(payload ->
+                        hasCompletionThread(payload, 1, 2, true, "USE_CANDIDATE")
+                                && hasCompletionThread(payload, 4, 4, false, "NO_FOLLOW_UP")
+                )
+        )).willReturn(OBJECT_MAPPER.readTree("""
+                {
+                  "followUpQuestions": [
+                    {
+                      "questionType": "follow_up",
+                      "difficultyLevel": "medium",
+                      "questionText": "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
+                      "parentQuestionOrder": 2
+                    },
+                    {
+                      "questionType": "follow_up",
+                      "difficultyLevel": "medium",
+                      "questionText": "성과를 측정할 때 어떤 지표를 가장 먼저 봤는지 설명해주실 수 있나요?",
+                      "parentQuestionOrder": 4
+                    }
+                  ],
+                  "qualityFlags": []
+                }
+                """));
+
+        mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.REQUEST_VALIDATION_FAILED.name()))
+                .andExpect(jsonPath("$.error.fieldErrors[0].field").value("remainingQuestionCount"));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        InterviewSession refreshedSession = interviewSessionRepository.findById(session.getId()).orElseThrow();
+        assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.IN_PROGRESS);
+        assertThat(refreshedSession.getCompletionFollowupReviewedAt()).isNotNull();
+
+        List<InterviewSessionQuestion> followupQuestions = entityManager.createQuery(
+                        """
+                                select q
+                                from InterviewSessionQuestion q
+                                where q.session.id = :sessionId
+                                  and q.questionType = :questionType
+                                order by q.questionOrder asc
+                                """,
+                        InterviewSessionQuestion.class
+                )
+                .setParameter("sessionId", session.getId())
+                .setParameter("questionType", InterviewQuestionType.FOLLOW_UP)
+                .getResultList();
+
+        assertThat(followupQuestions).hasSize(3);
+        assertThat(followupQuestions)
+                .extracting(InterviewSessionQuestion::getQuestionText)
+                .containsExactly(
+                        "그 방식으로 접근한 이유를 조금 더 구체적으로 설명해주실 수 있나요?",
+                        "그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?",
+                        "성과를 측정할 때 어떤 지표를 가장 먼저 봤는지 설명해주실 수 있나요?"
+                );
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentQuestion.questionOrder").value(3))
+                .andExpect(jsonPath("$.data.currentQuestion.questionType").value("follow_up"))
+                .andExpect(jsonPath("$.data.currentQuestion.questionText")
+                        .value("그 기준을 실제 운영팀과 어떻게 맞췄는지 조금 더 구체적으로 설명해주실 수 있나요?"))
+                .andExpect(jsonPath("$.data.totalQuestionCount").value(6))
+                .andExpect(jsonPath("$.data.remainingQuestionCount").value(2));
+    }
+
+    @Test
     void completeSession_returns400WhenRemainingQuestionsExist() throws Exception {
         UserFixture fixture = persistPartiallyAnsweredSession("complete-incomplete");
 
@@ -214,18 +374,25 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
     @Test
     void completeSession_returns400WhenCompletionReviewAddsLastFollowup() throws Exception {
-        UserFixture fixture = persistAnsweredSessionForCompletionReview("complete-last-followup");
+        UserFixture fixture = persistAnsweredSessionWithNoFollowUpRootForCompletionReview("complete-last-followup");
         InterviewSession session = fixture.session();
 
-        given(aiPipeline.execute(eq(FOLLOWUP_TEMPLATE_ID), anyString()))
+        given(aiPipeline.execute(
+                eq(COMPLETION_FOLLOWUP_TEMPLATE_ID),
+                org.mockito.ArgumentMatchers.argThat(payload ->
+                        hasCompletionThread(payload, 3, 3, false, "NO_FOLLOW_UP")
+                )
+        ))
                 .willReturn(OBJECT_MAPPER.readTree("""
                         {
-                          "followUpQuestion": {
-                            "questionType": "follow_up",
-                            "difficultyLevel": "medium",
-                            "questionText": "그때 어떤 기준으로 우선순위를 잡았는지 조금 더 구체적으로 설명해주실 수 있나요?",
-                            "parentQuestionOrder": 3
-                          },
+                          "followUpQuestions": [
+                            {
+                              "questionType": "follow_up",
+                              "difficultyLevel": "medium",
+                              "questionText": "그때 어떤 기준으로 우선순위를 잡았는지 조금 더 구체적으로 설명해주실 수 있나요?",
+                              "parentQuestionOrder": 3
+                            }
+                          ],
                           "qualityFlags": []
                         }
                         """));
@@ -260,7 +427,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
     @Test
     void completeSession_continuesWhenCompletionReviewReturnsNull() throws Exception {
-        UserFixture fixture = persistAnsweredSessionForCompletionReview("complete-last-followup-null");
+        UserFixture fixture = persistAnsweredSessionWithNoFollowUpRootForCompletionReview("complete-last-followup-null");
         InterviewSession session = fixture.session();
 
         given(interviewResultGenerationService.generate(anyLong(), eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
@@ -280,7 +447,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.status").value("feedback_completed"))
                 .andExpect(jsonPath("$.data.totalScore").value(83));
 
-        then(aiPipeline).should(times(1)).execute(eq(FOLLOWUP_TEMPLATE_ID), anyString());
+        then(aiPipeline).should(times(1)).execute(eq(COMPLETION_FOLLOWUP_TEMPLATE_ID), anyString());
 
         entityManager.flush();
         entityManager.clear();
@@ -297,18 +464,20 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
     @Test
     void completeSession_reviewsOnlyOnceAfterLastFollowupIsAnswered() throws Exception {
-        UserFixture fixture = persistAnsweredSessionForCompletionReview("complete-last-followup-once");
+        UserFixture fixture = persistAnsweredSessionWithNoFollowUpRootForCompletionReview("complete-last-followup-once");
         InterviewSession session = fixture.session();
 
-        given(aiPipeline.execute(eq(FOLLOWUP_TEMPLATE_ID), anyString()))
+        given(aiPipeline.execute(eq(COMPLETION_FOLLOWUP_TEMPLATE_ID), anyString()))
                 .willReturn(OBJECT_MAPPER.readTree("""
                         {
-                          "followUpQuestion": {
-                            "questionType": "follow_up",
-                            "difficultyLevel": "medium",
-                            "questionText": "그때 어떤 기준으로 우선순위를 잡았는지 조금 더 구체적으로 설명해주실 수 있나요?",
-                            "parentQuestionOrder": 3
-                          },
+                          "followUpQuestions": [
+                            {
+                              "questionType": "follow_up",
+                              "difficultyLevel": "medium",
+                              "questionText": "그때 어떤 기준으로 우선순위를 잡았는지 조금 더 구체적으로 설명해주실 수 있나요?",
+                              "parentQuestionOrder": 3
+                            }
+                          ],
                           "qualityFlags": []
                         }
                         """));
@@ -360,9 +529,58 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.status").value("feedback_completed"))
                 .andExpect(jsonPath("$.data.totalScore").value(85));
 
-        then(aiPipeline).should(times(1)).execute(eq(FOLLOWUP_TEMPLATE_ID), anyString());
+        then(aiPipeline).should(times(1)).execute(eq(COMPLETION_FOLLOWUP_TEMPLATE_ID), anyString());
         then(interviewResultGenerationService).should(times(1))
                 .generate(anyLong(),eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString());
+    }
+
+    @Test
+    void completeSession_continuesWhenCompletionReviewChoosesInvalidParentOrder() throws Exception {
+        UserFixture fixture = persistAnsweredSessionWithNoFollowUpRootForCompletionReview("complete-last-followup-invalid");
+        InterviewSession session = fixture.session();
+
+        given(aiPipeline.execute(eq(COMPLETION_FOLLOWUP_TEMPLATE_ID), anyString()))
+                .willReturn(OBJECT_MAPPER.readTree("""
+                        {
+                          "followUpQuestions": [
+                            {
+                              "questionType": "follow_up",
+                              "difficultyLevel": "medium",
+                              "questionText": "이 order는 무시되어야 합니다.",
+                              "parentQuestionOrder": 99
+                            }
+                          ],
+                          "qualityFlags": []
+                        }
+                        """));
+        given(interviewResultGenerationService.generate(anyLong(), eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
+                .willReturn(new InterviewResultGenerationService.GeneratedInterviewResult(
+                        82,
+                        "invalid parentQuestionOrder는 무시하고 결과를 생성했습니다.",
+                        List.of(
+                                new InterviewResultGenerationService.GeneratedInterviewAnswerResult(1, 80, "첫 번째 평가", List.of("근거 부족")),
+                                new InterviewResultGenerationService.GeneratedInterviewAnswerResult(2, 82, "두 번째 평가", List.of()),
+                                new InterviewResultGenerationService.GeneratedInterviewAnswerResult(3, 84, "세 번째 평가", List.of())
+                        )
+                ));
+
+        mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("feedback_completed"))
+                .andExpect(jsonPath("$.data.totalScore").value(82));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        InterviewSession refreshedSession = interviewSessionRepository.findById(session.getId()).orElseThrow();
+        assertThat(refreshedSession.getCompletionFollowupReviewedAt()).isNotNull();
+        assertThat(entityManager.createQuery(
+                        "select count(q) from InterviewSessionQuestion q where q.session.id = :sessionId",
+                        Long.class
+                )
+                .setParameter("sessionId", session.getId())
+                .getSingleResult()).isEqualTo(3L);
     }
 
     @Test
@@ -650,7 +868,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         return new UserFixture(user, questionSet, session, answers);
     }
 
-    private UserFixture persistAnsweredSessionForCompletionReview(String prefix) {
+    private UserFixture persistAnsweredSessionWithNoFollowUpRootForCompletionReview(String prefix) {
         com.back.backend.domain.user.entity.User user = persistUserFixture(prefix).user();
         Application application = persistApplication(user, prefix + "-application");
         InterviewQuestionSet questionSet = persistQuestionSet(user, application);
@@ -664,16 +882,71 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
         List<InterviewAnswer> answers = List.of(
                 persistAnswer(session, firstSessionQuestion, 1, VALID_ANSWER + " 첫 번째"),
                 persistAnswer(session, secondSessionQuestion, 2, VALID_ANSWER + " 두 번째"),
-                persistAnswer(
-                        session,
-                        thirdSessionQuestion,
-                        3,
-                        "사내 재고 관리 시스템을 만드는 프로젝트가 있었는데, 기존 엑셀 작업을 옮겨오는 성격이라 요구사항이 자주 바뀌었습니다. "
-                                + "저는 백엔드 쪽 기본 CRUD와 배치 작업을 맡아 필요한 기능을 우선 붙였습니다. "
-                                + "일정은 맞췄지만 어떤 기준으로 우선순위를 잡았는지나 결과가 얼마나 안정화됐는지는 "
-                                + "지금 설명하면 조금 일반론적으로 들릴 수 있습니다."
-                )
+                persistAnswer(session, thirdSessionQuestion, 3, NO_FOLLOW_UP_PROJECT_ANSWER)
         );
+        return new UserFixture(user, questionSet, session, answers);
+    }
+
+    private UserFixture persistAnsweredSessionWithCandidateRuntimeFollowup(String prefix) {
+        com.back.backend.domain.user.entity.User user = persistUserFixture(prefix).user();
+        Application application = persistApplication(user, prefix + "-application");
+        InterviewQuestionSet questionSet = persistQuestionSet(user, application);
+        InterviewQuestion firstQuestion = persistQuestion(questionSet, 1, "첫 번째 질문");
+        InterviewQuestion secondQuestion = persistQuestion(questionSet, 2, "두 번째 질문");
+        InterviewQuestion thirdQuestion = persistQuestion(questionSet, 3, "세 번째 질문");
+        InterviewSession session = persistSessionWithoutSnapshot(user, questionSet, InterviewSessionStatus.IN_PROGRESS);
+        InterviewSessionQuestion firstSessionQuestion = persistSessionQuestion(
+                session,
+                firstQuestion,
+                null,
+                1,
+                InterviewQuestionType.PROJECT,
+                "첫 번째 질문"
+        );
+        InterviewSessionQuestion candidateFollowupQuestion = persistSessionQuestion(
+                session,
+                null,
+                firstSessionQuestion,
+                2,
+                InterviewQuestionType.FOLLOW_UP,
+                "그 방식으로 접근한 이유를 조금 더 구체적으로 설명해주실 수 있나요?"
+        );
+        InterviewSessionQuestion secondSessionQuestion = persistSessionQuestion(
+                session,
+                secondQuestion,
+                null,
+                3,
+                InterviewQuestionType.PROJECT,
+                "두 번째 질문"
+        );
+        InterviewSessionQuestion thirdSessionQuestion = persistSessionQuestion(
+                session,
+                thirdQuestion,
+                null,
+                4,
+                InterviewQuestionType.PROJECT,
+                "세 번째 질문"
+        );
+
+        InterviewAnswer parentAnswer = persistAnswer(
+                session,
+                firstSessionQuestion,
+                1,
+                "사내 재고 관리 시스템을 만드는 프로젝트가 있었는데, 기존 엑셀 작업을 옮겨오는 성격이라 요구사항이 자주 바뀌었습니다. "
+                        + "저는 백엔드 쪽 기본 CRUD와 배치 작업을 맡아 필요한 기능을 우선 붙였습니다. "
+                        + "일정은 맞췄지만 어떤 기준으로 우선순위를 잡았는지나 결과가 얼마나 안정화됐는지는 "
+                        + "지금 설명하면 조금 일반론적으로 들릴 수 있습니다."
+        );
+        parentAnswer.markFollowupResolved(FIXED_NOW);
+
+        List<InterviewAnswer> answers = List.of(
+                parentAnswer,
+                persistAnswer(session, candidateFollowupQuestion, 2, VALID_ANSWER + " candidate follow-up"),
+                persistAnswer(session, secondSessionQuestion, 3, NO_FOLLOW_UP_PROJECT_ANSWER),
+                persistAnswer(session, thirdSessionQuestion, 4, NO_FOLLOW_UP_PROJECT_ANSWER)
+        );
+        entityManager.flush();
+
         return new UserFixture(user, questionSet, session, answers);
     }
 
@@ -804,5 +1077,38 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
             InterviewSession session,
             List<InterviewAnswer> answers
     ) {
+    }
+
+    private boolean hasCompletionThread(
+            String payload,
+            int rootQuestionOrder,
+            int tailQuestionOrder,
+            boolean expectRuntimeFollowup,
+            String expectedFinalAction
+    ) {
+        try {
+            var root = OBJECT_MAPPER.readTree(payload);
+            var threads = root.path("answeredThreads");
+            for (var thread : threads) {
+                if (thread.path("rootQuestion").path("questionOrder").asInt() != rootQuestionOrder) {
+                    continue;
+                }
+                if (thread.path("tailQuestionOrder").asInt() != tailQuestionOrder) {
+                    return false;
+                }
+                if (thread.path("runtimeRuleSummary").path("finalAction").asText().equals(expectedFinalAction) == false) {
+                    return false;
+                }
+                if (expectRuntimeFollowup) {
+                    return !thread.path("runtimeFollowupQuestion").isMissingNode()
+                            && !thread.path("runtimeFollowupAnswer").isMissingNode();
+                }
+                return thread.path("runtimeFollowupQuestion").isMissingNode()
+                        && thread.path("runtimeFollowupAnswer").isMissingNode();
+            }
+            return false;
+        } catch (Exception exception) {
+            return false;
+        }
     }
 }
