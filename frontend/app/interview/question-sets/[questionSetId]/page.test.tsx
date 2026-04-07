@@ -84,6 +84,7 @@ describe('QuestionSetDetailPage', () => {
 
     const statusSection = screen.getByText('세트 상태').closest('section');
 
+    expect(screen.getByRole('link', { name: '← 면접 준비로' })).toBeInTheDocument();
     expect(statusSection).not.toBeNull();
     expect(within(statusSection as HTMLElement).getByRole('button', { name: '모의 면접 시작' })).toBeInTheDocument();
   });
