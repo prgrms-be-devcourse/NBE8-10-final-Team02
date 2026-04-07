@@ -672,13 +672,18 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - `세션 종료`는 상태 제어와 다른 단계 액션이므로 별도 카드로 유지하고, `in_progress`, `paused` 상태에서만 노출한다.
 - `자동 저장 상태`는 서버 draft API가 아니라 브라우저 임시 저장 기준으로만 표기한다.
 - 다음 질문은 프론트 로컬 순번 계산이 아니라 `GET /interview/sessions/{sessionId}`의 `currentQuestion`만 기준으로 갱신한다.
+- 현재 답할 질문은 transcript와 분리해 `답변 입력` 바로 위의 별도 `현재 질문` 카드로 보여준다.
+- `현재 질문` 카드는 `Q번호`, `questionType`, `difficulty`, 질문 본문을 담고, `follow_up`이면 짧은 보조 안내를 함께 보여준다.
+- transcript 영역은 `면접 채팅`이 아니라 `이전 문맥` 성격으로 다루고, 현재 미응답 질문은 transcript에서 제외해 중복 노출하지 않는다.
+- 이전 문맥 transcript는 세션 화면 초기 진입 시 1회만 기본 접힘으로 시작하고, 사용자가 펼치거나 접은 상태는 이후 새 질문 전환이나 completion follow-up 전환으로 덮어쓰지 않는다.
+- 초기 진입 시 이전 문맥이 사실상 없으면 transcript 영역은 축약하거나 숨기고, 현재 질문 카드 중심으로 보여준다.
 - 답변 제출 후 채팅 transcript는 `POST /answers -> GET /interview/sessions/{sessionId}` 재조회 결과를 기준으로 다음 질문을 이어 붙인다.
 - 답변 제출 또는 `건너뛰기` 후 재조회 결과로 새 `currentQuestion`이 열리면, 프론트는 입력창이 다시 보이도록 `scrollIntoView + focus`로 포커스를 복귀한다.
 - 마지막 일반 답변 제출 뒤 재조회 결과가 `currentQuestion=null`, `remainingQuestionCount=0`이면 프론트는 `POST /interview/sessions/{sessionId}/complete`를 자동 호출해 마지막 completion follow-up 보완 여부를 먼저 확인한다.
 - 자동 또는 수동 `complete` 호출이 `REQUEST_VALIDATION_FAILED + remainingQuestionCount=incomplete`를 반환하면, 프론트는 이를 단순 오류로만 처리하지 않고 즉시 `GET /interview/sessions/{sessionId}`를 재조회한다.
 - 재조회 결과에 `completionFollowupContext`가 있으면 기존 세션 화면 안에서 completion follow-up 모드로 전환한다.
 - completion follow-up 모드에서는 입력창 위에 `마지막 보완 질문` 카드로 root 질문/답변, 있으면 runtime follow-up 질문/답변, 현재 completion follow-up 질문을 함께 보여준다.
-- completion follow-up 모드 진입 시 기존 메인 채팅 transcript는 기본 접힘 상태로 두고, 사용자가 펼치기/접기를 토글할 수 있게 한다.
+- completion follow-up 모드에서도 transcript의 펼침/접힘 상태는 새로 강제하지 않고, 현재 화면에서 사용자가 마지막으로 선택한 상태를 유지한다.
 - completion follow-up 전환도 새 질문 전환으로 간주해 같은 입력창 포커스 복귀 규칙을 적용한다.
 - completion follow-up 답변 제출 후 재조회 결과가 `currentQuestion=null`, `remainingQuestionCount=0`이면 자동 종료를 다시 호출하지 않는다. 대신 `세션 종료를 다시 눌러 결과를 생성하세요` 안내를 보여주고 사용자가 명시적으로 종료 버튼을 다시 누르게 한다.
 - 초기 진입, 단순 재조회, `pause/resume`만으로는 입력창 포커스를 강제로 이동하지 않는다.
