@@ -1,5 +1,5 @@
 import type { ComponentPropsWithoutRef, ReactNode } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -199,7 +199,12 @@ describe('InterviewSessionPage', () => {
       screen.getByText('이전 질문/답변 기록은 접혀 있습니다. 필요하면 위 버튼으로 다시 펼쳐 확인할 수 있습니다.'),
     ).toBeInTheDocument();
     expect(screen.queryByText('이전 질문 기록')).not.toBeInTheDocument();
+    const workRegion = screen.getByRole('region', { name: '현재 답변 작업' });
+    expect(within(workRegion).getByText('현재 질문')).toBeInTheDocument();
+    expect(within(workRegion).getByText('답변 입력')).toBeInTheDocument();
+    expect(within(workRegion).queryByText('이전 문맥')).not.toBeInTheDocument();
     expect(screen.getByText('현재 질문')).toBeInTheDocument();
+    expect(screen.getByText('이전 문맥')).toBeInTheDocument();
     expect(screen.getAllByText('지금 답해야 하는 현재 질문입니다.')).toHaveLength(1);
 
     const currentQuestionText = screen.getByText('지금 답해야 하는 현재 질문입니다.');
@@ -396,6 +401,10 @@ describe('InterviewSessionPage', () => {
     expect(
       screen.getByText('이 질문은 이전 답변 전체를 바탕으로 AI가 추가 확인이 필요하다고 판단한 보완 질문입니다.'),
     ).toBeInTheDocument();
+    const workRegion = screen.getByRole('region', { name: '현재 답변 작업' });
+    expect(within(workRegion).getByText('현재 질문')).toBeInTheDocument();
+    expect(within(workRegion).getByText('답변 입력')).toBeInTheDocument();
+    expect(within(workRegion).queryByText('보완 질문 배경')).not.toBeInTheDocument();
     expect(screen.getByText('기준 질문 Q7')).toBeInTheDocument();
     expect(screen.getByText('이전 꼬리 질문 Q8')).toBeInTheDocument();
     expect(screen.getByText(completionContext.rootQuestion.questionText)).toBeInTheDocument();
