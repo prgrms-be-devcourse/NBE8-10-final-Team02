@@ -57,4 +57,18 @@ public class MergedSummary extends BaseEntity {
 
     @Column(name = "generated_at", nullable = false)
     private Instant generatedAt;
+
+    /**
+     * GitHub Issue/PR 메타데이터 수집 결과 통계 (V14 추가).
+     * portfolio-summary 스키마의 data와 분리하여 별도 컬럼으로 관리한다.
+     *
+     * null: 이전 버전 행 또는 수집 생략(perRepoBudget < 4,000) 케이스.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "github_activity", columnDefinition = "jsonb")
+    private String githubActivity;
+
+    public void updateGithubActivity(String githubActivityJson) {
+        this.githubActivity = githubActivityJson;
+    }
 }
