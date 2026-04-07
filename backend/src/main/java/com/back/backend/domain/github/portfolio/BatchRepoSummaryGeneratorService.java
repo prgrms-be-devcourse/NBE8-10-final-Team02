@@ -8,6 +8,8 @@ import com.back.backend.domain.github.analysis.RepoCloneService;
 import com.back.backend.domain.github.entity.CodeIndex;
 import com.back.backend.domain.github.entity.GithubRepository;
 import com.back.backend.domain.github.entity.RepoSummary;
+import com.back.backend.domain.github.metadata.GitHubMetadataService;
+import com.back.backend.domain.github.metadata.dto.GitHubActivitySummary;
 import com.back.backend.domain.github.repository.RepoSummaryRepository;
 import com.back.backend.domain.user.entity.User;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -71,6 +73,11 @@ public class BatchRepoSummaryGeneratorService {
     private final BatchTokenBudgetProperties budgetProperties;
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper;
+    /** GitHub 메타데이터 수집 서비스 — null이면 수집 비활성 (옵셔널 의존성) */
+    private final GitHubMetadataService githubMetadataService;
+
+    /** GitHub Activity 섹션 skip 기준: perRepoBudget chars < 4,000 tokens × 4 chars */
+    private static final int GITHUB_ACTIVITY_MIN_BUDGET_CHARS = 4_000 * 4;
 
     public BatchRepoSummaryGeneratorService(
             AiPipeline aiPipeline,
@@ -81,7 +88,8 @@ public class BatchRepoSummaryGeneratorService {
             RepoSummaryRepository repoSummaryRepository,
             BatchTokenBudgetProperties budgetProperties,
             PlatformTransactionManager transactionManager,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            GitHubMetadataService githubMetadataService
     ) {
         this.aiPipeline = aiPipeline;
         this.promptBuilder = promptBuilder;
@@ -92,6 +100,7 @@ public class BatchRepoSummaryGeneratorService {
         this.budgetProperties = budgetProperties;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.objectMapper = objectMapper;
+        this.githubMetadataService = githubMetadataService;
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -226,9 +235,29 @@ public class BatchRepoSummaryGeneratorService {
                 repo.getId(), codeEntries.size(), total,
                 earlyDiffs.size(), midDiffs.size(), lateDiffs.size());
 
+        // 6. GitHub Activity 수집 (perRepoBudget < 4,000 tokens이면 skip)
+        //    Groq dev 환경처럼 다수 repo에서 예산이 빡빡한 경우 skip하여 diff에 예산 보존.
+        GitHubActivitySummary githubActivity = null;
+        int perRepoBudgetChars = budgetProperties.getGlobalBudgetChars() / 1; // 단일 repo 기준 임시값
+        if (githubMetadataService != null && perRepoBudgetChars >= GITHUB_ACTIVITY_MIN_BUDGET_CHARS) {
+            String accessToken = repo.getGithubConnection().getAccessToken();
+            String githubLogin = repo.getGithubConnection().getGithubLogin();
+            List<String> commitTitles = allDiffs.stream()
+                    .map(DiffEntry::subject)
+                    .filter(m -> m != null && !m.isBlank())
+                    .toList();
+            try {
+                githubActivity = githubMetadataService.collectAndMerge(
+                        user.getId(), githubLogin, repo.getFullName(), accessToken, commitTitles);
+            } catch (Exception e) {
+                log.warn("GitHub activity collection failed for repo={}: {}", repo.getFullName(), e.getMessage());
+                // 메타데이터 수집 실패는 전체 파이프라인을 중단시키지 않음
+            }
+        }
+
         return new BatchPortfolioPromptBuilder.RepoBatchData(
                 repo, isOwnedRepo, projectOverview,
-                codeEntries, earlyDiffs, midDiffs, lateDiffs);
+                codeEntries, earlyDiffs, midDiffs, lateDiffs, githubActivity);
     }
 
     // ─────────────────────────────────────────────────────────────────────

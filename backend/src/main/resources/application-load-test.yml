@@ -3,6 +3,15 @@ spring:
     activate:
       on-profile: load-test
 
+  flyway:
+    locations:
+      - classpath:db/migration
+      - classpath:db/testdata   # load-test 전용 시드 데이터
+
+load-test:
+  auth:
+    test-user-id: 999999  # V100 시드에서 생성되는 테스트 유저 ID
+
 logging:
   level:
     com.back.backend.domain.ai: DEBUG   # stub 지연 로그 확인용

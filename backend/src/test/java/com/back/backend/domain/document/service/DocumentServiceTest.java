@@ -88,6 +88,27 @@ class DocumentServiceTest {
     }
 
     @Test
+    void validateUpload_successWhenDocxSentAsApplicationZip() {
+        // DOCX는 ZIP 기반이라 일부 클라이언트가 application/zip으로 전송한다
+        given(documentRepository.countByUserId(1L)).willReturn(0);
+
+        assertThatCode(() ->
+            documentService.validateUpload(1L, "application/zip", "resume.docx", 1024L)
+        ).doesNotThrowAnyException();
+    }
+
+    @Test
+    void validateUpload_failWhenZipMimeTypeWithNonDocxExtension() {
+        // application/zip이어도 확장자가 .zip이면 거부해야 한다
+        assertThatThrownBy(() ->
+            documentService.validateUpload(1L, "application/zip", "archive.zip", 1024L)
+        )
+            .isInstanceOf(ServiceException.class)
+            .satisfies(ex -> assertThat(((ServiceException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.DOCUMENT_INVALID_TYPE));
+    }
+
+    @Test
     void validateUpload_failWhenInvalidExtension() {
         assertThatThrownBy(() ->
             documentService.validateUpload(1L, "application/pdf", "disguised.exe", 1024L)

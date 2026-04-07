@@ -10,7 +10,7 @@
 import http from 'k6/http';
 import { sleep } from 'k6';
 import { ENDPOINTS } from '../lib/endpoints.js';
-import { getAuthHeaders } from '../lib/auth.js';
+import { acquireToken, getAuthHeaders } from '../lib/auth.js';
 import { assertResponse, AI_TIMEOUT } from '../lib/checks.js';
 
 const MAX_VUS = parseInt(__ENV.VUS || '30');
@@ -33,8 +33,12 @@ export const options = {
   },
 };
 
-export default function () {
-  const auth = getAuthHeaders();
+export function setup() {
+  return { token: acquireToken() };
+}
+
+export default function ({ token }) {
+  const auth = getAuthHeaders(token);
   if (!auth['Authorization']) {
     sleep(1);
     return;

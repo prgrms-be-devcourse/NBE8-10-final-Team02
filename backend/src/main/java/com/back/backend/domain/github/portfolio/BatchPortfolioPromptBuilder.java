@@ -3,8 +3,15 @@ package com.back.backend.domain.github.portfolio;
 import com.back.backend.domain.github.analysis.DiffEntry;
 import com.back.backend.domain.github.entity.CodeIndex;
 import com.back.backend.domain.github.entity.GithubRepository;
+import com.back.backend.domain.github.metadata.dto.CollectedIssue;
+import com.back.backend.domain.github.metadata.dto.CollectedPullRequest;
+import com.back.backend.domain.github.metadata.dto.CollectedReview;
+import com.back.backend.domain.github.metadata.dto.GitHubActivitySummary;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -59,8 +66,20 @@ public class BatchPortfolioPromptBuilder {
             List<CodeIndex> codeEntries,
             List<DiffEntry> earlyDiffs,
             List<DiffEntry> midDiffs,
-            List<DiffEntry> lateDiffs
-    ) {}
+            List<DiffEntry> lateDiffs,
+            /** GitHub Issue/PR 메타데이터 요약. null이면 섹션 생략. */
+            @Nullable GitHubActivitySummary githubActivity
+    ) {
+        /** 기존 코드와의 호환: githubActivity 없는 생성자 */
+        public RepoBatchData(
+                GithubRepository repo, boolean isOwnedRepo, String projectOverview,
+                List<CodeIndex> codeEntries,
+                List<DiffEntry> earlyDiffs, List<DiffEntry> midDiffs, List<DiffEntry> lateDiffs
+        ) {
+            this(repo, isOwnedRepo, projectOverview, codeEntries,
+                    earlyDiffs, midDiffs, lateDiffs, null);
+        }
+    }
 
     /**
      * 여러 repo 데이터를 하나의 XML {@code <batch_data>} 페이로드로 조립한다.
@@ -80,12 +99,13 @@ public class BatchPortfolioPromptBuilder {
             // ── 1차원: 이 repo의 전체 가용 예산 확보 ─────────────
             int repoBudget = budget.allocateForRepo();
 
-            // ── 고정 섹션(overview + code_structure) 조립 ────────
+            // ── 고정 섹션(overview + code_structure + github_activity) 조립 ────
             String overviewSection = buildOverview(data.projectOverview());
             String codeSection = buildCodeStructure(data.codeEntries());
+            String activitySection = buildGithubActivity(data.githubActivity());
 
-            // 고정 섹션의 실제 chars 측정
-            int fixedUsed = overviewSection.length() + codeSection.length();
+            // 고정 섹션의 실제 chars 측정 (github_activity는 fixedUsed에 포함 — Rollover 연동)
+            int fixedUsed = overviewSection.length() + codeSection.length() + activitySection.length();
 
             // ── 2차원: diff 구간별 예산 계산 ──────────────────────
             // fixedUsed를 먼저 차감하여 diff에 쓸 수 있는 예산 3등분
@@ -128,6 +148,11 @@ public class BatchPortfolioPromptBuilder {
                .append(midSection)
                .append(lateSection)
                .append("    </diffs>\n");
+
+            // github_activity (있을 때만)
+            if (!activitySection.isEmpty()) {
+                xml.append(activitySection);
+            }
 
             xml.append("  </repository>\n");
 
@@ -289,6 +314,70 @@ public class BatchPortfolioPromptBuilder {
         // ownerLogin이 org처럼 보이면 team, 아니면 own으로 처리
         // 실제 분류는 RepoBatchData.isOwnedRepo()를 활용
         return "team"; // 기본값; 호출자가 더 정밀하게 제어 가능
+    }
+
+    /**
+     * GitHub Activity (Issue/PR/Review) 섹션을 XML로 조립한다.
+     *
+     * <p>null이거나 내용이 비어있으면 빈 문자열 반환 → 섹션 자체가 생략된다.
+     * 기존 XML 포맷과 일관성을 유지하기 위해 Markdown 대신 XML 태그를 사용.
+     */
+    private String buildGithubActivity(@Nullable GitHubActivitySummary activity) {
+        if (activity == null) return "";
+        if (activity.createdIssues().isEmpty() && activity.authoredPullRequests().isEmpty()) return "";
+
+        DateTimeFormatter dateFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneOffset.UTC);
+        StringBuilder sb = new StringBuilder();
+        sb.append("    <github_activity>\n");
+
+        // Issues
+        if (!activity.createdIssues().isEmpty()) {
+            sb.append("      <issues_created>\n");
+            for (CollectedIssue issue : activity.createdIssues()) {
+                sb.append("        <issue number=\"").append(issue.number())
+                  .append("\" closed_at=\"")
+                  .append(issue.closedAt() != null ? dateFmt.format(issue.closedAt()) : "")
+                  .append("\">\n");
+                sb.append("          <title>").append(escapeXml(issue.title())).append("</title>\n");
+                if (issue.bodyExcerpt() != null) {
+                    sb.append("          <body>").append(escapeXml(issue.bodyExcerpt())).append("</body>\n");
+                }
+                sb.append("        </issue>\n");
+            }
+            sb.append("      </issues_created>\n");
+        }
+
+        // Pull Requests
+        if (!activity.authoredPullRequests().isEmpty()) {
+            sb.append("      <pull_requests_authored>\n");
+            for (CollectedPullRequest pr : activity.authoredPullRequests()) {
+                sb.append("        <pull_request number=\"").append(pr.number())
+                  .append("\" merged_at=\"")
+                  .append(pr.mergedAt() != null ? dateFmt.format(pr.mergedAt()) : "")
+                  .append("\">\n");
+                sb.append("          <title>").append(escapeXml(pr.title())).append("</title>\n");
+                if (pr.bodyExcerpt() != null) {
+                    sb.append("          <body>").append(escapeXml(pr.bodyExcerpt())).append("</body>\n");
+                }
+                if (!pr.reviews().isEmpty()) {
+                    sb.append("          <reviews>\n");
+                    for (CollectedReview rv : pr.reviews()) {
+                        sb.append("            <review reviewer=\"")
+                          .append(escapeXml(rv.reviewerLogin())).append("\">");
+                        if (rv.bodyExcerpt() != null) {
+                            sb.append(escapeXml(rv.bodyExcerpt()));
+                        }
+                        sb.append("</review>\n");
+                    }
+                    sb.append("          </reviews>\n");
+                }
+                sb.append("        </pull_request>\n");
+            }
+            sb.append("      </pull_requests_authored>\n");
+        }
+
+        sb.append("    </github_activity>\n");
+        return sb.toString();
     }
 
     /**

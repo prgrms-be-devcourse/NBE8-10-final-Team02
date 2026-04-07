@@ -129,3 +129,24 @@ security:
 knowledge:
   github:
     token: ${KNOWLEDGE_GITHUB_TOKEN}
+
+github:
+  collection:
+    # GraphQL first 값 — GitHub API 최대치 활용
+    page-size: 100
+    # Hard Cap: 2년 이내라도 극단적으로 많은 PR/Issue 방어 (PR/Issue 각각 독립 적용)
+    max-fetch: 300
+    # 수집 기간: today - N일. contributionsCollection 기간과 통일.
+    since-days: 730
+  metadata:
+    rate-limit:
+      # GraphQL node cost 기준 최소 잔량 — 이하면 수집 중단
+      graphql-minimum-remaining: 500
+      # REST 최소 잔량
+      rest-minimum-remaining: 100
+      # GET /rate_limit 응답 Redis 캐시 TTL (초)
+      check-cache-ttl-seconds: 60
+    # GitHub Activity 섹션 토큰 예산 (1 token ≈ 4 chars)
+    token-budget: 1500
+    # PR/Issue 각각 Impact Score 상위 N개 선정
+    top-n: 5
