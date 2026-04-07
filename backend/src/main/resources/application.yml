@@ -60,7 +60,7 @@ app:
 
 ai:
   provider: gemini
-  fallback-provider: groq  # Gemini 할당량 초과 시 Groq로 자동 전환
+  fallback-provider: gemini  # 글로벌 fallback을 Gemini AI Studio(무료)로 변경 — GROQ 템플릿 실패 시 다른 provider로 가야 함
   rate-limit:
     gemini:
       rpm: 10
@@ -72,6 +72,20 @@ ai:
       rpd: 1000
       tpm: 12000
       tpd: 100000
+    vertex-ai:
+      rpm: 60
+      rpd: 10000
+      tpm: 1000000
+  vertex-ai:
+    project-id: ${VERTEX_AI_PROJECT_ID:}
+    location: ${VERTEX_AI_LOCATION:us-central1}
+    model: gemini-2.5-flash
+    credentials-path: ${VERTEX_AI_CREDENTIALS_PATH:}
+    timeout:
+      connect: 5s
+      read: 60s
+    retry:
+      max-attempts: 1
   gemini:
     api-key: ${GEMINI_API_KEY}
     base-url: https://generativelanguage.googleapis.com/v1beta
