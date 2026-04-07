@@ -3,12 +3,8 @@ name: Test & Coverage
 on:
   pull_request:
     branches: [ main, dev ]
-    paths:
-      - "backend/**"
   push:
     branches: [ dev ]
-    paths:
-      - "backend/**"
 
 jobs:
   test:
@@ -25,24 +21,43 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if backend files changed
+        id: changes
+        run: |
+          if git diff --name-only origin/${{ github.base_ref || 'dev' }}...HEAD | grep -q "^backend/"; then
+            echo "backend=true" >> $GITHUB_OUTPUT
+          else
+            echo "backend=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Skip (no backend changes)
+        if: steps.changes.outputs.backend == 'false'
+        run: echo "백엔드 코드 변경 없음 — 테스트 건너뜁니다."
 
       - name: Create .env.test from Secret
+        if: steps.changes.outputs.backend == 'true'
         env:
           DOT_ENV_TEST: ${{ secrets.DOT_ENV_TEST }}
         run: echo "$DOT_ENV_TEST" > .env.test
 
       - name: Set up JDK 25
+        if: steps.changes.outputs.backend == 'true'
         uses: actions/setup-java@v4
         with:
           java-version: '25'
           distribution: 'temurin'
 
       - name: Setup Gradle
+        if: steps.changes.outputs.backend == 'true'
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false
 
       - name: Cache Testcontainers layers
+        if: steps.changes.outputs.backend == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.testcontainers
@@ -51,22 +66,24 @@ jobs:
             testcontainers-${{ runner.os }}-
 
       - name: Grant execute permission for gradlew
+        if: steps.changes.outputs.backend == 'true'
         run: chmod +x backend/gradlew
 
       - name: Run tests
+        if: steps.changes.outputs.backend == 'true'
         working-directory: ./backend
         run: ./gradlew test jacocoTestReport
 
       - name: Upload test report on failure
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && steps.changes.outputs.backend == 'true'
         with:
           name: test-report
           path: backend/build/reports/tests/
 
       - name: JaCoCo coverage report (PR comment)
         uses: madrapps/jacoco-report@v1.6.1
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.changes.outputs.backend == 'true'
         with:
           paths: backend/build/reports/jacoco/test/jacocoTestReport.xml
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -76,59 +93,45 @@ jobs:
           min-coverage-changed-files: 0
 
       - name: JaCoCo coverage summary
-        if: always()
+        if: always() && steps.changes.outputs.backend == 'true'
         run: |
           XML="backend/build/reports/jacoco/test/jacocoTestReport.xml"
           if [ ! -f "$XML" ]; then
-            echo "## 🧪 Test Coverage" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "> ⚠️ JaCoCo report not found — tests may have failed." >> $GITHUB_STEP_SUMMARY
+            printf '## 🧪 Test Coverage\n\n> ⚠️ JaCoCo report not found — tests may have failed.\n' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          python3 - "$XML" >> $GITHUB_STEP_SUMMARY <<'PYEOF'
-import sys, xml.etree.ElementTree as ET
+          awk '
+            function bar(p,    b,f,i) {
+              f=int(p/10); if(f>10)f=10; b=""
+              for(i=0;i<f;i++) b=b "█"; for(i=f;i<10;i++) b=b "░"
+              return b
+            }
+            /<counter / {
+              t=$0;   gsub(/.*type="/,"",t);    gsub(/".*$/,"",t)
+              mi=$0;  gsub(/.*missed="/,"",mi); gsub(/".*$/,"",mi)
+              co=$0;  gsub(/.*covered="/,"",co);gsub(/".*$/,"",co)
+              cov[t]=co+0; tot[t]=co+mi+0
+            }
+            END {
+              ic=cov["INSTRUCTION"]; it=tot["INSTRUCTION"]
+              p=(it>0)?ic*100.0/it:0
+              if(p>=70) badge="✅ PASS"
+              else if(p>=50) badge="⚠️ LOW"
+              else badge="❌ FAIL"
 
-tree = ET.parse(sys.argv[1])
-root = tree.getroot()
+              print "## 🧪 Test Coverage"
+              print ""
+              printf "**전체 명령 커버리지: %.1f%% — %s** (기준: ≥ 70%%)\n\n", p, badge
+              print "| 유형 | 커버 | 전체 | 비율 | |"
+              print "|------|-----:|-----:|-----:|---|"
 
-targets = [
-    ("INSTRUCTION", "명령 (Instruction)"),
-    ("LINE",        "라인 (Line)"),
-    ("BRANCH",      "브랜치 (Branch)"),
-    ("METHOD",      "메서드 (Method)"),
-]
-
-rows = {}
-for counter in root.findall("counter"):
-    t = counter.get("type")
-    if t in dict(targets):
-        missed  = int(counter.get("missed",  0))
-        covered = int(counter.get("covered", 0))
-        total   = missed + covered
-        pct     = covered / total * 100 if total > 0 else 0.0
-        rows[t] = (covered, total, pct)
-
-instr = rows.get("INSTRUCTION")
-overall_pct = instr[2] if instr else 0.0
-if overall_pct >= 70:
-    badge = "✅ PASS"
-elif overall_pct >= 50:
-    badge = "⚠️ LOW"
-else:
-    badge = "❌ FAIL"
-
-print("## 🧪 Test Coverage")
-print()
-print(f"**전체 명령 커버리지: {overall_pct:.1f}% — {badge}** (기준: ≥ 70%)")
-print()
-print("| 유형 | 커버 | 전체 | 비율 | |")
-print("|------|-----:|-----:|-----:|---|")
-for key, label in targets:
-    if key not in rows:
-        continue
-    cov, tot, pct = rows[key]
-    filled = int(pct / 10)
-    bar = "█" * filled + "░" * (10 - filled)
-    print(f"| {label} | {cov:,} | {tot:,} | {pct:.1f}% | `{bar}` |")
-PYEOF
+              split("INSTRUCTION,LINE,BRANCH,METHOD", keys, ",")
+              split("명령 (Instruction),라인 (Line),브랜치 (Branch),메서드 (Method)", labels, ",")
+              for(i=1;i<=4;i++) {
+                k=keys[i]; c=cov[k]+0; t=tot[k]+0
+                pct=(t>0)?c*100.0/t:0
+                printf "| %s | %d | %d | %.1f%% | `%s` |\n", labels[i], c, t, pct, bar(pct)
+              }
+            }
+          ' "$XML" >> "$GITHUB_STEP_SUMMARY"
