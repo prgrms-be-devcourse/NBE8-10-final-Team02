@@ -754,14 +754,16 @@ describe('InterviewSessionPage', () => {
     });
   });
 
-  it('진행 중 상태에서는 요약 카드에 일시정지 액션을 노출하고 종료 카드는 유지한다', async () => {
+  it('진행 중 상태에서는 상단 요약 없이 세션 관리 카드에 상태 제어를 노출한다', async () => {
     getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
 
     await renderPage();
 
-    expect(screen.getByRole('button', { name: '일시정지' })).toBeInTheDocument();
-    expect(screen.queryByText('세션 상태')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '세션 종료' })).toBeInTheDocument();
+    expect(screen.queryByText('현재 일시정지된 세션입니다.')).not.toBeInTheDocument();
+    expect(screen.getByText('세션 관리')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '일시정지' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '재개' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '세션 종료' })).toBeDisabled();
   });
 
   it('재개 성공 후 상단 상태 요약이 즉시 진행 상태로 갱신된다', async () => {
@@ -792,13 +794,12 @@ describe('InterviewSessionPage', () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: '재개' }));
 
-    await screen.findByText('세션을 재개했습니다.');
-    expect(
-      screen.getByText('방금 재개되어 같은 질문부터 다시 이어서 제출할 수 있습니다. 다음 질문은 항상 서버가 내려주는 currentQuestion 기준으로 바뀝니다.'),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('세션 상태')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '일시정지' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '세션 종료' })).toBeInTheDocument();
+    await screen.findByText('세션을 재개했습니다. 이어서 답변을 제출할 수 있습니다.');
+    expect(screen.queryByText('현재 일시정지된 세션입니다.')).not.toBeInTheDocument();
+    expect(screen.getByText('세션 관리')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '일시정지' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '재개' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '세션 종료' })).toBeDisabled();
     expect(screen.getByRole('textbox')).not.toHaveFocus();
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
   });
@@ -815,9 +816,10 @@ describe('InterviewSessionPage', () => {
 
     expect(screen.getByText('수동 일시정지')).toBeInTheDocument();
     expect(screen.getAllByText('현재 일시정지된 세션입니다.')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: '재개' })).toBeInTheDocument();
-    expect(screen.queryByText('세션 상태')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '세션 종료' })).toBeInTheDocument();
+    expect(screen.getByText('세션 관리')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '일시정지' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '재개' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '세션 종료' })).toBeDisabled();
     expect(screen.queryByText('자동 일시정지된 것으로 보입니다.')).not.toBeInTheDocument();
   });
 
@@ -833,9 +835,10 @@ describe('InterviewSessionPage', () => {
 
     expect(screen.getByText('자동 일시정지')).toBeInTheDocument();
     expect(screen.getAllByText('자동 일시정지된 것으로 보입니다.')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: '재개' })).toBeInTheDocument();
-    expect(screen.queryByText('세션 상태')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '세션 종료' })).toBeInTheDocument();
+    expect(screen.getByText('세션 관리')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '일시정지' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '재개' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '세션 종료' })).toBeDisabled();
     expect(
       screen.getByText('마지막 활동 이후 30분 이상 지나 서버가 paused로 정규화했을 가능성이 높습니다. 재개 후 같은 질문부터 다시 이어서 진행하세요.'),
     ).toBeInTheDocument();
@@ -854,9 +857,8 @@ describe('InterviewSessionPage', () => {
     await renderPage();
 
     expect(screen.getByText('상태 결과 재확인')).toBeInTheDocument();
-    expect(screen.getByText('세션은 종료되었고 결과를 다시 확인할 수 있습니다.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '결과 재확인' })).toBeInTheDocument();
-    expect(screen.queryByText('세션 상태')).not.toBeInTheDocument();
+    expect(screen.queryByText('세션 관리')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '세션 종료' })).not.toBeInTheDocument();
   });
 
@@ -873,9 +875,43 @@ describe('InterviewSessionPage', () => {
     await renderPage();
 
     expect(screen.getByText('상태 피드백 완료')).toBeInTheDocument();
-    expect(screen.getByText('피드백 리포트가 준비되었습니다.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '결과 보기' })).toBeInTheDocument();
-    expect(screen.queryByText('세션 상태')).not.toBeInTheDocument();
+    expect(screen.queryByText('세션 관리')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '세션 종료' })).not.toBeInTheDocument();
+  });
+
+  it('세션 종료가 일반 오류를 반환해도 직후 재조회 상태가 terminal이면 결과 페이지로 이동한다', async () => {
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        currentQuestion: null,
+        completionFollowupContext: null,
+        totalQuestionCount: 8,
+        answeredQuestionCount: 8,
+        remainingQuestionCount: 0,
+      }),
+    );
+    completeSessionMock.mockRejectedValueOnce(new Error('일시적인 오류가 발생했습니다.'));
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        status: 'completed',
+        currentQuestion: null,
+        completionFollowupContext: null,
+        totalQuestionCount: 8,
+        answeredQuestionCount: 8,
+        remainingQuestionCount: 0,
+        endedAt: '2026-04-07T10:30:00Z',
+      }),
+    );
+
+    await renderPage();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '세션 종료' }));
+
+    await waitFor(() => {
+      expect(completeSessionMock).toHaveBeenCalledTimes(1);
+      expect(pushMock).toHaveBeenCalledWith('/interview/sessions/1/result');
+    });
+    expect(screen.queryByText('일시적인 오류가 발생했습니다.')).not.toBeInTheDocument();
   });
 });
