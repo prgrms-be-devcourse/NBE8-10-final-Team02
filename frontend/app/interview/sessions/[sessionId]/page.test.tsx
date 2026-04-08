@@ -463,11 +463,11 @@ describe('InterviewSessionPage', () => {
 
     await waitFor(() => {
       expect(getUserMediaMock).toHaveBeenCalledTimes(1);
-      expect(screen.getByText('음성 입력 준비')).toBeInTheDocument();
+      expect(screen.getByText('음성 입력 가능')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '음성 입력 시작' })).toBeEnabled();
     });
     expect(
-      screen.getByText('Chrome 계열 데스크톱에서 질문별로 수동 시작/중지할 수 있습니다. interim transcript는 참고용이고, 최종 제출은 textarea를 기준으로 합니다.'),
+      screen.getByText('시작 후 답변하고, 중지한 뒤 내용을 확인하세요.'),
     ).toBeInTheDocument();
   });
 
@@ -476,9 +476,9 @@ describe('InterviewSessionPage', () => {
 
     await renderPage();
 
-    expect(screen.getByText('텍스트 fallback')).toBeInTheDocument();
+    expect(screen.getByText('텍스트 입력')).toBeInTheDocument();
     expect(
-      screen.getByText('이 브라우저는 v1 음성 입력 지원 대상이 아니어서 텍스트 입력으로 계속 진행합니다.'),
+      screen.getByText('Chrome, Edge 등 일부 브라우저에서만 음성 입력을 지원합니다. 현재는 텍스트 입력을 사용해주세요.'),
     ).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toBeEnabled();
     expect(screen.getByRole('button', { name: '음성 입력 시작' })).toBeDisabled();
@@ -493,9 +493,9 @@ describe('InterviewSessionPage', () => {
 
     await waitFor(() => {
       expect(getUserMediaMock).toHaveBeenCalledTimes(1);
-      expect(screen.getByText('텍스트 fallback')).toBeInTheDocument();
+      expect(screen.getByText('권한 필요')).toBeInTheDocument();
     });
-    expect(screen.getByText('마이크 권한을 사용할 수 없어 텍스트 입력으로 계속 진행합니다.')).toBeInTheDocument();
+    expect(screen.getByText('마이크 권한을 켜주세요. 권한을 허용하면 음성 입력을 사용할 수 있습니다.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '마이크 권한 다시 요청' })).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toBeEnabled();
   });

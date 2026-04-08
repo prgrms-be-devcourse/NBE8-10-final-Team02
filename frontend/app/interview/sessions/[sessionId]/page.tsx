@@ -1023,19 +1023,21 @@ export default function InterviewSessionPage() {
   const voiceSectionBadge = isListening
     ? { label: '음성 입력 중', tone: 'bg-emerald-50 text-emerald-700' }
     : microphonePermission === 'granted'
-      ? { label: '음성 입력 준비', tone: 'bg-blue-50 text-blue-700' }
+      ? { label: '음성 입력 가능', tone: 'bg-blue-50 text-blue-700' }
       : microphonePermission === 'requesting'
-        ? { label: '권한 요청 중', tone: 'bg-amber-50 text-amber-700' }
-        : { label: '텍스트 fallback', tone: 'bg-zinc-100 text-zinc-600' };
+        ? { label: '권한 확인 중', tone: 'bg-amber-50 text-amber-700' }
+        : microphonePermission === 'denied'
+          ? { label: '권한 필요', tone: 'bg-amber-50 text-amber-700' }
+          : { label: '텍스트 입력', tone: 'bg-zinc-100 text-zinc-600' };
   const voiceSupportDescription =
     browserSupport === 'unsupported'
       ? supportMessage
       : microphonePermission === 'denied'
-        ? '마이크 권한이 없어 같은 세션의 텍스트 입력 fallback으로 계속 진행합니다.'
+        ? '마이크 권한을 켜주세요. 권한을 허용하면 음성 입력을 사용할 수 있습니다.'
         : microphonePermission === 'requesting'
-          ? '마이크 권한을 확인 중입니다. 허용되면 질문별로 음성 입력을 시작할 수 있습니다.'
+          ? '마이크 권한을 확인하고 있습니다.'
           : microphonePermission === 'granted'
-            ? 'Chrome 계열 데스크톱에서 질문별로 수동 시작/중지할 수 있습니다. interim transcript는 참고용이고, 최종 제출은 textarea를 기준으로 합니다.'
+            ? '시작 후 답변하고, 중지한 뒤 내용을 확인하세요.'
             : '음성 입력 준비 상태를 확인 중입니다.';
   const canStartVoiceCapture =
     browserSupport === 'supported'
@@ -1418,7 +1420,7 @@ export default function InterviewSessionPage() {
                     <div>
                       <p className="text-sm font-semibold text-zinc-900">음성 입력</p>
                       <p className="mt-1 text-xs text-zinc-500">
-                        Chrome 계열 데스크톱 우선 v1입니다. 실시간 transcript는 참고용이고, 최종 제출 전 textarea를 직접 확인합니다.
+                        Chrome, Edge 등 일부 브라우저에서 음성 입력을 지원합니다.
                       </p>
                     </div>
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${voiceSectionBadge.tone}`}>

@@ -52,6 +52,9 @@ declare global {
 
 export type BrowserSpeechSupport = 'supported' | 'unsupported';
 
+const UNSUPPORTED_BROWSER_MESSAGE =
+  'Chrome, Edge 등 일부 브라우저에서만 음성 입력을 지원합니다. 현재는 텍스트 입력을 사용해주세요.';
+
 interface BrowserSpeechSupportState {
   support: BrowserSpeechSupport;
   message: string | null;
@@ -94,14 +97,14 @@ function resolveBrowserSpeechSupport(): BrowserSpeechSupportState {
   if (!RecognitionConstructor) {
     return {
       support: 'unsupported',
-      message: '이 브라우저는 v1 음성 입력 지원 대상이 아니어서 텍스트 입력으로 계속 진행합니다.',
+      message: UNSUPPORTED_BROWSER_MESSAGE,
     };
   }
 
   if (!isDesktopChromiumUserAgent(navigator.userAgent)) {
     return {
       support: 'unsupported',
-      message: 'v1 음성 입력은 Chrome 계열 데스크톱을 우선 지원합니다. 같은 세션에서 텍스트 입력으로 계속 진행해주세요.',
+      message: UNSUPPORTED_BROWSER_MESSAGE,
     };
   }
 
@@ -180,7 +183,7 @@ export function useBrowserSpeechRecognition(): UseBrowserSpeechRecognitionResult
     const RecognitionConstructor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!RecognitionConstructor) {
       setBrowserSupport('unsupported');
-      setSupportMessage('이 브라우저는 v1 음성 입력 지원 대상이 아니어서 텍스트 입력으로 계속 진행합니다.');
+      setSupportMessage(UNSUPPORTED_BROWSER_MESSAGE);
       return null;
     }
 
