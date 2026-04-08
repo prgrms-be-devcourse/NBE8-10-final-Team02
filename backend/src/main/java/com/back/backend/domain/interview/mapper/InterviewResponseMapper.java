@@ -11,6 +11,7 @@ import com.back.backend.domain.interview.dto.response.InterviewSessionCompletion
 import com.back.backend.domain.interview.dto.response.InterviewSessionCurrentQuestionResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionDetailResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionResponse;
+import com.back.backend.domain.interview.dto.response.InterviewSessionTranscriptEntryResponse;
 import com.back.backend.domain.interview.dto.response.InterviewSessionTransitionResponse;
 import com.back.backend.domain.interview.entity.FeedbackTag;
 import com.back.backend.domain.interview.entity.InterviewAnswer;
@@ -79,6 +80,7 @@ public class InterviewResponseMapper {
             InterviewSession session,
             InterviewSessionQuestion currentQuestion,
             InterviewSessionCompletionFollowupContextResponse completionFollowupContext,
+            List<InterviewSessionTranscriptEntryResponse> transcriptEntries,
             long totalQuestionCount,
             long answeredQuestionCount,
             long remainingQuestionCount,
@@ -90,6 +92,7 @@ public class InterviewResponseMapper {
                 session.getStatus().getValue(),
                 toInterviewSessionCurrentQuestionResponse(currentQuestion),
                 completionFollowupContext,
+                transcriptEntries,
                 totalQuestionCount,
                 answeredQuestionCount,
                 remainingQuestionCount,
@@ -109,6 +112,17 @@ public class InterviewResponseMapper {
                 answer.getAnswerOrder(),
                 answer.getAnswerText(),
                 answer.isSkipped()
+        );
+    }
+
+    public InterviewSessionTranscriptEntryResponse toInterviewSessionTranscriptEntryResponse(InterviewAnswer answer) {
+        if (answer == null) {
+            return null;
+        }
+
+        return new InterviewSessionTranscriptEntryResponse(
+                toInterviewSessionCurrentQuestionResponse(answer.getSessionQuestion()),
+                toInterviewSessionAnswerSummaryResponse(answer)
         );
     }
 
