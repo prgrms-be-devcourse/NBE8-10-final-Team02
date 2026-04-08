@@ -19,7 +19,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Optional;
 
 /**
  * 업로드된 문서 파일에서 텍스트를 추출하는 컴포넌트.
@@ -52,11 +51,11 @@ public class DocumentTextExtractor {
     private final Path uploadDir;
 
     /** OCR 서비스 — Tesseract 활성화 시 TesseractOcrService, 비활성화 시 NoOpOcrService. */
-    private final Optional<OcrService> ocrService;
+    private final OcrService ocrService;
 
     public DocumentTextExtractor(
             @Value("${app.storage.upload-dir}") String uploadDir,
-            Optional<OcrService> ocrService) {
+            OcrService ocrService) {
         this.uploadDir = Paths.get(uploadDir).toAbsolutePath().normalize();
         this.ocrService = ocrService;
     }
@@ -132,13 +131,8 @@ public class DocumentTextExtractor {
             }
             // 텍스트 레이어가 없음 → OCR 시도 (스캔 PDF)
             log.info("PDF has no text layer, attempting OCR: {}", path.getFileName());
-            if (ocrService.isEmpty()) {
-                // OCR 서비스가 없으면 빈 문자열 반환
-                log.info("OCR service not available, returning empty string");
-                return "";
-            }
             try {
-                return ocrService.get().extractTextFromPdf(doc);
+                return ocrService.extractTextFromPdf(doc);
             } catch (ServiceException ocrEx) {
                 // OCR 실패 → 빈 문자열 반환 → 호출자가 DOCUMENT_EXTRACT_EMPTY 처리
                 log.warn("OCR failed for {}: {}", path.getFileName(), ocrEx.getMessage());
