@@ -31,12 +31,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -76,12 +78,22 @@ class InterviewQuestionsGenerateServiceTest {
     @Mock
     private KnowledgeTagRepository knowledgeTagRepository;
 
+    @Mock
+    private TransactionTemplate transactionTemplate;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private InterviewQuestionsGenerateService service;
 
     @BeforeEach
     void setUp() {
+        // TransactionTemplate.execute()가 실제 콜백을 실행하도록 스텁
+        // lenient: getQuestionSet() 같은 @Transactional 메서드는 TransactionTemplate을 사용하지 않음
+        org.mockito.Mockito.lenient()
+            .when(transactionTemplate.execute(any()))
+            .thenAnswer(invocation -> invocation.<org.springframework.transaction.support.TransactionCallback<?>>getArgument(0)
+                .doInTransaction(null));
+
         service = new InterviewQuestionsGenerateService(
             userRepository,
             applicationRepository,
@@ -91,7 +103,8 @@ class InterviewQuestionsGenerateServiceTest {
             questionRepository,
             new InterviewQuestionsPayloadBuilder(),
             aiPipeline,
-            knowledgeTagRepository
+            knowledgeTagRepository,
+            transactionTemplate
         );
     }
 
