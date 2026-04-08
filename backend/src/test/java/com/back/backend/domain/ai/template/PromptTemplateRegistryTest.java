@@ -80,7 +80,8 @@ class PromptTemplateRegistryTest {
             "developer/test.txt",
             "schema/test.schema.json",
             0.5, 1000,
-            new PromptTemplate.RetryPolicy(1, false)
+            new PromptTemplate.RetryPolicy(1, false),
+            null
         )).isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("templateId");
 
@@ -91,7 +92,8 @@ class PromptTemplateRegistryTest {
             "developer/test.txt",
             "schema/test.schema.json",
             1.5, 1000,
-            new PromptTemplate.RetryPolicy(1, false)
+            new PromptTemplate.RetryPolicy(1, false),
+            null
         )).isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("temperature");
 
@@ -102,7 +104,8 @@ class PromptTemplateRegistryTest {
             "developer/test.txt",
             "schema/test.schema.json",
             0.5, 0,
-            new PromptTemplate.RetryPolicy(1, false)
+            new PromptTemplate.RetryPolicy(1, false),
+            null
         )).isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("maxTokens");
     }

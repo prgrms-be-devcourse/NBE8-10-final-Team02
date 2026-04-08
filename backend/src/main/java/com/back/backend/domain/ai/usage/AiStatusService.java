@@ -37,21 +37,15 @@ public class AiStatusService {
     }
 
     /**
-     * 설정된 default + fallback provider에 대한 가용성 상태를 조회하여 반환
+     * 등록된 모든 AI provider(Gemini, Groq, VertexAI 등)에 대한 가용성 상태를 조회하여 반환
      * 60초 로컬 캐시 적용 (TTL: 60s)
      *
      * @return AI 서비스 전체 가용성 및 각 provider 상태
      */
     @Cacheable(cacheNames = "aiStatus")
     public AiStatusResponse getStatus() {
-        // default + fallback provider 목록 구성 (중복 제거)
-        List<AiClient> clients = new ArrayList<>();
-        clients.add(router.getDefault());
-        router.getFallback().ifPresent(fb -> {
-            if (!fb.getProvider().equals(router.getDefault().getProvider())) {
-                clients.add(fb);
-            }
-        });
+        // 등록된 모든 provider 목록 구성 (중복 없음 — Map 기반)
+        List<AiClient> clients = new ArrayList<>(router.getAllClients());
 
         // 각 provider 상태 빌드
         List<ProviderStatus> providerStatuses = clients.stream()

@@ -1,5 +1,7 @@
 package com.back.backend.domain.ai.client;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -45,6 +47,14 @@ public class AiClientRouter {
             return Optional.empty();
         }
         return Optional.of(getClient(fallbackProvider));
+    }
+
+    /**
+     * 등록된 모든 AiClient 구현체를 반환
+     * AiStatusService에서 전체 provider 상태 조회 시 사용
+     */
+    public Collection<AiClient> getAllClients() {
+        return Collections.unmodifiableCollection(clients.values());
     }
 
     /**
