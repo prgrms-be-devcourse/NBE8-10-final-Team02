@@ -20,6 +20,95 @@ const LENGTH_LABEL: Record<string, string> = {
   long: '길게',
 };
 
+type QuestionSnapshot = Pick<ApplicationQuestion, 'id' | 'generatedAnswer'>;
+
+function hasGeneratedText(value: string | null) {
+  return value !== null && value.trim().length > 0;
+}
+
+function buildQuestionSnapshot(questions: ApplicationQuestion[]): QuestionSnapshot[] {
+  return questions.map((question) => ({
+    id: question.id,
+    generatedAnswer: question.generatedAnswer,
+  }));
+}
+
+function countRecoveredGeneratedAnswers(
+  snapshot: QuestionSnapshot[],
+  nextQuestions: ApplicationQuestion[],
+  regenerate: boolean,
+) {
+  const nextById = new Map(nextQuestions.map((question) => [question.id, question]));
+  const targetQuestions = regenerate
+    ? snapshot
+    : snapshot.filter((question) => question.generatedAnswer === null);
+
+  return targetQuestions.filter((question) => {
+    const nextGeneratedAnswer = nextById.get(question.id)?.generatedAnswer ?? null;
+    return hasGeneratedText(nextGeneratedAnswer) && nextGeneratedAnswer !== question.generatedAnswer;
+  }).length;
+}
+
+function canRecoverGenerateSuccess(
+  snapshot: QuestionSnapshot[],
+  nextQuestions: ApplicationQuestion[],
+  regenerate: boolean,
+) {
+  const nextById = new Map(nextQuestions.map((question) => [question.id, question]));
+  const targetQuestions = regenerate
+    ? snapshot
+    : snapshot.filter((question) => question.generatedAnswer === null);
+
+  if (targetQuestions.length === 0) {
+    return false;
+  }
+
+  const allTargetsHaveAnswer = targetQuestions.every((question) =>
+    hasGeneratedText(nextById.get(question.id)?.generatedAnswer ?? null),
+  );
+
+  if (!allTargetsHaveAnswer) {
+    return false;
+  }
+
+  if (!regenerate) {
+    return true;
+  }
+
+  return countRecoveredGeneratedAnswers(snapshot, nextQuestions, true) > 0;
+}
+
+function mergeGeneratedAnswersIntoQuestions(
+  questions: ApplicationQuestion[],
+  answers: GeneratedAnswerItem[],
+) {
+  const answersById = new Map(answers.map((answer) => [answer.questionId, answer]));
+
+  return questions.map((question) => {
+    const matched = answersById.get(question.id);
+    if (!matched) {
+      return question;
+    }
+
+    return {
+      ...question,
+      generatedAnswer: matched.generatedAnswer,
+      toneOption: matched.toneOption ?? question.toneOption,
+      lengthOption: matched.lengthOption ?? question.lengthOption,
+    };
+  });
+}
+
+function toGeneratedAnswerItems(questions: ApplicationQuestion[]): GeneratedAnswerItem[] {
+  return questions.map((question) => ({
+    questionId: question.id,
+    questionText: question.questionText,
+    generatedAnswer: question.generatedAnswer,
+    toneOption: question.toneOption,
+    lengthOption: question.lengthOption,
+  }));
+}
+
 export default function GeneratePage() {
   const params = useParams();
   const applicationId = Number(params.id);
@@ -36,6 +125,7 @@ export default function GeneratePage() {
   const [result, setResult] = useState<GeneratedAnswerItem[] | null>(null);
   const [generatedCount, setGeneratedCount] = useState(0);
   const [showLongWaitHint, setShowLongWaitHint] = useState(false);
+  const [resultDetailOverride, setResultDetailOverride] = useState<string | null>(null);
 
   // 옵션
   const [regenerate, setRegenerate] = useState(false);
@@ -78,9 +168,12 @@ export default function GeneratePage() {
 
   // ── AI 답변 생성 ──────────────────────────────────
   async function handleGenerate() {
+    const questionSnapshot = buildQuestionSnapshot(questions);
+
     setGenerating(true);
     setGenerateError(null);
     setResult(null);
+    setResultDetailOverride(null);
     try {
       const res = await generateAnswers(applicationId, {
         useTemplate: true,
@@ -88,11 +181,41 @@ export default function GeneratePage() {
       });
       setResult(res.answers);
       setGeneratedCount(res.generatedCount);
-      // 생성 후 문항 목록과 상태를 함께 다시 읽어 게이팅 기준을 맞춘다.
-      await loadPageData();
+      setQuestions((currentQuestions) => mergeGeneratedAnswersIntoQuestions(currentQuestions, res.answers));
+
+      const [applicationResult, questionsResult] = await Promise.allSettled([
+        getApplication(applicationId),
+        getQuestions(applicationId),
+      ]);
+
+      if (applicationResult.status === 'fulfilled') {
+        setApplicationStatus(applicationResult.value.status);
+      }
+
+      if (questionsResult.status === 'fulfilled') {
+        setQuestions(questionsResult.value);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'AI 답변 생성 중 오류가 발생했습니다.';
-      setGenerateError(msg);
+      let recheckedQuestions: ApplicationQuestion[] | null = null;
+
+      try {
+        recheckedQuestions = await getQuestions(applicationId);
+        setQuestions(recheckedQuestions);
+      } catch {
+        recheckedQuestions = null;
+      }
+
+      if (recheckedQuestions && canRecoverGenerateSuccess(questionSnapshot, recheckedQuestions, regenerate)) {
+        setResult(toGeneratedAnswerItems(recheckedQuestions));
+        setGeneratedCount(countRecoveredGeneratedAnswers(questionSnapshot, recheckedQuestions, regenerate));
+        setResultDetailOverride('응답 확인 중 오류가 있었지만 생성 결과는 저장되었습니다.');
+        void getApplication(applicationId)
+          .then((application) => setApplicationStatus(application.status))
+          .catch(() => undefined);
+      } else {
+        setGenerateError(msg);
+      }
     } finally {
       setGenerating(false);
     }
@@ -262,9 +385,11 @@ export default function GeneratePage() {
             title="자기소개서 답변이 저장되었습니다"
             message={`${generatedCount}개 문항 생성 완료 · 저장됨`}
             detail={
-              applicationStatus === 'ready'
-                ? '답변을 검토한 뒤 바로 면접 준비로 넘어갈 수 있습니다.'
-                : '답변을 검토하고 필요한 문항을 더 정리해 주세요.'
+              resultDetailOverride ?? (
+                applicationStatus === 'ready'
+                  ? '답변을 검토한 뒤 바로 면접 준비로 넘어갈 수 있습니다.'
+                  : '답변을 검토하고 필요한 문항을 더 정리해 주세요.'
+              )
             }
             actions={
               applicationStatus === 'ready' ? (
