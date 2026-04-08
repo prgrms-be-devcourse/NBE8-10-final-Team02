@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -50,7 +51,7 @@ class DocumentTextExtractorTest {
 
     @BeforeEach
     void setUp() {
-        extractor = new DocumentTextExtractor(tempDir.toString(), ocrService);
+        extractor = new DocumentTextExtractor(tempDir.toString(), Optional.of(ocrService));
     }
 
     // =========================================================
