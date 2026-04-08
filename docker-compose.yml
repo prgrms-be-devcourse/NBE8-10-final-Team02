@@ -12,9 +12,7 @@ services:
     restart: always
 
   db:
-    # PGroonga 전문 검색(FTS) 지원을 위해 groonga/pgroonga 이미지 사용.
-    # PGroonga는 &@~ 연산자로 한국어/영어 FTS + Fuzzy search를 지원한다.
-    # 이전: postgres:15-alpine → 이후: groonga/pgroonga:latest-alpine-15
+    # 이전: postgres:15-alpine → 이후: groonga/pgroonga:latest-alpine-15 (PGroonga 전문 검색(FTS) 지원 위해 변경
     image: groonga/pgroonga:latest-alpine-15
     container_name: local-db
     environment:
