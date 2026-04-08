@@ -26,6 +26,7 @@ import type {
   InterviewQuestionType,
   InterviewSessionCurrentQuestion,
   InterviewSessionDetail,
+  InterviewSessionTranscriptEntry,
 } from '@/types/interview';
 
 const QUESTION_TYPE_LABEL: Record<InterviewQuestionType, string> = {
@@ -256,23 +257,63 @@ function writeStoredDraft(sessionId: number, draft: StoredDraft | null) {
   window.sessionStorage.setItem(getDraftStorageKey(sessionId), JSON.stringify(draft));
 }
 
-function syncMessagesWithCurrentQuestion(
+function buildTranscriptMessages(entries: InterviewSessionTranscriptEntry[]): ChatMessage[] {
+  return entries.flatMap((entry) => [
+    createQuestionMessage(entry.question),
+    createAnswerMessage({
+      id: `answer-${entry.question.id}-${entry.answer.answerOrder}`,
+      text: formatSummaryAnswerText(entry.answer),
+      answerOrder: entry.answer.answerOrder,
+      questionId: entry.question.id,
+      isSkipped: entry.answer.isSkipped,
+      pending: false,
+    }),
+  ]);
+}
+
+function getLocalSystemMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.filter((message) => message.role === 'system');
+}
+
+function getLocalPendingAnswerMessages(
+  messages: ChatMessage[],
+  answeredQuestionIds: Set<number>,
+): ChatMessage[] {
+  return messages.filter((message) =>
+    message.role === 'answer'
+    && message.pending
+    && typeof message.questionId === 'number'
+    && !answeredQuestionIds.has(message.questionId),
+  );
+}
+
+function mergeMessagesWithSessionDetail(
   previousMessages: ChatMessage[],
   session: InterviewSessionDetail,
 ): ChatMessage[] {
+  const transcriptEntries = session.transcriptEntries ?? [];
+  const answeredQuestionIds = new Set(
+    transcriptEntries.map((entry) => entry.question.id),
+  );
+  const mergedMessages = [
+    ...buildTranscriptMessages(transcriptEntries),
+    ...getLocalSystemMessages(previousMessages),
+    ...getLocalPendingAnswerMessages(previousMessages, answeredQuestionIds),
+  ];
+
   if (!session.currentQuestion) {
-    return previousMessages;
+    return mergedMessages;
   }
 
-  const alreadyExists = previousMessages.some(
+  const alreadyExists = mergedMessages.some(
     (message) => message.role === 'question' && message.questionId === session.currentQuestion?.id,
   );
 
   if (alreadyExists) {
-    return previousMessages;
+    return mergedMessages;
   }
 
-  return [...previousMessages, createQuestionMessage(session.currentQuestion)];
+  return [...mergedMessages, createQuestionMessage(session.currentQuestion)];
 }
 
 function getTranscriptMessages(messages: ChatMessage[], currentQuestionId: number | null): ChatMessage[] {
@@ -413,7 +454,7 @@ export default function InterviewSessionPage() {
       if (data.status !== 'in_progress') {
         setJustResumed(false);
       }
-      setMessages((previousMessages) => syncMessagesWithCurrentQuestion(previousMessages, data));
+      setMessages((previousMessages) => mergeMessagesWithSessionDetail(previousMessages, data));
       if (options?.resetAnswerText) {
         setAnswerText('');
       }
@@ -437,9 +478,13 @@ export default function InterviewSessionPage() {
       return;
     }
 
-    setTranscriptCollapsed(hasTranscriptHistory);
+    const storedMessages = readStoredMessages(sessionId);
+    const hasInitialTranscriptHistory =
+      session.transcriptEntries.length > 0
+      || storedMessages.some((message) => message.role === 'system' || message.pending);
+    setTranscriptCollapsed(hasInitialTranscriptHistory);
     transcriptInitializedRef.current = true;
-  }, [hasTranscriptHistory, session]);
+  }, [session, sessionId]);
 
   const recoverSessionForCompleteFallback = useCallback(async () => {
     if (!Number.isFinite(sessionId)) {
@@ -452,7 +497,7 @@ export default function InterviewSessionPage() {
       if (data.status !== 'in_progress') {
         setJustResumed(false);
       }
-      setMessages((previousMessages) => syncMessagesWithCurrentQuestion(previousMessages, data));
+      setMessages((previousMessages) => mergeMessagesWithSessionDetail(previousMessages, data));
       return data;
     } catch {
       return null;
@@ -948,7 +993,7 @@ export default function InterviewSessionPage() {
                 )}
               </div>
             ) : (
-              <div className="mt-4 max-h-[26rem] space-y-2.5 overflow-y-auto rounded-3xl border border-zinc-200/80 bg-white/90 px-3 py-3">
+              <div className="mt-4 h-[20rem] min-h-[12rem] max-h-[36rem] resize-y space-y-2.5 overflow-auto rounded-3xl border border-zinc-200/80 bg-white/90 px-3 py-3">
                 {transcriptMessages.map((message) => {
                   if (message.role === 'system') {
                     const toneClass = message.tone === 'success'
