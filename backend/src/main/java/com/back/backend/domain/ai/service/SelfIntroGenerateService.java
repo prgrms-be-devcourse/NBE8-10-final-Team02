@@ -80,6 +80,11 @@ public class SelfIntroGenerateService {
                     .filter(q -> q.getGeneratedAnswer() == null)
                     .toList();
 
+            // 생성 대상이 없으면 문서 조회/payload 빌드 없이 즉시 반환 (원본 로직 보존)
+            if (targetQuestions.isEmpty()) {
+                return new ReadCtx(allQuestions, List.of(), null);
+            }
+
             // Lazy 연관 Document 접근 — TX 안에서 수행해야 LazyInitializationException 방지
             List<String> documentTexts = sourceDocumentBindingRepository
                 .findAllByApplicationId(applicationId).stream()
