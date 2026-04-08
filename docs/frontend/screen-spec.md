@@ -2,7 +2,7 @@
 owner: 면접 세션/서비스 흐름 + 대시보드/히스토리
 reviewer: 프론트 협업자
 status: reviewed
-last_updated: 2026-03-26
+last_updated: 2026-04-08
 linked_issue_or_pr: feat/portfolio-readiness-dashboard
 applies_to: screen-state-route
 ---
@@ -53,6 +53,8 @@ MVP 화면 구조, 라우트, 상태, 검증 규칙, 화면 간 전환 기준을
 
 - 면접 질문은 1회 최대 20개까지 생성한다.
 - 실제 세션은 3개 이상 20개 이하 질문으로 구성한다.
+- 1차 면접 입력은 실시간 음성 입력을 기본으로 하고, 음성 기능이 실패하면 같은 세션에서 텍스트 입력 fallback을 허용한다.
+- v1의 질문 출력은 텍스트 카드만 사용하고 TTS는 포함하지 않는다.
 - 일반 답변은 50자 이상 1000자 이하를 기준으로 검증한다.
 - `건너뛰기`는 별도 액션으로 제공하고, 최소 글자수 규칙 예외로 처리한다.
 - 사용자 1명당 동시에 진행 가능한 활성 세션은 1개다.
@@ -155,7 +157,7 @@ MVP 화면 구조, 라우트, 상태, 검증 규칙, 화면 간 전환 기준을
 ### 5.4 면접
 - SCR-11 면접 질문 생성
 - SCR-12 질문 세트 상세
-- SCR-13 텍스트 모의 면접 세션
+- SCR-13 실시간 음성 입력 모의 면접 세션
 - SCR-14 면접 결과 리포트
 - SCR-15 면접 히스토리 목록
 - SCR-16 면접 히스토리 상세
@@ -619,20 +621,24 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 
 ---
 
-## SCR-13 텍스트 모의 면접 세션
+## SCR-13 실시간 음성 입력 모의 면접 세션
 
 ### 목적
-질문을 순차 제시하고 답변을 저장하며 세션 상태를 관리한다.
+질문을 순차 제시하고 실시간 음성 transcript 또는 텍스트 fallback 답변을 저장하며 세션 상태를 관리한다.
 
 ### 권장 라우트
 - `/interview/sessions/{sessionId}`
 
 ### 주요 구성요소
+- 마이크 권한 요청/상태 배너
+- 현재 질문 카드 - 텍스트 출력
+- 현재 답변용 실시간 transcript 패널
+- transcript 확인/수정 textarea
+- 텍스트 입력 fallback 안내
 - 이전 문맥 transcript 패널
 - 질문/답변 채팅 버블
 - system 상태 메시지
 - 보완 질문 배경 카드
-- 답변 입력 textarea
 - 글자 수 카운터
 - `제출`
 - `건너뛰기`
@@ -659,6 +665,11 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 완료
 
 ### 검증/예외
+- 세션 진입 시 마이크 권한을 먼저 요청하되, 권한 거부 또는 장치 없음이면 같은 세션에서 텍스트 입력 fallback을 유지한다.
+- v1의 질문 출력은 텍스트 카드만 제공하고 TTS는 포함하지 않는다.
+- 현재 답변의 실시간 transcript는 브라우저 실시간 STT를 우선 사용하되, interim 텍스트는 제출 전까지 로컬 확인용으로만 본다.
+- 사용자는 제출 전에 transcript를 수정할 수 있고, 서버 저장 기준은 최종 확인된 텍스트다.
+- 실시간 STT가 실패하거나 지연되면 음성 입력 계층만 낮추고, 세션 상태는 유지한 채 텍스트 입력 fallback 또는 재시도 안내로 전환한다.
 - 일반 답변은 50자 미만 제출 차단
 - 일반 답변은 1000자 초과 차단
 - `건너뛰기`는 별도 버튼으로 처리
@@ -678,7 +689,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 다음 질문은 프론트 로컬 순번 계산이 아니라 `GET /interview/sessions/{sessionId}`의 `currentQuestion`만 기준으로 갱신한다.
 - 메인 작업영역은 `현재 답변 작업` 블록으로 보여주고, 그 안에 `현재 질문`, `답변 입력`, 제출 액션을 같은 answer workflow block으로 묶는다.
 - `현재 질문`은 메인 작업영역 상단 섹션에서 `Q번호`, `questionType`, `difficulty`, 질문 본문, 보조 안내를 함께 보여준다.
-- `답변 입력`은 같은 메인 작업영역 하단 섹션에서 textarea, 글자 수, 자동 저장 상태, 제출/건너뛰기 액션을 함께 보여준다.
+- `답변 입력`은 같은 메인 작업영역 하단 섹션에서 실시간 transcript 확인, 수정 textarea, 글자 수, 자동 저장 상태, 제출/건너뛰기 액션을 함께 보여준다.
 - transcript 영역은 `면접 채팅`이 아니라 `이전 문맥` 성격으로 다루고, 현재 미응답 질문은 transcript에서 제외해 중복 노출하지 않는다.
 - 이전 문맥 transcript는 세션 화면 초기 진입 시 1회만 기본 접힘으로 시작하고, 사용자가 펼치거나 접은 상태는 이후 새 질문 전환이나 completion follow-up 전환으로 덮어쓰지 않는다.
 - 이전 문맥 transcript는 메인 작업 카드보다 한 단계 낮은 강조도의 보조 패널로 보여주고, 펼침 상태에서도 `현재 질문`/`답변 입력`보다 먼저 튀지 않게 유지한다.
@@ -688,6 +699,7 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 초기 진입 시 이전 문맥이 사실상 없으면 transcript 영역은 축약하거나 숨기고, 현재 질문 카드 중심으로 보여준다.
 - 이전 문맥의 질문/답변 기록은 로컬 storage 단독 기준이 아니라 `GET /interview/sessions/{sessionId}`의 answered transcript 응답을 기준으로 복원한다.
 - 세션 상세 응답의 answered transcript에는 answered question/answer pair만 포함하고, `system` 메시지와 현재 미응답 `currentQuestion`은 포함하지 않는다.
+- 현재 답변 중인 실시간 transcript interim 값은 세션 상세 응답에 포함하지 않고, 제출 전까지 클라이언트 현재 작업 영역에서만 관리한다.
 - 답변 제출 후 채팅 transcript는 `POST /answers -> GET /interview/sessions/{sessionId}` 재조회 결과를 기준으로 다음 질문을 이어 붙인다.
 - 답변 제출 또는 `건너뛰기` 후 재조회 결과로 새 `currentQuestion`이 열리면, 프론트는 입력창이 다시 보이도록 `scrollIntoView + focus`로 포커스를 복귀한다.
 - 마지막 일반 답변 제출 뒤 재조회 결과가 `currentQuestion=null`, `remainingQuestionCount=0`이면 프론트는 `POST /interview/sessions/{sessionId}/complete`를 자동 호출해 보완 질문 필요 여부를 먼저 확인한다.
