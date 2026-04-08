@@ -25,27 +25,37 @@ export const AI_TIMEOUT = {
 
 /**
  * 공통 응답 검증.
- * @param {object} res   - k6 http response
- * @param {number[]} okStatuses - 성공으로 볼 HTTP 상태코드 목록
- * @param {number} maxDurationMs - p95 목표 응답시간 (ms)
+ *
+ * api_error_rate는 "요청 자체의 성공 여부"만 반영한다.
+ * latency 목표 초과는 별도 check로 기록하되 에러율에는 합산하지 않는다.
+ * (200 OK지만 느린 응답을 에러로 오집계하는 문제 방지)
+ *
+ * @param {object}   res          - k6 http response
+ * @param {number[]} okStatuses   - 성공으로 볼 HTTP 상태코드 목록
+ * @param {number}   maxDurationMs - 응답 시간 목표 (ms) — 초과 시 check 실패로만 기록
  */
 export function assertResponse(res, okStatuses = [200, 201], maxDurationMs = 2000) {
-  const passed = check(res, {
+  // 성공 여부 판단: status + 헤더 구조만 검사
+  const statusOk = check(res, {
     [`status in [${okStatuses.join(',')}]`]:
       (r) => okStatuses.includes(r.status),
-    [`response time < ${maxDurationMs}ms`]:
-      (r) => r.timings.duration < maxDurationMs,
     'has requestId header':
       (r) => !!r.headers['X-Request-Id'],
     'response is JSON':
       (r) => r.headers['Content-Type'] && r.headers['Content-Type'].includes('application/json'),
   });
 
+  // latency 목표는 별도 check — api_error_rate에 영향 없음
+  check(res, {
+    [`response time < ${maxDurationMs}ms`]:
+      (r) => r.timings.duration < maxDurationMs,
+  });
+
   apiDuration.add(res.timings.duration);
-  apiErrorRate.add(!passed);
+  apiErrorRate.add(!statusOk);
   apiCallCount.add(1);
 
-  return passed;
+  return statusOk;
 }
 
 /**
