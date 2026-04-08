@@ -125,6 +125,10 @@ function isAutoPauseLikely(session: InterviewSessionDetail) {
   return elapsed !== null && elapsed >= AUTO_PAUSE_THRESHOLD_MS;
 }
 
+function isTerminalSessionStatus(status: InterviewSessionDetail['status']) {
+  return status === 'completed' || status === 'feedback_completed';
+}
+
 function createQuestionMessage(question: InterviewSessionCurrentQuestion): ChatMessage {
   return {
     id: `question-${question.id}`,
@@ -437,6 +441,24 @@ export default function InterviewSessionPage() {
     transcriptInitializedRef.current = true;
   }, [hasTranscriptHistory, session]);
 
+  const recoverSessionForCompleteFallback = useCallback(async () => {
+    if (!Number.isFinite(sessionId)) {
+      return null;
+    }
+
+    try {
+      const data = await getSessionDetail(sessionId);
+      setSession(data);
+      if (data.status !== 'in_progress') {
+        setJustResumed(false);
+      }
+      setMessages((previousMessages) => syncMessagesWithCurrentQuestion(previousMessages, data));
+      return data;
+    } catch {
+      return null;
+    }
+  }, [sessionId]);
+
   function formatApiError(err: unknown, fallbackMessage: string) {
     if (err instanceof InterviewApiError) {
       const fieldHint = err.fieldErrors[0];
@@ -467,6 +489,11 @@ export default function InterviewSessionPage() {
       return;
     }
 
+    const moveToResultPage = () => {
+      pendingQuestionFocusRef.current = null;
+      router.push(`/interview/sessions/${session.id}/result`);
+    };
+
     setCompletingSession(true);
     setCompleteError(null);
     setSubmitError(null);
@@ -475,25 +502,31 @@ export default function InterviewSessionPage() {
 
     try {
       await completeSession(session.id);
-      router.push(`/interview/sessions/${session.id}/result`);
+      moveToResultPage();
     } catch (err) {
       if (
         err instanceof InterviewApiError &&
         (err.retryable || err.code === 'INTERVIEW_SESSION_ALREADY_COMPLETED')
       ) {
-        pendingQuestionFocusRef.current = null;
-        router.push(`/interview/sessions/${session.id}/result`);
+        moveToResultPage();
         return;
       }
 
       if (err instanceof InterviewApiError && err.code === 'INTERVIEW_SESSION_STATUS_CONFLICT') {
-        pendingQuestionFocusRef.current = null;
-        await loadSession({ showPageLoading: false });
+        const refreshed = await recoverSessionForCompleteFallback();
+        if (refreshed && isTerminalSessionStatus(refreshed.status)) {
+          moveToResultPage();
+        }
+        return;
+      }
+
+      const refreshed = await recoverSessionForCompleteFallback();
+      if (refreshed && isTerminalSessionStatus(refreshed.status)) {
+        moveToResultPage();
         return;
       }
 
       if (err instanceof InterviewApiError) {
-        const refreshed = await loadSession({ showPageLoading: false });
         if (
           shouldShowCompletionFollowupMode({
             errorCode: err.code,
@@ -710,8 +743,11 @@ export default function InterviewSessionPage() {
     session.remainingQuestionCount === 0 &&
     (session.status === 'in_progress' || session.status === 'paused') &&
     !actionBusy;
-  const showCompletionCard =
+  const showManagementCard =
     session?.status === 'in_progress' || session?.status === 'paused';
+  const pausedSessionSummary = session?.status === 'paused'
+    ? sessionStatusSummary
+    : null;
   const isCompletionCurrentQuestion =
     !!session?.currentQuestion
     && !!completionFollowupContext
@@ -726,24 +762,13 @@ export default function InterviewSessionPage() {
     : session?.currentQuestion?.questionType === 'follow_up'
       ? '직전 답변을 더 구체화해 설명하는 꼬리 질문입니다.'
       : '지금 이 질문에 대한 답변을 작성하면 다음 질문은 서버의 currentQuestion 기준으로 이어집니다.';
-  const completeButtonDescription = session?.status === 'completed'
-    ? '세션 종료는 완료됐습니다. 결과 화면에서 잠깐 자동으로 다시 확인한 뒤, 더 오래 걸리면 결과 재확인으로 최신 리포트 상태를 확인합니다.'
-    : session?.status === 'feedback_completed'
-    ? '세션 종료와 피드백 생성이 모두 끝났습니다.'
-    : needsManualCompleteAfterCompletionAnswer
+  const completeButtonDescription = needsManualCompleteAfterCompletionAnswer
     ? '보완 질문 답변이 끝났습니다. 종료 버튼을 다시 눌러 결과를 생성합니다.'
     : isCompletionFollowupMode
     ? '보완 질문 답변 후 다시 종료를 눌러 결과를 생성합니다.'
-    : '질문이 모두 끝나면 자동으로 보완 질문 검토가 시작될 수 있습니다.';
-  const statusActionDescription = session?.status === 'in_progress'
-    ? '현재 진행 중인 세션입니다. 필요하면 일시정지하고 같은 세션으로 돌아와 재개할 수 있습니다.'
     : session?.status === 'paused'
-    ? '현재 일시정지 상태입니다. 재개 액션으로만 다시 진행 상태로 돌아갈 수 있습니다.'
-    : session?.status === 'completed'
-    ? '세션 상태 전이는 끝났습니다. 결과 화면에서 자동 재확인 후 수동 재확인으로 최신 리포트 상태를 확인합니다.'
-    : session?.status === 'feedback_completed'
-    ? '세션과 결과가 모두 완료됐습니다. 결과 보기로 리포트를 다시 확인하세요.'
-    : '현재 질문이 준비되면 진행 상태로 전환됩니다.';
+    ? '같은 세션을 재개하거나, 답변이 모두 끝났다면 종료를 진행할 수 있습니다.'
+    : '필요하면 잠시 일시정지한 뒤 다시 이어가거나, 답변이 모두 끝났다면 종료를 진행할 수 있습니다.';
 
   useEffect(() => {
     const pendingFocus = pendingQuestionFocusRef.current;
@@ -848,60 +873,32 @@ export default function InterviewSessionPage() {
           </div>
         </div>
 
-        {sessionStatusSummary && (
-          <div className={`mt-5 rounded-2xl border px-4 py-4 ${sessionStatusSummary.tone}`}>
-            <p className={`text-xs font-semibold uppercase tracking-[0.12em] ${sessionStatusSummary.eyebrowTone}`}>
-              {sessionStatusSummary.eyebrow}
+        {pausedSessionSummary && (
+          <div className={`mt-5 rounded-2xl border px-4 py-4 ${pausedSessionSummary.tone}`}>
+            <p className={`text-xs font-semibold uppercase tracking-[0.12em] ${pausedSessionSummary.eyebrowTone}`}>
+              {pausedSessionSummary.eyebrow}
             </p>
-            <p className={`mt-2 text-base font-semibold ${sessionStatusSummary.titleTone}`}>
-              {sessionStatusSummary.title}
+            <p className={`mt-2 text-base font-semibold ${pausedSessionSummary.titleTone}`}>
+              {pausedSessionSummary.title}
             </p>
-            <p className={`mt-2 text-sm leading-6 ${sessionStatusSummary.descriptionTone}`}>
-              {sessionStatusSummary.description}
+            <p className={`mt-2 text-sm leading-6 ${pausedSessionSummary.descriptionTone}`}>
+              {pausedSessionSummary.description}
             </p>
+          </div>
+        )}
 
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              {session.status === 'in_progress' && (
-                <button
-                  type="button"
-                  onClick={() => void handleTransition('pause')}
-                  disabled={!canPause}
-                  className="rounded-full border border-amber-300 bg-white px-4 py-2.5 text-sm font-medium text-amber-900 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {transitionMode === 'pause' ? '일시정지 중...' : '일시정지'}
-                </button>
-              )}
-              {session.status === 'paused' && (
-                <button
-                  type="button"
-                  onClick={() => void handleTransition('resume')}
-                  disabled={!canResume}
-                  className="rounded-full border border-green-300 bg-white px-4 py-2.5 text-sm font-medium text-green-900 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {transitionMode === 'resume' ? '재개 중...' : '재개'}
-                </button>
-              )}
-              {session.status === 'completed' && (
-                <Link
-                  href={`/interview/sessions/${session.id}/result`}
-                  className="rounded-full border border-cyan-300 bg-white px-4 py-2.5 text-sm font-medium text-cyan-900"
-                >
-                  {getSessionActionLabel(session.status)}
-                </Link>
-              )}
-              {session.status === 'feedback_completed' && (
-                <Link
-                  href={`/interview/sessions/${session.id}/result`}
-                  className="rounded-full border border-blue-300 bg-white px-4 py-2.5 text-sm font-medium text-blue-900"
-                >
-                  {getSessionActionLabel(session.status)}
-                </Link>
-              )}
-            </div>
-
-            <p className={`mt-3 text-xs leading-5 ${sessionStatusSummary.descriptionTone}`}>
-              {statusActionDescription}
-            </p>
+        {session && isTerminalSessionStatus(session.status) && (
+          <div className="mt-5 flex justify-end">
+            <Link
+              href={`/interview/sessions/${session.id}/result`}
+              className={`rounded-full border bg-white px-4 py-2.5 text-sm font-medium ${
+                session.status === 'completed'
+                  ? 'border-cyan-300 text-cyan-900'
+                  : 'border-blue-300 text-blue-900'
+              }`}
+            >
+              {getSessionActionLabel(session.status)}
+            </Link>
           </div>
         )}
 
@@ -1070,7 +1067,7 @@ export default function InterviewSessionPage() {
           </div>
         )}
 
-        <div className={`mt-4 grid gap-4 ${showCompletionCard ? 'lg:grid-cols-[minmax(0,1fr),19rem]' : ''}`}>
+        <div className={`mt-4 grid gap-4 ${showManagementCard ? 'lg:grid-cols-[minmax(0,1fr),19rem]' : ''}`}>
           <div className="space-y-4">
             <section
               aria-labelledby="current-answer-work-heading"
@@ -1205,13 +1202,32 @@ export default function InterviewSessionPage() {
             </section>
           </div>
 
-          {showCompletionCard && (
+          {showManagementCard && (
             <div className="space-y-4">
               <div className="rounded-3xl border border-zinc-200 px-4 py-4">
-                <p className="text-sm font-semibold text-zinc-900">세션 종료</p>
+                <p className="text-sm font-semibold text-zinc-900">세션 관리</p>
                 <p className="mt-1 text-xs text-zinc-500">
                   {completeButtonDescription}
                 </p>
+
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void handleTransition('pause')}
+                    disabled={!canPause}
+                    className="rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-amber-900 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {transitionMode === 'pause' ? '일시정지 중...' : '일시정지'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleTransition('resume')}
+                    disabled={!canResume}
+                    className="rounded-full border border-green-300 bg-white px-3 py-2 text-xs font-medium text-green-900 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {transitionMode === 'resume' ? '재개 중...' : '재개'}
+                  </button>
+                </div>
 
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button
