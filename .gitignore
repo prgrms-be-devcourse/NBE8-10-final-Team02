@@ -21,6 +21,9 @@ Thumbs.db
 .env.dev
 .env.test
 
+# GCP Service Account 키 (Vertex AI 인증)
+*-key.json
+
 
 # Terraform
 .terraform/
