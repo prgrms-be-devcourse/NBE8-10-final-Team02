@@ -103,24 +103,52 @@ public class SelfIntroGenerateService {
         );
 
         // AI 파이프라인 실행
-        JsonNode responseNode = aiPipeline.execute(TEMPLATE_ID, payload);
+        JsonNode responseNode;
+        try {
+            responseNode = aiPipeline.execute(TEMPLATE_ID, payload);
+        } catch (ServiceException exception) {
+            throw normalizeAiFailure(exception);
+        }
 
         // questionOrder 매칭 → updateGeneratedAnswer()
         Map<Integer, ApplicationQuestion> questionByOrder = targetQuestions.stream()
             .collect(Collectors.toMap(ApplicationQuestion::getQuestionOrder, Function.identity()));
 
-        JsonNode answers = responseNode.get("answers");
-        for (JsonNode answer : answers) {
-            int questionOrder = answer.get("questionOrder").asInt();
-            ApplicationQuestion question = questionByOrder.get(questionOrder);
-            if (question != null) {
-                question.updateGeneratedAnswer(answer.get("answerText").asText());
+        try {
+            JsonNode answers = responseNode.get("answers");
+            for (JsonNode answer : answers) {
+                int questionOrder = answer.get("questionOrder").asInt();
+                ApplicationQuestion question = questionByOrder.get(questionOrder);
+                if (question != null) {
+                    question.updateGeneratedAnswer(answer.get("answerText").asText());
+                }
             }
+        } catch (RuntimeException exception) {
+            throw toSelfIntroResultInvalid(exception);
         }
 
         applicationStatusService.syncStatus(application);
 
         // 전체 문항 목록 반환
         return new GenerateResult(allQuestions, targetQuestions.size());
+    }
+
+    private ServiceException normalizeAiFailure(ServiceException exception) {
+        if (exception.getErrorCode() == ErrorCode.INTERNAL_SERVER_ERROR
+            && exception.getStatus() == HttpStatus.INTERNAL_SERVER_ERROR) {
+            return toSelfIntroResultInvalid(exception);
+        }
+        return exception;
+    }
+
+    private ServiceException toSelfIntroResultInvalid(Exception cause) {
+        ServiceException normalized = new ServiceException(
+            ErrorCode.SELF_INTRO_RESULT_INVALID,
+            HttpStatus.BAD_GATEWAY,
+            "AI 응답 형식이 올바르지 않습니다.",
+            true
+        );
+        normalized.initCause(cause);
+        return normalized;
     }
 }
