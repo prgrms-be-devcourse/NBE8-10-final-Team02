@@ -32,6 +32,8 @@ export const options = {
     'api_error_rate':                 ['rate<0.05'],
     'http_req_failed':                ['rate<0.05'],
   },
+  // url을 systemTags에서 제외 → 동적 ID가 Prometheus 레이블로 올라가지 않아 high cardinality 방지
+  systemTags: ['status', 'method', 'name', 'check', 'error', 'error_code', 'scenario'],
 };
 
 export function setup() {
@@ -79,13 +81,13 @@ export default function ({ token, apiKey }) {
       if (appId) {
         const getRes = http.get(ENDPOINTS.application(appId), {
           headers: headers,
-          tags: { type: 'read' },
+          tags: { type: 'read', name: 'get_application' },
         });
         assertResponse(getRes, [200], 1000);
 
         http.del(ENDPOINTS.application(appId), null, {
           headers: headers,
-          tags: { type: 'write' },
+          tags: { type: 'write', name: 'delete_application' },
         });
       }
     }

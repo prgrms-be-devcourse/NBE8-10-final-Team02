@@ -34,6 +34,8 @@ export const options = {
     'api_error_rate':  ['rate<0.05'],
     'http_req_failed': ['rate<0.05'],
   },
+  // url을 systemTags에서 제외 → 동적 ID가 Prometheus 레이블로 올라가지 않아 high cardinality 방지
+  systemTags: ['status', 'method', 'name', 'check', 'error', 'error_code', 'scenario'],
   http: { timeout: '120s' },
 };
 
@@ -116,7 +118,7 @@ export default function ({ token, apiKey, questionSetId }) {
   for (let i = 0; i < QUESTION_COUNT; i++) {
     const detailRes = http.get(
       ENDPOINTS.interviewSession(sessionId),
-      { headers: headers, tags: { type: 'get-session-detail' } }
+      { headers: headers, tags: { type: 'get-session-detail', name: 'get_interview_session' } }
     );
     if (!assertResponse(detailRes, [200], 2000)) {
       sleep(1);
@@ -137,7 +139,7 @@ export default function ({ token, apiKey, questionSetId }) {
                      '충분한 길이의 답변 텍스트를 포함합니다. '.repeat(8),
         isSkipped:   false,
       }),
-      { headers: headers, tags: { type: 'submit-answer' } }
+      { headers: headers, tags: { type: 'submit-answer', name: 'post_session_answer' } }
     );
     sleep(0.2);
   }
@@ -146,14 +148,14 @@ export default function ({ token, apiKey, questionSetId }) {
   const completeRes = http.post(
     ENDPOINTS.interviewSessionComplete(sessionId),
     null,
-    { headers: headers, tags: { type: 'complete-session' }, timeout: '120s' }
+    { headers: headers, tags: { type: 'complete-session', name: 'complete_interview_session' }, timeout: '120s' }
   );
   assertResponse(completeRes, [200], AI_TIMEOUT.evaluate);
 
   // ── 결과 리포트 조회 ────────────────────────────────────────────────
   const resultRes = http.get(
     ENDPOINTS.interviewSessionResult(sessionId),
-    { headers: headers, tags: { type: 'get-result' } }
+    { headers: headers, tags: { type: 'get-result', name: 'get_session_result' } }
   );
   assertResponse(resultRes, [200], 5000);
 
