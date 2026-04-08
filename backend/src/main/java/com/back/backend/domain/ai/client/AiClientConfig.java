@@ -20,8 +20,8 @@ public class AiClientConfig {
         @Value("${ai.provider}") String provider,
         @Value("${ai.fallback-provider:}") String fallbackProvider // 빈 문자열이면 fallback 비활성화
     ) {
-        AiProvider defaultProv = AiProvider.valueOf(provider.toUpperCase());
-        AiProvider fallbackProv = fallbackProvider.isBlank() ? null : AiProvider.valueOf(fallbackProvider.toUpperCase());
+        AiProvider defaultProv = AiProvider.fromValue(provider);
+        AiProvider fallbackProv = fallbackProvider.isBlank() ? null : AiProvider.fromValue(fallbackProvider);
         return new AiClientRouter(clients, defaultProv, fallbackProv);
     }
 }

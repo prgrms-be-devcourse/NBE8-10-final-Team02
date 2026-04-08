@@ -38,6 +38,8 @@ export const options = {
     'http_req_duration{type:status-poll}':     ['p(95)<1000'],
     'http_req_failed':                         ['rate<0.10'],
   },
+  // url을 systemTags에서 제외 → 동적 ID가 Prometheus 레이블로 올라가지 않아 high cardinality 방지
+  systemTags: ['status', 'method', 'name', 'check', 'error', 'error_code', 'scenario'],
   http: { timeout: '30s' },
 };
 
@@ -78,7 +80,7 @@ export default function ({ token, apiKey }) {
     if (statusRes.status !== 200) break;
 
     const status = statusRes.json('data.status');
-    check(statusRes, { [`${repo.name} status=${status}`]: () => true });
+    check(statusRes, { 'analysis status check': (r) => r.status === 200 });
 
     if (status === 'COMPLETED' || status === 'FAILED') {
       console.log(`[VU${__VU}] ${repo.name} 분석 종료: ${status} (${waited}s)`);

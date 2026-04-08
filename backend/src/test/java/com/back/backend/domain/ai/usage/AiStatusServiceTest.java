@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -69,11 +70,10 @@ class AiStatusServiceTest {
         when(groqLimit.hasTpd()).thenReturn(true);
         when(groqLimit.getTpd()).thenReturn(100000);
 
-        // router 설정
+        // router 설정 — getAllClients()로 전체 provider 조회
         when(defaultClient.getProvider()).thenReturn(AiProvider.GEMINI);
         when(fallbackClient.getProvider()).thenReturn(AiProvider.GROQ);
-        when(router.getDefault()).thenReturn(defaultClient);
-        when(router.getFallback()).thenReturn(Optional.of(fallbackClient));
+        when(router.getAllClients()).thenReturn(List.of(defaultClient, fallbackClient));
 
         // rate limit 한도 조회
         when(rateLimitProps.getFor("gemini")).thenReturn(geminiLimit);

@@ -53,12 +53,10 @@ class AiStatusServiceCacheTest extends ApiTestBase {
         // 테스트 간 캐시 격리
         cacheManager.getCache("aiStatus").clear();
 
-        // router: gemini를 default로, fallback 없음
-        // AiClient는 Spring bean이 2개(geminiClient, groqClient)라 @MockitoBean 불가 → 로컬 mock 사용
+        // router: getAllClients()로 gemini 1개만 반환 (캐시 동작 검증에 집중)
         AiClient defaultClient = mock(AiClient.class);
         when(defaultClient.getProvider()).thenReturn(AiProvider.GEMINI);
-        when(router.getDefault()).thenReturn(defaultClient);
-        when(router.getFallback()).thenReturn(Optional.empty());
+        when(router.getAllClients()).thenReturn(java.util.List.of(defaultClient));
 
         // repository: 사용량 없음 (캐시 동작 검증에만 집중)
         when(repository.findByProviderAndUsageDate(any(), any()))

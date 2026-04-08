@@ -1,6 +1,7 @@
 package com.back.backend.domain.interview.dto.response;
 
 import java.time.Instant;
+import java.util.List;
 
 public record InterviewSessionDetailResponse(
         Long id,
@@ -8,6 +9,7 @@ public record InterviewSessionDetailResponse(
         String status,
         InterviewSessionCurrentQuestionResponse currentQuestion,
         InterviewSessionCompletionFollowupContextResponse completionFollowupContext,
+        List<InterviewSessionTranscriptEntryResponse> transcriptEntries,
         long totalQuestionCount,
         long answeredQuestionCount,
         long remainingQuestionCount,
