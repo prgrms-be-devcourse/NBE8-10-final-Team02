@@ -58,7 +58,7 @@ export default function RepositoriesPage() {
     <main className="mx-auto max-w-2xl px-4 py-10">
       <h1 className="mb-1 text-xl font-semibold">Repository 관리</h1>
       <p className="mb-5 text-sm text-zinc-500">
-        포트폴리오에 활용할 repository를 선택하고 일괄 분석을 시작하세요.
+        포트폴리오에 활용할 repository를 선택하고 분석을 시작하세요.
       </p>
 
       <div className="mb-6 flex rounded border border-zinc-200">
@@ -105,6 +105,7 @@ function OwnedTab() {
   const { startBatch, preSelectedIds, clearPreSelected, activeBatch } = useBatchAnalysis();
 
   const [repos, setRepos] = useState<GithubRepository[]>([]);
+  const [repoInfoMap, setRepoInfoMap] = useState<Map<number, GithubRepository>>(new Map());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -139,6 +140,10 @@ function OwnedTab() {
       setPagination(pag);
       setCurrentPage(1);
       setSelectedIds(new Set(allSelected.map((r) => r.id)));
+      setRepoInfoMap(new Map([
+        ...allSelected.map((r) => [r.id, r] as [number, GithubRepository]),
+        ...data.map((r) => [r.id, r] as [number, GithubRepository]),
+      ]));
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : '목록을 불러오지 못했습니다.');
     } finally {
@@ -176,6 +181,11 @@ function OwnedTab() {
       setPagination(pag);
       setCurrentPage(page);
       applyStatusesFromRepos(data);
+      setRepoInfoMap((prev) => {
+        const next = new Map(prev);
+        data.forEach((r) => next.set(r.id, r));
+        return next;
+      });
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : '목록을 불러오지 못했습니다.');
     } finally {
@@ -188,6 +198,11 @@ function OwnedTab() {
       const { data, pagination: pag } = await getRepositories({ page: currentPage, size: 10 });
       setRepos(data);
       setPagination(pag);
+      setRepoInfoMap((prev) => {
+        const next = new Map(prev);
+        data.forEach((r) => next.set(r.id, r));
+        return next;
+      });
     } catch { /* 폴링 실패 무시 */ }
   }, [currentPage]);
 
@@ -239,7 +254,7 @@ function OwnedTab() {
   // 선택된 repo 중 분석 대상: summary가 없는 것 (커밋 동기화 여부는 무관 — 자동 처리)
   function getAnalyzableIds(): number[] {
     return Array.from(selectedIds).filter((id) => {
-      const repo = repos.find((r) => r.id === id);
+      const repo = repoInfoMap.get(id);
       if (!repo) return false;
       return !repo.hasSummary;
     });
@@ -252,13 +267,13 @@ function OwnedTab() {
     setBatchError(null);
     try {
       // 커밋 미동기화 repo는 병렬로 sync 먼저 수행, 이미 된 것은 백엔드에서 skip
-      const unsynced = ids.filter((id) => !repos.find((r) => r.id === id)?.hasCommits);
+      const unsynced = ids.filter((id) => !repoInfoMap.get(id)?.hasCommits);
       if (unsynced.length > 0) {
         await Promise.all(unsynced.map((id) => syncCommits(id).catch(() => {})));
       }
       const repoNames: Record<number, string> = {};
       ids.forEach((id) => {
-        const repo = repos.find((r) => r.id === id);
+        const repo = repoInfoMap.get(id);
         if (repo) repoNames[id] = repo.fullName;
       });
       await startBatch(ids, repoNames);
@@ -329,13 +344,18 @@ function OwnedTab() {
           {pagination && pagination.totalElements > 0 && (
             <p className="text-xs text-zinc-400">전체 {pagination.totalElements}개</p>
           )}
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="text-xs text-zinc-400 underline hover:text-zinc-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {refreshing ? '가져오는 중...' : 'GitHub 동기화'}
-          </button>
+          <div className="relative group">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="text-xs text-zinc-400 underline hover:text-zinc-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {refreshing ? '가져오는 중...' : 'GitHub 동기화'}
+            </button>
+            <div className="pointer-events-none absolute right-0 top-6 z-10 whitespace-nowrap rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-600 shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+              repository가 보이지 않으면 눌러보세요.
+            </div>
+          </div>
         </div>
       </div>
 
@@ -354,6 +374,10 @@ function OwnedTab() {
           const isCompleted = repo.hasSummary;
           const isDisabled = isCompleted; // 완료된 repo는 체크박스 비활성화
           const isReSyncing = reSyncing === repo.id;
+          const isUpToDate =
+            !!repo.analysisStatus?.completedAt &&
+            !!repo.pushedAt &&
+            new Date(repo.analysisStatus.completedAt) >= new Date(repo.pushedAt);
 
           return (
             <li
@@ -420,8 +444,8 @@ function OwnedTab() {
                   })()}
                 </div>
 
-                {/* Re-sync 버튼 (COMPLETED repo 전용) */}
-                {isCompleted && (
+                {/* Re-sync 버튼 (COMPLETED repo 전용, 최신 상태면 숨김) */}
+                {isCompleted && !isUpToDate && (
                   <div className="shrink-0 flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
                     {repo.analysisStatus?.completedAt && (
                       <p className="text-xs text-zinc-400">{formatDate(repo.analysisStatus.completedAt)}</p>
@@ -478,7 +502,7 @@ function OwnedTab() {
           {startingBatch
             ? '분석 시작 중...'
             : analyzableIds.length > 0
-            ? `일괄 분석 시작 (${analyzableIds.length}개 repo)`
+            ? `분석 시작 (${analyzableIds.length}개 repo)`
             : '분석할 repository를 선택하세요'}
         </button>
         {analyzableIds.length > 0 && (
