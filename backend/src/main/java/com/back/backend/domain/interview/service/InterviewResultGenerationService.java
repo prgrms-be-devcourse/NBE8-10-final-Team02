@@ -60,7 +60,7 @@ public class InterviewResultGenerationService {
                     ErrorCode.INTERVIEW_RESULT_GENERATION_FAILED.name(),
                     exception.getMessage() != null ? exception.getMessage() : "면접 결과 생성 중 오류가 발생했습니다."
             );
-            throw exception;
+            throw generationFailed();
         }
     }
 
