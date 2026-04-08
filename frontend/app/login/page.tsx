@@ -31,6 +31,9 @@ export default function LoginPage() {
       <div className="flex w-full max-w-sm flex-col gap-4 p-8">
         <h1 className="text-center text-2xl font-semibold">AI 기술 면접 연습</h1>
         <p className="text-center text-sm text-zinc-500">소셜 계정으로 로그인하세요</p>
+        <p className="text-center text-xs text-zinc-400">
+          GitHub 계정으로 로그인하지 않아도 로그인 후 GitHub 연동을 지원합니다.
+        </p>
 
         {error && (
           <p className="text-center text-sm text-red-600">

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { getMe, logout } from "@/api/auth";
 
 const FEATURES = [
@@ -171,16 +172,25 @@ const STEPS = [
 ];
 
 export default function Home() {
-  const [loggedIn, setLoggedIn] = useState(false);
+  const router = useRouter();
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
 
   useEffect(() => {
-    getMe().then((user) => setLoggedIn(!!user));
-  }, []);
+    getMe().then((user) => {
+      if (user) {
+        router.replace('/portfolio');
+      } else {
+        setLoggedIn(false);
+      }
+    });
+  }, [router]);
 
   async function handleSwitchAccount() {
     await logout();
     window.location.href = '/login';
   }
+
+  if (loggedIn === null) return null;
 
   return (
     <main className="min-h-screen bg-white">
