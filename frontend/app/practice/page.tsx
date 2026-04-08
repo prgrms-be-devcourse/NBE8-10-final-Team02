@@ -59,7 +59,7 @@ export default function PracticePage() {
     router.push(`/practice/solve?id=${q.knowledgeItemId}&title=${encodeURIComponent(q.questionText)}&type=${q.questionType}`);
   }
 
-  const topicTags = tags.filter((t) => t.category === 'topic');
+  const topicTags = tags.filter((t) => t.category === 'topic' && t.name !== 'behavioral');
   const languageTags = tags.filter((t) => t.category === 'language');
 
   return (
@@ -91,7 +91,7 @@ export default function PracticePage() {
         ].map((opt) => (
           <button
             key={opt.value}
-            onClick={() => { setQuestionType(opt.value); setPage(0); }}
+            onClick={() => { setQuestionType(opt.value); setPage(0); if (opt.value !== 'cs') setSelectedTagIds([]); }}
             className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
               questionType === opt.value
                 ? 'bg-zinc-900 text-white'
@@ -103,46 +103,50 @@ export default function PracticePage() {
         ))}
       </div>
 
-      {/* 태그 필터 */}
-      {topicTags.length > 0 && (
-        <div className="mb-2">
-          <span className="mr-2 text-xs font-medium text-zinc-500">주제</span>
-          <div className="inline-flex flex-wrap gap-1.5">
-            {topicTags.map((tag) => (
-              <button
-                key={tag.id}
-                onClick={() => toggleTag(tag.id)}
-                className={`rounded-full px-3 py-1 text-xs transition ${
-                  selectedTagIds.includes(tag.id)
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200'
-                }`}
-              >
-                {tag.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      {languageTags.length > 0 && (
-        <div className="mb-4">
-          <span className="mr-2 text-xs font-medium text-zinc-500">언어</span>
-          <div className="inline-flex flex-wrap gap-1.5">
-            {languageTags.map((tag) => (
-              <button
-                key={tag.id}
-                onClick={() => toggleTag(tag.id)}
-                className={`rounded-full px-3 py-1 text-xs transition ${
-                  selectedTagIds.includes(tag.id)
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200'
-                }`}
-              >
-                {tag.name}
-              </button>
-            ))}
-          </div>
-        </div>
+      {/* 태그 필터 — CS 모드에서만 표시 */}
+      {questionType === 'cs' && (
+        <>
+          {topicTags.length > 0 && (
+            <div className="mb-2">
+              <span className="mr-2 text-xs font-medium text-zinc-500">주제</span>
+              <div className="inline-flex flex-wrap gap-1.5">
+                {topicTags.map((tag) => (
+                  <button
+                    key={tag.id}
+                    onClick={() => toggleTag(tag.id)}
+                    className={`rounded-full px-3 py-1 text-xs transition ${
+                      selectedTagIds.includes(tag.id)
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200'
+                    }`}
+                  >
+                    {tag.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {languageTags.length > 0 && (
+            <div className="mb-4">
+              <span className="mr-2 text-xs font-medium text-zinc-500">언어</span>
+              <div className="inline-flex flex-wrap gap-1.5">
+                {languageTags.map((tag) => (
+                  <button
+                    key={tag.id}
+                    onClick={() => toggleTag(tag.id)}
+                    className={`rounded-full px-3 py-1 text-xs transition ${
+                      selectedTagIds.includes(tag.id)
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200'
+                    }`}
+                  >
+                    {tag.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {error && (
@@ -174,9 +178,9 @@ export default function PracticePage() {
                 </span>
                 <span className="text-sm font-medium text-zinc-800">{q.questionText}</span>
               </div>
-              {q.tags.length > 0 && (
+              {q.tags.filter((tag) => tag.name !== 'behavioral').length > 0 && (
                 <div className="flex flex-wrap gap-1">
-                  {q.tags.map((tag) => (
+                  {q.tags.filter((tag) => tag.name !== 'behavioral').map((tag) => (
                     <span key={tag.id} className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500">
                       {tag.name}
                     </span>
