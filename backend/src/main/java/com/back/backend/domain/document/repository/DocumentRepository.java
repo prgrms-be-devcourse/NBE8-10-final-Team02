@@ -40,44 +40,30 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
     int countByUserIdAndExtractStatus(Long userId, DocumentExtractStatus extractStatus);
 
     /**
-     * PGroonga를 사용해 추출된 텍스트에서 전문 검색(FTS)을 수행한다.
+     * PGroonga 전문 검색(FTS) — extracted_text + original_file_name 통합 검색.
      *
-     * <p>{@code &@~} 연산자: PGroonga의 전문 검색 연산자로 한국어/영어 형태소 분석 및
-     * Fuzzy search를 지원한다. PGroonga가 설치되지 않은 PostgreSQL에서는 오류가 발생한다.</p>
+     * <p>{@code &@~} 연산자: PGroonga의 한국어/영어 형태소 분석 + Fuzzy search.
+     * 두 컬럼을 한 쿼리에서 OR로 검색하고, 컬럼별 score의 최댓값으로 정렬한다.</p>
      *
-     * <p>검색 결과는 PGroonga relevance score 내림차순으로 정렬되며,
-     * {@code extract_status = 'success'}인 문서만 반환한다.</p>
+     * <ul>
+     *   <li>extracted_text 매칭은 {@code extract_status = 'success'}인 문서로 제한.</li>
+     *   <li>original_file_name 매칭은 추출 상태와 무관(PENDING 문서도 파일명으로 검색 가능).</li>
+     *   <li>두 컬럼 모두 매칭되면 더 큰 score 기준으로 한 행만 반환.</li>
+     * </ul>
      *
      * @param userId 검색 대상 사용자 ID (다른 사용자 문서 접근 차단)
-     * @param query  검색 키워드 (한국어, 영어, Fuzzy 검색 지원)
-     * @return 검색 결과 문서 목록 (최대 20개, 관련도 내림차순)
-     */
-    @Query(value = """
-        SELECT * FROM documents
-        WHERE user_id = :userId
-          AND extract_status = 'success'
-          AND extracted_text &@~ :query
-        ORDER BY pgroonga_score(tableoid, ctid) DESC
-        LIMIT 20
-        """, nativeQuery = true)
-    List<Document> searchByText(@Param("userId") Long userId, @Param("query") String query);
-
-    /**
-     * PGroonga를 사용해 원본 파일명에서 전문 검색을 수행한다.
-     *
-     * <p>파일명 검색은 추출 상태와 무관하게 모든 문서에서 검색한다.
-     * 업로드 직후 PENDING 상태인 문서도 파일명으로 찾을 수 있도록 한다.</p>
-     *
-     * @param userId 검색 대상 사용자 ID
      * @param query  검색 키워드
      * @return 검색 결과 문서 목록 (최대 20개, 관련도 내림차순)
      */
     @Query(value = """
         SELECT * FROM documents
         WHERE user_id = :userId
-          AND original_file_name &@~ :query
+          AND (
+            (extract_status = 'success' AND extracted_text &@~ :query)
+            OR original_file_name &@~ :query
+          )
         ORDER BY pgroonga_score(tableoid, ctid) DESC
         LIMIT 20
         """, nativeQuery = true)
-    List<Document> searchByFileName(@Param("userId") Long userId, @Param("query") String query);
+    List<Document> search(@Param("userId") Long userId, @Param("query") String query);
 }

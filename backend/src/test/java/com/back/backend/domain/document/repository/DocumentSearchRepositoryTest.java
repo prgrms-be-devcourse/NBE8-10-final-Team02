@@ -59,7 +59,7 @@ class DocumentSearchRepositoryTest {
         persistDocument(user, "이력서.pdf", "Java Spring Boot 백엔드 개발자입니다. MSA 경험 3년.");
         em.flush();
 
-        List<Document> results = documentRepository.searchByText(user.getId(), "Spring Boot");
+        List<Document> results = documentRepository.search(user.getId(), "Spring Boot");
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).getOriginalFileName()).isEqualTo("이력서.pdf");
@@ -70,7 +70,7 @@ class DocumentSearchRepositoryTest {
         persistDocument(user, "이력서.pdf", "Java 백엔드 개발자.");
         em.flush();
 
-        List<Document> results = documentRepository.searchByText(user.getId(), "Python");
+        List<Document> results = documentRepository.search(user.getId(), "Python");
 
         assertThat(results).isEmpty();
     }
@@ -82,7 +82,7 @@ class DocumentSearchRepositoryTest {
         persistDocument(user, "내이력서.pdf", "Java 개발자");
         em.flush();
 
-        List<Document> results = documentRepository.searchByText(user.getId(), "Spring Boot");
+        List<Document> results = documentRepository.search(user.getId(), "Spring Boot");
 
         assertThat(results).isEmpty();
     }
@@ -103,7 +103,7 @@ class DocumentSearchRepositoryTest {
         em.persist(doc);
         em.flush();
 
-        List<Document> results = documentRepository.searchByText(user.getId(), "Spring Boot");
+        List<Document> results = documentRepository.search(user.getId(), "Spring Boot");
 
         assertThat(results).isEmpty();
     }
@@ -113,7 +113,7 @@ class DocumentSearchRepositoryTest {
         persistDocument(user, "이력서.pdf", "백엔드 개발자 포트폴리오. Spring Boot, JPA, Redis 활용.");
         em.flush();
 
-        List<Document> results = documentRepository.searchByText(user.getId(), "백엔드");
+        List<Document> results = documentRepository.search(user.getId(), "백엔드");
 
         assertThat(results).hasSize(1);
     }
@@ -128,7 +128,7 @@ class DocumentSearchRepositoryTest {
         persistDocument(user, "portfolio_design.pdf", "포트폴리오 내용");
         em.flush();
 
-        List<Document> results = documentRepository.searchByFileName(user.getId(), "resume");
+        List<Document> results = documentRepository.search(user.getId(), "resume");
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).getOriginalFileName()).isEqualTo("resume_2026.pdf");
@@ -139,7 +139,7 @@ class DocumentSearchRepositoryTest {
         persistDocument(otherUser, "resume.pdf", "내용");
         em.flush();
 
-        List<Document> results = documentRepository.searchByFileName(user.getId(), "resume");
+        List<Document> results = documentRepository.search(user.getId(), "resume");
 
         assertThat(results).isEmpty();
     }
