@@ -31,11 +31,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -54,8 +56,8 @@ public class InterviewQuestionsGenerateService {
     private final InterviewQuestionsPayloadBuilder payloadBuilder;
     private final AiPipeline aiPipeline;
     private final KnowledgeTagRepository knowledgeTagRepository;
+    private final TransactionTemplate transactionTemplate;
 
-    @Transactional
     public QuestionSetSummaryResponse generate(
         long userId,
         long applicationId,
@@ -64,105 +66,127 @@ public class InterviewQuestionsGenerateService {
         DifficultyLevel difficultyLevel,
         List<String> questionTypes
     ) {
-        User user = userRepository.findById(userId)
-            .orElseThrow(() -> new ServiceException(
-                ErrorCode.USER_NOT_FOUND,
-                HttpStatus.NOT_FOUND,
-                "사용자를 찾을 수 없습니다."
-            ));
+        // Phase 1: DB 읽기 (짧은 TX — lazy Document 접근 포함, 즉시 커밋)
+        record ReadCtx(String payload) {}
 
-        Application application = applicationRepository.findByIdAndUserId(applicationId, userId)
-            .orElseThrow(() -> new ServiceException(
-                ErrorCode.APPLICATION_NOT_FOUND,
-                HttpStatus.NOT_FOUND,
-                "지원 준비를 찾을 수 없습니다."
-            ));
+        ReadCtx ctx = Objects.requireNonNull(transactionTemplate.execute(status -> {
+            userRepository.findById(userId)
+                .orElseThrow(() -> new ServiceException(
+                    ErrorCode.USER_NOT_FOUND,
+                    HttpStatus.NOT_FOUND,
+                    "사용자를 찾을 수 없습니다."
+                ));
 
-        List<ApplicationQuestion> appQuestions =
-            applicationQuestionRepository.findAllByApplicationIdOrderByQuestionOrderAsc(applicationId);
+            Application application = applicationRepository.findByIdAndUserId(applicationId, userId)
+                .orElseThrow(() -> new ServiceException(
+                    ErrorCode.APPLICATION_NOT_FOUND,
+                    HttpStatus.NOT_FOUND,
+                    "지원 준비를 찾을 수 없습니다."
+                ));
 
-        List<SelfIntroQnA> selfIntroQnAs = appQuestions.stream()
-            .filter(q -> q.getGeneratedAnswer() != null)
-            .map(q -> new SelfIntroQnA(
-                q.getQuestionOrder(),
-                q.getQuestionText(),
-                q.getGeneratedAnswer()
-            ))
-            .toList();
+            List<ApplicationQuestion> appQuestions =
+                applicationQuestionRepository.findAllByApplicationIdOrderByQuestionOrderAsc(applicationId);
 
-        List<String> documentTexts = sourceDocumentBindingRepository
-            .findAllByApplicationId(applicationId).stream()
-            .map(ApplicationSourceDocument::getDocument)
-            .filter(doc -> doc.getExtractStatus() == DocumentExtractStatus.SUCCESS)
-            .map(Document::getExtractedText)
-            .toList();
+            List<SelfIntroQnA> selfIntroQnAs = appQuestions.stream()
+                .filter(q -> q.getGeneratedAnswer() != null)
+                .map(q -> new SelfIntroQnA(
+                    q.getQuestionOrder(),
+                    q.getQuestionText(),
+                    q.getGeneratedAnswer()
+                ))
+                .toList();
 
-        Map<String, KnowledgeTag> knowledgeTagsByName = knowledgeTagRepository.findAll().stream()
-            .collect(Collectors.toMap(KnowledgeTag::getName, Function.identity()));
-        List<String> knowledgeTagNames = new ArrayList<>(knowledgeTagsByName.keySet());
+            // Lazy 연관 Document 접근 — TX 안에서 수행해야 LazyInitializationException 방지
+            List<String> documentTexts = sourceDocumentBindingRepository
+                .findAllByApplicationId(applicationId).stream()
+                .map(ApplicationSourceDocument::getDocument)
+                .filter(doc -> doc.getExtractStatus() == DocumentExtractStatus.SUCCESS)
+                .map(Document::getExtractedText)
+                .toList();
 
-        String payload = payloadBuilder.build(
-            application.getJobRole(),
-            application.getCompanyName(),
-            selfIntroQnAs,
-            documentTexts,
-            questionCount,
-            difficultyLevel.getValue(),
-            questionTypes,
-            knowledgeTagNames
-        );
+            List<String> knowledgeTagNames = knowledgeTagRepository.findAll().stream()
+                .map(KnowledgeTag::getName)
+                .toList();
 
-        JsonNode responseNode = aiPipeline.execute(TEMPLATE_ID, payload);
+            String payload = payloadBuilder.build(
+                application.getJobRole(),
+                application.getCompanyName(),
+                selfIntroQnAs,
+                documentTexts,
+                questionCount,
+                difficultyLevel.getValue(),
+                questionTypes,
+                knowledgeTagNames
+            );
 
-        InterviewQuestionSet questionSet = InterviewQuestionSet.builder()
-            .user(user)
-            .application(application)
-            .title(title)
-            .questionCount(questionCount)
-            .difficultyLevel(difficultyLevel)
-            .questionTypes(questionTypes.toArray(String[]::new))
-            .build();
+            return new ReadCtx(payload);
+        }));
 
-        questionSetRepository.save(questionSet);
+        // Phase 2: AI 호출 — 트랜잭션 없음, DB 커넥션 미점유
+        JsonNode responseNode = aiPipeline.execute(TEMPLATE_ID, ctx.payload());
 
-        Map<Integer, ApplicationQuestion> appQuestionByOrder = appQuestions.stream()
-            .collect(Collectors.toMap(ApplicationQuestion::getQuestionOrder, Function.identity()));
+        // Phase 3: DB 쓰기 (짧은 TX — managed 엔티티 재조회 후 저장)
+        return Objects.requireNonNull(transactionTemplate.execute(status -> {
+            User user = userRepository.findById(userId)
+                .orElseThrow(); // Phase 1에서 이미 검증됨
+            Application application = applicationRepository.findByIdAndUserId(applicationId, userId)
+                .orElseThrow(); // Phase 1에서 이미 검증됨
 
-        JsonNode questions = responseNode.get("questions");
-        List<InterviewQuestion> interviewQuestions = new ArrayList<>();
-        for (JsonNode q : questions) {
-            ApplicationQuestion sourceAppQuestion = null;
-            if (q.hasNonNull("sourceApplicationQuestionOrder")) {
-                sourceAppQuestion = appQuestionByOrder.get(
-                    q.get("sourceApplicationQuestionOrder").asInt()
-                );
-            }
+            Map<Integer, ApplicationQuestion> appQuestionByOrder =
+                applicationQuestionRepository.findAllByApplicationIdOrderByQuestionOrderAsc(applicationId)
+                    .stream()
+                    .collect(Collectors.toMap(ApplicationQuestion::getQuestionOrder, Function.identity()));
 
-            InterviewQuestion interviewQuestion = InterviewQuestion.builder()
-                .questionSet(questionSet)
-                .questionOrder(q.get("questionOrder").asInt())
-                .questionType(parseQuestionType(q.get("questionType").asText()))
-                .difficultyLevel(parseDifficultyLevel(q.get("difficultyLevel").asText()))
-                .questionText(q.get("questionText").asText())
-                .sourceApplicationQuestion(sourceAppQuestion)
+            Map<String, KnowledgeTag> knowledgeTagsByName = knowledgeTagRepository.findAll().stream()
+                .collect(Collectors.toMap(KnowledgeTag::getName, Function.identity()));
+
+            InterviewQuestionSet questionSet = InterviewQuestionSet.builder()
+                .user(user)
+                .application(application)
+                .title(title)
+                .questionCount(questionCount)
+                .difficultyLevel(difficultyLevel)
+                .questionTypes(questionTypes.toArray(String[]::new))
                 .build();
 
-            if (q.hasNonNull("knowledgeTagNames") && q.get("knowledgeTagNames").isArray()) {
-                List<KnowledgeTag> tags = new ArrayList<>();
-                for (JsonNode tagName : q.get("knowledgeTagNames")) {
-                    KnowledgeTag tag = knowledgeTagsByName.get(tagName.asText());
-                    if (tag != null) tags.add(tag);
+            questionSetRepository.save(questionSet);
+
+            JsonNode questions = responseNode.get("questions");
+            List<InterviewQuestion> interviewQuestions = new ArrayList<>();
+            for (JsonNode q : questions) {
+                ApplicationQuestion sourceAppQuestion = null;
+                if (q.hasNonNull("sourceApplicationQuestionOrder")) {
+                    sourceAppQuestion = appQuestionByOrder.get(
+                        q.get("sourceApplicationQuestionOrder").asInt()
+                    );
                 }
-                interviewQuestion.assignKnowledgeTags(tags);
+
+                InterviewQuestion interviewQuestion = InterviewQuestion.builder()
+                    .questionSet(questionSet)
+                    .questionOrder(q.get("questionOrder").asInt())
+                    .questionType(parseQuestionType(q.get("questionType").asText()))
+                    .difficultyLevel(parseDifficultyLevel(q.get("difficultyLevel").asText()))
+                    .questionText(q.get("questionText").asText())
+                    .sourceApplicationQuestion(sourceAppQuestion)
+                    .build();
+
+                if (q.hasNonNull("knowledgeTagNames") && q.get("knowledgeTagNames").isArray()) {
+                    List<KnowledgeTag> tags = new ArrayList<>();
+                    for (JsonNode tagName : q.get("knowledgeTagNames")) {
+                        KnowledgeTag tag = knowledgeTagsByName.get(tagName.asText());
+                        if (tag != null) tags.add(tag);
+                    }
+                    interviewQuestion.assignKnowledgeTags(tags);
+                }
+
+                interviewQuestions.add(interviewQuestion);
             }
+            questionRepository.saveAll(interviewQuestions);
 
-            interviewQuestions.add(interviewQuestion);
-        }
-        questionRepository.saveAll(interviewQuestions);
+            questionSet.changeQuestionCount(questions.size());
 
-        questionSet.changeQuestionCount(questions.size());
-
-        return toSummaryResponse(questionSet);
+            return toSummaryResponse(questionSet);
+        }));
     }
 
     @Transactional(readOnly = true)
