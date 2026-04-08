@@ -84,19 +84,18 @@ public class PracticeQuestionService {
         boolean isBehavioral = "behavioral".equalsIgnoreCase(questionType);
         boolean isCs = "cs".equalsIgnoreCase(questionType);
 
+        // 인성 모드: 태그 필터 무시 — 인성 문제는 기술 태그와 무관
         if (isBehavioral) {
-            return hasTagFilter
-                    ? knowledgeItemRepository.findByTagIdsAndSourceKey(tagIds, BEHAVIORAL_SOURCE_KEY, pageable)
-                    : knowledgeItemRepository.findBySourceKey(BEHAVIORAL_SOURCE_KEY, pageable);
+            return knowledgeItemRepository.findBySourceKey(BEHAVIORAL_SOURCE_KEY, pageable);
         }
         if (isCs) {
             return hasTagFilter
                     ? knowledgeItemRepository.findByTagIdsAndSourceKeyNot(tagIds, BEHAVIORAL_SOURCE_KEY, pageable)
                     : knowledgeItemRepository.findBySourceKeyNot(BEHAVIORAL_SOURCE_KEY, pageable);
         }
-        // 전체
+        // 전체: 태그 필터 시 태그 매칭 CS + 전체 인성 결합
         return hasTagFilter
-                ? knowledgeItemRepository.findByTagIds(tagIds, pageable)
+                ? knowledgeItemRepository.findByTagIdsOrSourceKey(tagIds, BEHAVIORAL_SOURCE_KEY, pageable)
                 : knowledgeItemRepository.findAll(pageable);
     }
 
@@ -105,19 +104,18 @@ public class PracticeQuestionService {
         boolean isBehavioral = "behavioral".equalsIgnoreCase(questionType);
         boolean isCs = "cs".equalsIgnoreCase(questionType);
 
+        // 인성 모드: 태그 필터 무시
         if (isBehavioral) {
-            return hasTagFilter
-                    ? knowledgeItemRepository.findRandomByTagIdsAndSourceKey(tagIds, BEHAVIORAL_SOURCE_KEY, count)
-                    : knowledgeItemRepository.findRandomBySourceKey(BEHAVIORAL_SOURCE_KEY, count);
+            return knowledgeItemRepository.findRandomBySourceKey(BEHAVIORAL_SOURCE_KEY, count);
         }
         if (isCs) {
             return hasTagFilter
                     ? knowledgeItemRepository.findRandomByTagIdsAndSourceKeyNot(tagIds, BEHAVIORAL_SOURCE_KEY, count)
                     : knowledgeItemRepository.findRandomBySourceKeyNot(BEHAVIORAL_SOURCE_KEY, count);
         }
-        // 전체
+        // 전체: 태그 필터 시 태그 매칭 CS + 전체 인성 결합
         return hasTagFilter
-                ? knowledgeItemRepository.findRandomByTagIds(tagIds, count)
+                ? knowledgeItemRepository.findRandomByTagIdsOrSourceKey(tagIds, BEHAVIORAL_SOURCE_KEY, count)
                 : knowledgeItemRepository.findRandom(count);
     }
 

@@ -98,4 +98,24 @@ public interface KnowledgeItemRepository extends JpaRepository<KnowledgeItem, Lo
     List<KnowledgeItem> findRandomByTagIdsAndSourceKeyNot(@Param("tagIds") Collection<Long> tagIds,
                                                            @Param("sourceKey") String sourceKey,
                                                            @Param("count") int count);
+
+    // -- 태그 매칭 CS + 전체 인성 결합 조회 (전체 모드 + 태그 필터 시 사용) --
+
+    @Query("SELECT DISTINCT ki FROM KnowledgeItem ki " +
+           "LEFT JOIN KnowledgeItemTag kit ON kit.item.id = ki.id " +
+           "WHERE kit.tag.id IN :tagIds OR ki.sourceKey = :sourceKey")
+    Page<KnowledgeItem> findByTagIdsOrSourceKey(
+            @Param("tagIds") Collection<Long> tagIds,
+            @Param("sourceKey") String sourceKey,
+            Pageable pageable);
+
+    @Query(value = "SELECT DISTINCT ki.* FROM knowledge_items ki " +
+                   "LEFT JOIN knowledge_item_tags kit ON kit.knowledge_item_id = ki.id " +
+                   "WHERE kit.knowledge_tag_id IN :tagIds OR ki.source_key = :sourceKey " +
+                   "ORDER BY RANDOM() LIMIT :count",
+           nativeQuery = true)
+    List<KnowledgeItem> findRandomByTagIdsOrSourceKey(
+            @Param("tagIds") Collection<Long> tagIds,
+            @Param("sourceKey") String sourceKey,
+            @Param("count") int count);
 }
