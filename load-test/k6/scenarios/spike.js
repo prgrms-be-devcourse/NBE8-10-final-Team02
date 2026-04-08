@@ -28,6 +28,8 @@ export const options = {
     'api_error_rate':   ['rate<0.20'],
     'http_req_failed':  ['rate<0.20'],
   },
+  // url을 systemTags에서 제외 → 동적 ID가 Prometheus 레이블로 올라가지 않아 high cardinality 방지
+  systemTags: ['status', 'method', 'name', 'check', 'error', 'error_code', 'scenario'],
   http: {
     timeout: '120s',
   },
@@ -81,19 +83,22 @@ export default function ({ token, apiKey }) {
         },
       ],
     }),
-    { headers: headers, tags: { type: 'write' } }
+    { headers: headers, tags: { type: 'write', name: 'post_application_questions' } }
   );
 
   // 자소서 AI 생성 — 이 호출이 동시에 몰리는 것이 스파이크의 핵심
   const aiRes = http.post(
     ENDPOINTS.generateAnswers(appId),
-    JSON.stringify({ regenerate: false }),
-    { headers: headers, tags: { type: 'ai-self-intro' }, timeout: '120s' }
+    JSON.stringify({ useTemplate: true, regenerate: false }),
+    { headers: headers, tags: { type: 'ai-self-intro', name: 'generate_answers' }, timeout: '120s' }
   );
   assertResponse(aiRes, [200], AI_TIMEOUT.selfIntro);
 
   // Cleanup
-  http.del(ENDPOINTS.application(appId), null, { headers: headers });
+  http.del(ENDPOINTS.application(appId), null, {
+    headers: headers,
+    tags: { name: 'delete_application' },
+  });
 
   sleep(0.5);
 }

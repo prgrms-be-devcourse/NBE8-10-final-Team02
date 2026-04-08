@@ -102,6 +102,9 @@ if [ -n "$PROMETHEUS_URL" ]; then
   K6_ARGS+=(--out experimental-prometheus-rw)
   export K6_PROMETHEUS_RW_SERVER_URL="$PROMETHEUS_URL"
   export K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true
+  # 동적 URL이 Prometheus 레이블로 올라가지 않도록 레이블 범위를 명시적으로 제한
+  # (systemTags에서 url을 제외하는 것과 이중으로 방어)
+  export K6_PROMETHEUS_RW_TAGS_AS_LABELS="name,type,size,status,method,scenario"
   echo "=== Prometheus remote write: $PROMETHEUS_URL ==="
 fi
 

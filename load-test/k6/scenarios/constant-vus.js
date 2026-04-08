@@ -31,6 +31,8 @@ export const options = {
     'api_error_rate':                        ['rate<0.05'],
     'http_req_failed':                       ['rate<0.05'],
   },
+  // url을 systemTags에서 제외 → 동적 ID가 Prometheus 레이블로 올라가지 않아 high cardinality 방지
+  systemTags: ['status', 'method', 'name', 'check', 'error', 'error_code', 'scenario'],
   // AI 호출은 응답이 느리므로 k6 기본 타임아웃(60s) 초과 방지
   http: {
     timeout: '120s',
@@ -93,17 +95,23 @@ export default function ({ token, apiKey }) {
         },
       ],
     }),
-    { headers: headers, tags: { type: 'write' } }
+    { headers: headers, tags: { type: 'write', name: 'post_application_questions' } }
   );
-  assertResponse(questionsRes, [200, 201], 2000);
+  if (!assertResponse(questionsRes, [200, 201], 2000)) {
+    console.error(`[VU${__VU}] Step2 문항등록 실패: ${questionsRes.status} ${questionsRes.body}`);
+    sleep(1);
+    return;
+  }
 
   // ── Step 3: 자소서 AI 생성 (Stub: ~17s) ────────────────────────────────
   const selfIntroRes = http.post(
     ENDPOINTS.generateAnswers(appId),
-    JSON.stringify({ regenerate: false }),
-    { headers: headers, tags: { type: 'ai-self-intro' }, timeout: '120s' }
+    JSON.stringify({ useTemplate: true, regenerate: false }),
+    { headers: headers, tags: { type: 'ai-self-intro', name: 'generate_answers' }, timeout: '120s' }
   );
-  assertResponse(selfIntroRes, [200], AI_TIMEOUT.selfIntro);
+  if (!assertResponse(selfIntroRes, [200], AI_TIMEOUT.selfIntro)) {
+    console.error(`[VU${__VU}] Step3 자소서생성 실패: ${selfIntroRes.status} ${selfIntroRes.body}`);
+  }
 
   // ── Step 4: 면접 질문 AI 생성 (Stub: ~8s) ──────────────────────────────
   const interviewRes = http.post(
@@ -115,14 +123,14 @@ export default function ({ token, apiKey }) {
       difficultyLevel: 'medium',
       questionTypes: ['technical_cs', 'behavioral'],
     }),
-    { headers: headers, tags: { type: 'ai-interview' }, timeout: '120s' }
+    { headers: headers, tags: { type: 'ai-interview', name: 'post_question_sets' }, timeout: '120s' }
   );
   assertResponse(interviewRes, [200, 201], AI_TIMEOUT.interviewQuestions);
 
   // ── Step 5: Cleanup ─────────────────────────────────────────────────────
   http.del(ENDPOINTS.application(appId), null, {
     headers: headers,
-    tags: { type: 'write' },
+    tags: { type: 'write', name: 'delete_application' },
   });
 
   // AI 호출이 길어서 sleep 최소화
