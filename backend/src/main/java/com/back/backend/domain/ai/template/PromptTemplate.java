@@ -1,5 +1,7 @@
 package com.back.backend.domain.ai.template;
 
+import com.back.backend.domain.ai.client.AiProvider;
+
 /**
  * 프롬프트 템플릿 정의
  * 각 AI 기능(포트폴리오 요약, 자소서 생성 등)마다 하나의 템플릿이 존재
@@ -13,6 +15,7 @@ package com.back.backend.domain.ai.template;
  * @param temperature         생성 다양성
  * @param maxTokens           최대 출력 토큰 수
  * @param retryPolicy         재시도 정책
+ * @param preferredProvider   이 템플릿이 우선 사용할 AI provider (null이면 글로벌 기본 provider 사용)
  */
 public record PromptTemplate(
     String templateId,
@@ -23,7 +26,8 @@ public record PromptTemplate(
     String schemaFile,
     double temperature,
     int maxTokens,
-    RetryPolicy retryPolicy
+    RetryPolicy retryPolicy,
+    AiProvider preferredProvider
 ) {
     public PromptTemplate {
         if (templateId == null || templateId.isBlank()) {

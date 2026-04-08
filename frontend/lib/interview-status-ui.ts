@@ -27,7 +27,13 @@ export interface PendingResultPanelCopy {
   description: string;
   detail: string;
   actionLabel: string;
+  autoRefreshLabel: string;
+  manualReadyLabel: string;
+  manualDetail: string;
 }
+
+export const PENDING_RESULT_AUTO_RECHECK_INTERVAL_MS = 4_000;
+export const PENDING_RESULT_AUTO_RECHECK_MAX_ATTEMPTS = 3;
 
 export const SESSION_STATUS_BADGE_META = {
   ready: {
@@ -64,11 +70,14 @@ export const RESULT_STATUS_BADGE_META = {
 } satisfies Record<InterviewResult['status'], InterviewStatusBadgeMeta>;
 
 export const PENDING_RESULT_PANEL_COPY: PendingResultPanelCopy = {
-  eyebrow: '결과 재확인',
+  eyebrow: '결과 생성 대기',
   title: '결과를 준비하고 있습니다.',
-  description: '세션은 정상적으로 종료되었습니다. 결과 리포트는 잠시 후 준비될 수 있습니다.',
-  detail: 'v1에서는 세션 종료를 다시 보내지 않고 GET /result를 다시 확인해 최신 결과 상태를 조회합니다.',
+  description: '세션 종료는 정상적으로 끝났습니다. 결과 리포트는 잠시 후 준비될 수 있습니다.',
+  detail: '결과 화면에서 잠깐 자동으로 다시 확인하고, 더 오래 걸리면 직접 결과를 다시 확인할 수 있습니다.',
   actionLabel: '결과 재확인',
+  autoRefreshLabel: '자동으로 다시 확인 중',
+  manualReadyLabel: '결과 재확인 가능',
+  manualDetail: '자동 재확인이 끝나면 결과 재확인으로 최신 상태를 다시 확인할 수 있습니다.',
 };
 
 export function getSessionStatusSummary({
@@ -94,7 +103,7 @@ export function getSessionStatusSummary({
     return {
       eyebrow: '세션 종료',
       title: '세션은 종료되었고 결과를 다시 확인할 수 있습니다.',
-      description: '결과 생성이 바로 끝나지 않을 수 있으므로 세션 종료 재전송 대신 결과 화면의 재확인 흐름으로 최신 상태를 확인합니다.',
+      description: '결과 화면에서 잠깐 자동으로 다시 확인하고, 더 오래 걸리면 수동 재확인으로 최신 상태를 확인합니다.',
       tone: 'border-cyan-200 bg-cyan-50',
       eyebrowTone: 'text-cyan-700',
       titleTone: 'text-cyan-950',

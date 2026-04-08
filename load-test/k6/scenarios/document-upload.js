@@ -52,6 +52,8 @@ export const options = {
     'api_error_rate':  ['rate<0.05'],
     'http_req_failed': ['rate<0.05'],
   },
+  // url을 systemTags에서 제외 → 동적 ID가 Prometheus 레이블로 올라가지 않아 high cardinality 방지
+  systemTags: ['status', 'method', 'name', 'check', 'error', 'error_code', 'scenario'],
 };
 
 export function setup() {
@@ -81,7 +83,7 @@ export default function ({ token, apiKey }) {
       http.del(
         ENDPOINTS.document(docId),
         null,
-        { headers: headers, tags: { type: 'delete' } }
+        { headers: headers, tags: { type: 'delete', name: 'delete_document' } }
       );
     }
   }

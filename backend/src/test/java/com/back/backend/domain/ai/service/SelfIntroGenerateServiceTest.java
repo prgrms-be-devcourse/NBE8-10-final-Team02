@@ -25,12 +25,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -60,19 +62,28 @@ class SelfIntroGenerateServiceTest {
     @Mock
     private ApplicationStatusService applicationStatusService;
 
+    @Mock
+    private TransactionTemplate transactionTemplate;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private SelfIntroGenerateService selfIntroGenerateService;
 
     @BeforeEach
     void setUp() {
+        // TransactionTemplate.execute()가 실제 콜백을 실행하도록 스텁
+        given(transactionTemplate.execute(any()))
+            .willAnswer(invocation -> invocation.<org.springframework.transaction.support.TransactionCallback<?>>getArgument(0)
+                .doInTransaction(null));
+
         selfIntroGenerateService = new SelfIntroGenerateService(
             applicationRepository,
             applicationQuestionRepository,
             sourceDocumentBindingRepository,
             applicationStatusService,
             new SelfIntroPayloadBuilder(),
-            aiPipeline
+            aiPipeline,
+            transactionTemplate
         );
     }
 

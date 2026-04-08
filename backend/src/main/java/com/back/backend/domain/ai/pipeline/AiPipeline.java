@@ -21,6 +21,12 @@ import java.util.List;
 /**
  * AI 파이프라인 오케스트레이터
  * 템플릿 조회 → 프롬프트 로딩 → AiRequest 생성 → AiClient 호출 → JSON 파싱 → 검증 → 결과 반환
+ *
+ * Provider 선택 전략:
+ *   1. 템플릿의 preferredProvider가 지정되어 있으면 해당 provider 사용
+ *   2. preferredProvider 미지정 또는 미등록이면 글로벌 기본 provider(ai.provider) 사용
+ *   3. rate limit(429) 발생 시 글로벌 fallback provider(ai.fallback-provider)로 전환
+ *
  * 파싱/검증 실패 시 RetryPolicy.maxRetries만큼 재시도, 초과 시 ServiceException
  * 성공/rate limit hit 시 AiUsageRecorder에 사용량 기록
  */
@@ -37,9 +43,9 @@ public class AiPipeline {
     private final AiUsageRecorder usageRecorder;
 
     /**
-     * @param router              AI provider 라우터 — getDefault()로 기본 provider의 AiClient 반환
-     * @param templateRegistry    6개 프롬프트 템플릿 조회 (templateId → PromptTemplate)
-     * @param validationRegistry  6개 응답 검증기 조회 (templateId → AiResponseValidator)
+     * @param router              AI provider 라우터 — getClient(provider)로 템플릿별 provider, getDefault()로 기본 provider 반환
+     * @param templateRegistry    프롬프트 템플릿 조회 (templateId → PromptTemplate, preferredProvider 포함)
+     * @param validationRegistry  응답 검증기 조회 (templateId → AiResponseValidator)
      * @param promptLoader        classpath .txt 프롬프트 파일 로딩 (캐싱)
      * @param jsonSchemaValidator AI 응답 JSON 파싱 및 schema 검증
      * @param usageRecorder       AI 호출 결과를 인메모리+DB에 기록
@@ -84,11 +90,11 @@ public class AiPipeline {
         );
 
         try {
-            return executeWithClient(router.getDefault(), request, template, validator, templateId);
+            return executeWithClient(resolveClient(template), request, template, validator, templateId);
         } catch (AiClientException e) {
             return router.getFallback()
                 .map(fallbackClient -> {
-                    log.warn("[Fallback] 기본 provider({}) 실패 → fallback provider({})로 전환. 원인: {}",
+                    log.warn("[Fallback] provider({}) 실패 → fallback provider({})로 전환. 원인: {}",
                         e.getProvider(), fallbackClient.getProvider(), e.getMessage());
                     return executeWithClient(fallbackClient, request, template, validator, templateId);
                 })
@@ -121,9 +127,9 @@ public class AiPipeline {
             template.maxTokens()
         );
 
-        // 기본 provider로 시도
+        // 템플릿의 preferredProvider 또는 기본 provider로 시도
         try {
-            return executeWithClient(router.getDefault(), request, template, validator, templateId);
+            return executeWithClient(resolveClient(template), request, template, validator, templateId);
         } catch (AiClientException e) {
             // rate limit(429)일 때만 fallback provider로 전환
             // 그 외(빈 응답, 타임아웃, API 오류 등)는 즉시 전파
@@ -132,12 +138,30 @@ public class AiPipeline {
             }
             return router.getFallback()
                 .map(fallbackClient -> {
-                    log.warn("[Fallback] 기본 provider({}) rate limit → fallback provider({})로 전환. 원인: {}",
+                    log.warn("[Fallback] provider({}) rate limit → fallback provider({})로 전환. 원인: {}",
                         e.getProvider(), fallbackClient.getProvider(), e.getMessage());
                     return executeWithClient(fallbackClient, request, template, validator, templateId);
                 })
                 .orElseThrow(() -> e); // fallback 미설정 시 원래 예외 그대로 전파
         }
+    }
+
+    /**
+     * 템플릿의 preferredProvider에 해당하는 AiClient를 반환
+     * preferredProvider가 null이거나 해당 provider가 등록되지 않은 경우 글로벌 기본 provider로 fallback
+     * test 환경에서 VertexAI 미등록 시에도 안전하게 동작
+     */
+    private AiClient resolveClient(PromptTemplate template) {
+        if (template.preferredProvider() != null) {
+            try {
+                return router.getClient(template.preferredProvider());
+            } catch (IllegalArgumentException e) {
+                log.warn("[AiPipeline] preferredProvider({}) 미등록, default provider로 fallback",
+                    template.preferredProvider());
+                return router.getDefault();
+            }
+        }
+        return router.getDefault();
     }
 
     /**

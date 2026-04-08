@@ -142,17 +142,23 @@ public class InterviewSessionService {
         InterviewSession session = getOwnedSession(userId, sessionId);
         normalizeAutoPauseIfExpired(session);
 
+        List<InterviewAnswer> answeredAnswers = interviewAnswerRepository
+                .findAllWithSessionQuestionBySessionIdOrderByAnswerOrderAsc(session.getId());
         long totalQuestionCount = interviewSessionQuestionRepository.countBySessionId(session.getId());
-        long answeredQuestionCount = interviewAnswerRepository.countBySessionId(session.getId());
+        long answeredQuestionCount = answeredAnswers.size();
         long remainingQuestionCount = Math.max(totalQuestionCount - answeredQuestionCount, 0);
         InterviewSessionQuestion currentQuestion = resolveCurrentQuestion(session, answeredQuestionCount, remainingQuestionCount);
         InterviewSessionCompletionFollowupContextResponse completionFollowupContext =
                 buildCompletionFollowupContext(session, currentQuestion);
+        var transcriptEntries = answeredAnswers.stream()
+                .map(interviewResponseMapper::toInterviewSessionTranscriptEntryResponse)
+                .toList();
 
         return interviewResponseMapper.toInterviewSessionDetailResponse(
                 session,
                 currentQuestion,
                 completionFollowupContext,
+                transcriptEntries,
                 totalQuestionCount,
                 answeredQuestionCount,
                 remainingQuestionCount,
@@ -216,8 +222,9 @@ public class InterviewSessionService {
             handleResultGenerationFailure(preparation.sessionId(), exception);
             throw exception;
         } catch (RuntimeException exception) {
-            finishResultGenerationAttempt(preparation.sessionId());
-            throw exception;
+            ServiceException generationFailure = unexpectedResultGenerationFailure();
+            handleResultGenerationFailure(preparation.sessionId(), generationFailure);
+            throw generationFailure;
         }
     }
 
@@ -466,8 +473,9 @@ public class InterviewSessionService {
             }
             throw exception;
         } catch (RuntimeException exception) {
-            finishResultGenerationAttempt(preparation.sessionId());
-            throw exception;
+            ServiceException generationFailure = unexpectedResultGenerationFailure();
+            handleResultGenerationFailure(preparation.sessionId(), generationFailure);
+            return;
         }
     }
 
@@ -520,6 +528,15 @@ public class InterviewSessionService {
     private void clearResultGenerationRetryState(long sessionId) {
         deferredResultRetryAt.remove(sessionId);
         finishResultGenerationAttempt(sessionId);
+    }
+
+    private ServiceException unexpectedResultGenerationFailure() {
+        return new ServiceException(
+                ErrorCode.INTERVIEW_RESULT_GENERATION_FAILED,
+                HttpStatus.BAD_GATEWAY,
+                "면접 결과 생성 중 오류가 발생했습니다.",
+                true
+        );
     }
 
     private void finishResultGenerationAttempt(long sessionId) {

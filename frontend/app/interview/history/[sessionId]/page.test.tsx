@@ -43,6 +43,7 @@ function createSessionDetail(overrides?: Partial<InterviewSessionDetail>): Inter
     status: 'completed',
     currentQuestion: null,
     completionFollowupContext: null,
+    transcriptEntries: [],
     totalQuestionCount: 5,
     answeredQuestionCount: 5,
     remainingQuestionCount: 0,
@@ -80,6 +81,21 @@ function createResult(overrides?: Partial<InterviewResult>): InterviewResult {
 }
 
 describe('InterviewHistoryDetailPage', () => {
+  it('결과가 준비된 상태에서는 세션 메타가 결과 리포트에만 한 번 노출된다', async () => {
+    paramsMock.mockReturnValue({ sessionId: '21' });
+    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+    getSessionResultMock.mockResolvedValueOnce(createResult());
+
+    render(<InterviewHistoryDetailPage />);
+
+    expect(await screen.findByText('질문 단위 리뷰')).toBeInTheDocument();
+    expect(screen.queryByText('진행률')).not.toBeInTheDocument();
+    expect(screen.getAllByText('세션 #21')).toHaveLength(1);
+    expect(screen.getAllByText('질문 세트 #8')).toHaveLength(1);
+    expect(screen.getAllByText('시작 시각')).toHaveLength(1);
+    expect(screen.getAllByText('종료 시각')).toHaveLength(1);
+  });
+
   it('pending 결과를 같은 재확인 카드로 보여주고 재확인 성공 시 리포트로 전환한다', async () => {
     paramsMock.mockReturnValue({ sessionId: '21' });
     getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());

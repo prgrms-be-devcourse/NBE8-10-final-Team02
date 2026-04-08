@@ -49,6 +49,7 @@ class AiPipelineTest {
         usageRecorder = mock(AiUsageRecorder.class);
 
         when(router.getDefault()).thenReturn(mockAiClient);
+        when(router.getClient(any())).thenReturn(mockAiClient); // resolveClient()에서 preferredProvider로 조회 시
         when(validationRegistry.get(anyString())).thenReturn(mockValidator);
 
         pipeline = new AiPipeline(
