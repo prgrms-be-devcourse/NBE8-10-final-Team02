@@ -44,9 +44,18 @@ case "$SCENARIO" in
   spike)
     SCRIPT="$SCRIPT_DIR/scenarios/spike.js"
     ;;
+  github-analysis|github)
+    SCRIPT="$SCRIPT_DIR/scenarios/github-analysis.js"
+    ;;
+  document-upload|upload)
+    SCRIPT="$SCRIPT_DIR/scenarios/document-upload.js"
+    ;;
+  interview-session|interview)
+    SCRIPT="$SCRIPT_DIR/scenarios/interview-session.js"
+    ;;
   *)
     echo "알 수 없는 시나리오: $SCENARIO"
-    echo "사용 가능: ramp-up | constant | spike"
+    echo "사용 가능: ramp-up | constant | spike | github-analysis | document-upload | interview-session"
     exit 1
     ;;
 esac

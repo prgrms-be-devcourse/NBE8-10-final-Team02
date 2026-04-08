@@ -666,6 +666,30 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
     }
 
     @Test
+    void completeSession_returns502AndKeepsCompletedSessionWhenUnexpectedRuntimeOccurs() throws Exception {
+        UserFixture fixture = persistAnsweredSession("complete-unexpected-runtime");
+        InterviewSession session = fixture.session();
+
+        given(interviewResultGenerationService.generate(anyLong(), eq(session.getId()), eq(fixture.questionSet().getId()), anyList(), anyString()))
+                .willThrow(new IllegalStateException("unexpected failure"));
+
+        mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.INTERVIEW_RESULT_GENERATION_FAILED.name()))
+                .andExpect(jsonPath("$.error.retryable").value(true));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        InterviewSession refreshedSession = interviewSessionRepository.findById(session.getId()).orElseThrow();
+        assertThat(refreshedSession.getStatus()).isEqualTo(InterviewSessionStatus.COMPLETED);
+        assertThat(refreshedSession.getEndedAt()).isEqualTo(FIXED_NOW);
+        assertThat(refreshedSession.getTotalScore()).isNull();
+        assertThat(refreshedSession.getSummaryFeedback()).isNull();
+    }
+
+    @Test
     void completeSession_blocksPostRetryAndKeepsResultRecheckPathWhenGenerationFails() throws Exception {
         UserFixture fixture = persistAnsweredSession("complete-recheck-flow");
         InterviewSession session = fixture.session();

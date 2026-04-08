@@ -229,6 +229,26 @@ class InterviewSessionResultApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.error.retryable").value(true));
     }
 
+    @Test
+    void getSessionResult_returns409WhenRetryGenerationThrowsUnexpectedRuntime() throws Exception {
+        given(clock.instant()).willReturn(Instant.now());
+        ResultFixture fixture = persistCompletedFixture("result-unexpected-runtime");
+
+        given(interviewResultGenerationService.generate(
+                anyLong(),
+                eq(fixture.session().getId()),
+                eq(fixture.questionSet().getId()),
+                anyList(),
+                anyString()
+        )).willThrow(new IllegalStateException("unexpected failure"));
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}/result", fixture.session().getId())
+                        .with(authenticated(fixture.user().getId())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.INTERVIEW_RESULT_INCOMPLETE.name()))
+                .andExpect(jsonPath("$.error.retryable").value(true));
+    }
+
     private RequestPostProcessor authenticated(long userId) {
         return authentication(new JwtAuthenticationToken(
                 userId,

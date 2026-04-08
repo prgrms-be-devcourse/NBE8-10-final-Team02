@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { getApplication } from '@/api/application';
 import { createQuestionSet, getQuestionSets } from '@/api/interview';
+import AiGenerationStatusCard from '@/components/AiGenerationStatusCard';
 import type { Application } from '@/types/application';
 import type {
   InterviewDifficultyLevel,
@@ -59,6 +60,25 @@ export default function NewQuestionSetPage() {
   // 생성 처리 상태
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [showLongWaitHint, setShowLongWaitHint] = useState(false);
+
+  function navigateToQuestionSet(questionSetId: number) {
+    router.push(`/interview/question-sets/${questionSetId}`);
+  }
+
+  function stopCardNavigation(event: React.MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+  }
+
+  function handleCardKeyDown(
+    event: React.KeyboardEvent<HTMLDivElement>,
+    questionSetId: number,
+  ) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      navigateToQuestionSet(questionSetId);
+    }
+  }
 
   // ── 데이터 로딩 ─────────────────────────────────
   const loadPageData = useCallback(async () => {
@@ -71,8 +91,12 @@ export default function NewQuestionSetPage() {
         getQuestionSets(),
       ]);
       setApplication(app);
-      // 현재 지원 준비에 속한 질문 세트만 필터링
-      setExistingSets(allSets.filter((s) => s.applicationId === applicationId));
+      // 현재 지원 준비에 속한 질문 세트만 최신순으로 정리한다.
+      setExistingSets(
+        allSets
+          .filter((s) => s.applicationId === applicationId)
+          .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
+      );
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : '정보를 불러오지 못했습니다.');
     } finally {
@@ -83,6 +107,19 @@ export default function NewQuestionSetPage() {
   useEffect(() => {
     loadPageData();
   }, [loadPageData]);
+
+  useEffect(() => {
+    if (!creating) {
+      setShowLongWaitHint(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowLongWaitHint(true);
+    }, 8000);
+
+    return () => window.clearTimeout(timer);
+  }, [creating]);
 
   // ── 질문 유형 토글 ────────────────────────────────
   function toggleQuestionType(type: InterviewQuestionType) {
@@ -97,6 +134,10 @@ export default function NewQuestionSetPage() {
       return next;
     });
   }
+
+  const questionSetStatusDetail = showLongWaitHint
+    ? '조금 더 걸리고 있습니다. 곧 결과를 보여드립니다.'
+    : '질문 수와 유형에 따라 최대 30초 정도 걸릴 수 있습니다.';
 
   // ── AI 질문 세트 생성 ──────────────────────────────
   async function handleCreate() {
@@ -115,9 +156,9 @@ export default function NewQuestionSetPage() {
       });
 
       // 생성 완료 후 질문 세트 상세 페이지로 이동
-      router.push(`/interview/question-sets/${result.questionSetId}`);
+      navigateToQuestionSet(result.questionSetId);
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'AI 질문 생성 중 오류가 발생했습니다.');
+      setCreateError(err instanceof Error ? err.message : '질문 세트를 만들지 못했습니다.');
     } finally {
       setCreating(false);
     }
@@ -149,16 +190,16 @@ export default function NewQuestionSetPage() {
   if (application.status !== 'ready') {
     return (
       <main className="mx-auto max-w-2xl px-4 py-12">
-        <h1 className="text-xl font-semibold">AI 면접 질문 생성</h1>
+        <h1 className="text-xl font-semibold">면접 준비</h1>
         <div className="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          질문 생성은 지원 준비가 &quot;준비 완료&quot; 상태일 때만 가능합니다.
-          소스 연결과 자소서 문항 답변을 먼저 완료해 주세요.
+          면접 준비는 지원 준비가 &quot;준비 완료&quot; 상태일 때 시작할 수 있습니다.
+          소스 연결과 자소서 답변 정리를 먼저 완료해 주세요.
         </div>
         <Link
-          href={`/applications/${applicationId}`}
+          href={`/applications/${applicationId}/generate`}
           className="mt-4 inline-block text-sm underline text-zinc-500"
         >
-          지원 준비 상세로
+          자소서 작성으로 돌아가기
         </Link>
       </main>
     );
@@ -169,15 +210,15 @@ export default function NewQuestionSetPage() {
       {/* 헤더 */}
       <div className="mb-6">
         <Link
-          href={`/applications/${applicationId}`}
+          href={`/applications/${applicationId}/generate`}
           className="text-xs text-zinc-400 hover:text-zinc-600"
         >
-          ← 지원 준비 상세로
+          ← 자소서 작성으로
         </Link>
-        <h1 className="mt-2 text-xl font-semibold">AI 면접 질문 생성</h1>
+        <h1 className="mt-2 text-xl font-semibold">면접 준비</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          {application.companyName && `${application.companyName} · `}
-          {application.jobRole} — 포트폴리오 기반으로 AI가 면접 질문을 생성합니다.
+          {application.companyName && `${application.companyName} · `}{application.jobRole} 기준으로
+          질문 세트를 만들고 기존 세트를 다시 열 수 있습니다.
         </p>
       </div>
 
@@ -185,19 +226,25 @@ export default function NewQuestionSetPage() {
       {existingSets.length > 0 && (
         <section className="mb-8">
           <h2 className="mb-3 text-sm font-medium text-zinc-700">
-            기존 질문 세트 ({existingSets.length}개)
+            이전 질문 세트 ({existingSets.length}개)
           </h2>
+          <p className="mb-3 text-xs text-zinc-500">
+            이미 만든 세트가 있다면 바로 열어 검토하거나 모의 면접을 시작할 수 있습니다.
+          </p>
           <ul className="flex flex-col gap-2">
             {existingSets.map((set) => (
-              <li key={set.questionSetId} className="rounded border border-zinc-200 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
+              <li key={set.questionSetId} className="rounded border border-zinc-200">
+                <div
+                  role="link"
+                  tabIndex={0}
+                  onClick={() => navigateToQuestionSet(set.questionSetId)}
+                  onKeyDown={(event) => handleCardKeyDown(event, set.questionSetId)}
+                  className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-300 focus:ring-offset-2"
+                >
                   <div className="min-w-0 flex-1">
-                    <button
-                      onClick={() => router.push(`/interview/question-sets/${set.questionSetId}`)}
-                      className="text-sm font-medium text-zinc-900 hover:underline text-left truncate"
-                    >
+                    <p className="truncate text-sm font-medium text-zinc-900">
                       {set.title}
-                    </button>
+                    </p>
                     <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-zinc-500">
                       <span>질문 {set.questionCount}개</span>
                       <span>난이도 {DIFFICULTY_LABEL[set.difficultyLevel]}</span>
@@ -205,10 +252,14 @@ export default function NewQuestionSetPage() {
                     </div>
                   </div>
                   <button
-                    onClick={() => router.push(`/interview/question-sets/${set.questionSetId}`)}
+                    type="button"
+                    onClick={(event) => {
+                      stopCardNavigation(event);
+                      navigateToQuestionSet(set.questionSetId);
+                    }}
                     className="shrink-0 rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700"
                   >
-                    상세
+                    세트 열기
                   </button>
                 </div>
               </li>
@@ -219,7 +270,7 @@ export default function NewQuestionSetPage() {
 
       {/* 생성 폼 */}
       <section className="rounded border border-zinc-200 px-5 py-5">
-        <h2 className="mb-4 text-sm font-medium text-zinc-700">새 질문 세트 생성</h2>
+        <h2 className="mb-4 text-sm font-medium text-zinc-700">새 질문 세트 만들기</h2>
 
         <div className="flex flex-col gap-5">
           {/* 제목 (선택) */}
@@ -230,6 +281,7 @@ export default function NewQuestionSetPage() {
               placeholder="예: 네이버 백엔드 1차 기술면접"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              disabled={creating}
               className="w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
             />
           </div>
@@ -246,6 +298,7 @@ export default function NewQuestionSetPage() {
                 max={20}
                 value={questionCount}
                 onChange={(e) => setQuestionCount(Number(e.target.value))}
+                disabled={creating}
                 className="flex-1 accent-zinc-800"
               />
               <span className="w-12 text-center text-sm font-medium text-zinc-900">
@@ -272,11 +325,12 @@ export default function NewQuestionSetPage() {
                   key={opt.value}
                   type="button"
                   onClick={() => setDifficultyLevel(opt.value)}
+                  disabled={creating}
                   className={`flex-1 rounded border px-3 py-2 text-sm font-medium transition-colors ${
                     difficultyLevel === opt.value
                       ? 'border-zinc-900 bg-zinc-900 text-white'
                       : 'border-zinc-300 text-zinc-600 hover:border-zinc-400'
-                  }`}
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
                 >
                   {opt.label}
                 </button>
@@ -298,12 +352,13 @@ export default function NewQuestionSetPage() {
                     selectedTypes.has(opt.value)
                       ? 'border-zinc-900 bg-zinc-50'
                       : 'border-zinc-200 hover:border-zinc-300'
-                  }`}
+                  } ${creating ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
                   <input
                     type="checkbox"
                     checked={selectedTypes.has(opt.value)}
                     onChange={() => toggleQuestionType(opt.value)}
+                    disabled={creating}
                     className="h-4 w-4 accent-zinc-800"
                   />
                   <div>
@@ -315,24 +370,39 @@ export default function NewQuestionSetPage() {
             </div>
           </div>
 
-          {/* 에러 메시지 */}
-          {createError && (
-            <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {createError}
-            </div>
-          )}
-
           {/* 생성 버튼 */}
           <button
             onClick={handleCreate}
             disabled={creating || selectedTypes.size === 0}
             className="w-full rounded bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
           >
-            {creating ? 'AI 질문 생성 중... (최대 30초 소요)' : `AI 면접 질문 ${questionCount}개 생성`}
+            {creating ? '질문 세트 만드는 중...' : '질문 세트 만들기'}
           </button>
 
+          {creating && (
+            <AiGenerationStatusCard
+              ariaLabel="AI 질문 생성 진행 상태"
+              tone="pending"
+              eyebrow="AI 생성 진행 중"
+              title="질문 세트를 준비하고 있습니다"
+              message="AI가 질문 세트를 구성하는 중입니다."
+              detail={questionSetStatusDetail}
+            />
+          )}
+
+          {createError && !creating && (
+            <AiGenerationStatusCard
+              ariaLabel="AI 질문 생성 오류 상태"
+              tone="error"
+              eyebrow="질문 생성 실패"
+              title="질문 세트를 만들지 못했습니다"
+              message={createError}
+              detail="같은 화면에서 설정을 조정하거나 다시 시도할 수 있습니다."
+            />
+          )}
+
           <p className="text-xs text-zinc-400 text-center">
-            포트폴리오와 자소서 내용을 기반으로 AI가 맞춤 면접 질문을 생성합니다.
+            질문 수 {questionCount}개, 선택한 {selectedTypes.size}개 유형 기준으로 AI가 면접 질문을 준비합니다.
           </p>
         </div>
       </section>
@@ -343,7 +413,7 @@ export default function NewQuestionSetPage() {
           href={`/applications/${applicationId}/generate`}
           className="text-zinc-500 hover:text-zinc-700"
         >
-          ← 자소서 생성
+          ← 자소서 작성
         </Link>
         <Link href="/interview/history" className="text-zinc-500 hover:text-zinc-700">
           면접 이력 →

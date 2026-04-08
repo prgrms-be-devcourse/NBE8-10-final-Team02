@@ -4,26 +4,15 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { getSessionDetail, getSessionResult, InterviewApiError } from '@/api/interview';
+import InterviewPendingResultPanel from '@/components/InterviewPendingResultPanel';
 import InterviewResultReport from '@/components/InterviewResultReport';
+import {
+  PENDING_RESULT_PANEL_COPY,
+  SESSION_STATUS_BADGE_META,
+} from '@/lib/interview-status-ui';
 import type { InterviewResult, InterviewSessionDetail, InterviewSessionStatus } from '@/types/interview';
 
 const ACTIVE_STATUSES = new Set<InterviewSessionStatus>(['in_progress', 'paused']);
-
-const STATUS_LABEL: Record<InterviewSessionStatus, string> = {
-  ready: '준비',
-  in_progress: '진행 중',
-  paused: '일시정지',
-  completed: '결과 준비 중',
-  feedback_completed: '결과 완료',
-};
-
-const STATUS_TONE: Record<InterviewSessionStatus, string> = {
-  ready: 'bg-zinc-100 text-zinc-700',
-  in_progress: 'bg-green-50 text-green-700',
-  paused: 'bg-amber-50 text-amber-700',
-  completed: 'bg-amber-50 text-amber-700',
-  feedback_completed: 'bg-blue-50 text-blue-700',
-};
 
 function formatDateTime(value: string | null) {
   if (!value) {
@@ -145,6 +134,7 @@ export default function InterviewHistoryDetailPage() {
   }
 
   const isActiveSession = ACTIVE_STATUSES.has(session.status);
+  const showSessionOverviewCard = isActiveSession || !!pendingMessage || !!error || !result;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10">
@@ -158,52 +148,60 @@ export default function InterviewHistoryDetailPage() {
         </p>
       </div>
 
-      <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[session.status]}`}>
-            {STATUS_LABEL[session.status]}
-          </span>
-          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-            세션 #{session.id}
-          </span>
-          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-            질문 세트 #{session.questionSetId}
-          </span>
-        </div>
+      {showSessionOverviewCard && (
+        <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${SESSION_STATUS_BADGE_META[session.status].tone}`}
+            >
+              {SESSION_STATUS_BADGE_META[session.status].label}
+            </span>
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+              세션 #{session.id}
+            </span>
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+              질문 세트 #{session.questionSetId}
+            </span>
+          </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl bg-zinc-50 px-4 py-4">
-            <p className="text-xs text-zinc-500">진행률</p>
-            <p className="mt-1 text-sm font-medium text-zinc-900">
-              {session.answeredQuestionCount}/{session.totalQuestionCount}
+          <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-xl bg-zinc-50 px-4 py-4">
+              <p className="text-xs text-zinc-500">진행률</p>
+              <p className="mt-1 text-sm font-medium text-zinc-900">
+                {session.answeredQuestionCount}/{session.totalQuestionCount}
+              </p>
+            </div>
+            <div className="rounded-xl bg-zinc-50 px-4 py-4">
+              <p className="text-xs text-zinc-500">남은 질문</p>
+              <p className="mt-1 text-sm font-medium text-zinc-900">{session.remainingQuestionCount}개</p>
+            </div>
+            <div className="rounded-xl bg-zinc-50 px-4 py-4">
+              <p className="text-xs text-zinc-500">시작 시각</p>
+              <p className="mt-1 text-sm font-medium text-zinc-900">{formatDateTime(session.startedAt)}</p>
+            </div>
+            <div className="rounded-xl bg-zinc-50 px-4 py-4">
+              <p className="text-xs text-zinc-500">종료 시각</p>
+              <p className="mt-1 text-sm font-medium text-zinc-900">{formatDateTime(session.endedAt)}</p>
+            </div>
+          </div>
+
+          {session.lastActivityAt && (
+            <p className="mt-4 text-sm text-zinc-500">
+              마지막 활동 시각: {formatDateTime(session.lastActivityAt)}
             </p>
-          </div>
-          <div className="rounded-xl bg-zinc-50 px-4 py-4">
-            <p className="text-xs text-zinc-500">남은 질문</p>
-            <p className="mt-1 text-sm font-medium text-zinc-900">{session.remainingQuestionCount}개</p>
-          </div>
-          <div className="rounded-xl bg-zinc-50 px-4 py-4">
-            <p className="text-xs text-zinc-500">시작 시각</p>
-            <p className="mt-1 text-sm font-medium text-zinc-900">{formatDateTime(session.startedAt)}</p>
-          </div>
-          <div className="rounded-xl bg-zinc-50 px-4 py-4">
-            <p className="text-xs text-zinc-500">종료 시각</p>
-            <p className="mt-1 text-sm font-medium text-zinc-900">{formatDateTime(session.endedAt)}</p>
-          </div>
-        </div>
-
-        {session.lastActivityAt && (
-          <p className="mt-4 text-sm text-zinc-500">
-            마지막 활동 시각: {formatDateTime(session.lastActivityAt)}
-          </p>
-        )}
-      </section>
+          )}
+        </section>
+      )}
 
       {isActiveSession && (
         <section className="mt-6 rounded-2xl border border-green-200 bg-green-50 px-5 py-5 shadow-sm">
-          <p className="text-sm font-semibold text-green-900">현재 활성 세션입니다.</p>
+          <p className="text-sm font-semibold text-green-900">
+            {session.status === 'paused' ? '현재 일시정지된 세션입니다.' : '현재 진행 중인 세션입니다.'}
+          </p>
           <p className="mt-2 text-sm leading-6 text-green-800">
-            이 상세 화면에서는 과거 결과 대신 세션 복귀가 우선입니다. 현재 진행 중인 세션으로 돌아가서 답변을 이어가세요.
+            {session.status === 'paused'
+              ? '이 상세 화면에서는 과거 결과 대신 세션 복귀가 우선입니다. 같은 질문부터 다시 이어서 진행하려면 세션으로 돌아가 재개하세요.'
+              : '이 상세 화면에서는 과거 결과 대신 세션 복귀가 우선입니다. 현재 질문은 세션 화면의 currentQuestion 기준으로 이어집니다.'}
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
@@ -223,30 +221,18 @@ export default function InterviewHistoryDetailPage() {
       )}
 
       {!isActiveSession && pendingMessage && (
-        <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-5 shadow-sm">
-          <p className="text-sm font-semibold text-amber-900">결과 준비 중</p>
-          <p className="mt-2 text-sm leading-6 text-amber-800">{pendingMessage}</p>
-          <p className="mt-2 text-sm text-amber-800">
-            v1에서는 자동 polling 없이 이 화면에서 수동으로 결과를 다시 확인합니다. 결과가 준비되면 기본 질문과 답변된 꼬리질문이 같은 결과 목록에 함께 표시됩니다.
+        <div className="mt-6">
+          <InterviewPendingResultPanel
+            message={pendingMessage}
+            onRefresh={() => void loadResultOnly()}
+            refreshing={refreshingResult}
+            backHref="/interview/history"
+            backLabel="목록으로 돌아가기"
+          />
+          <p className="mt-3 text-sm text-cyan-900">
+            {PENDING_RESULT_PANEL_COPY.actionLabel}이 성공하면 같은 화면에서 질문, 답변, 피드백이 바로 이어서 표시됩니다.
           </p>
-
-          <div className="mt-5 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => void loadResultOnly()}
-              disabled={refreshingResult}
-              className="rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {refreshingResult ? '재확인 중...' : '재확인'}
-            </button>
-            <Link
-              href="/interview/history"
-              className="rounded-full border border-zinc-300 px-4 py-2.5 text-sm font-medium text-zinc-700"
-            >
-              목록으로 돌아가기
-            </Link>
-          </div>
-        </section>
+        </div>
       )}
 
       {!isActiveSession && error && (

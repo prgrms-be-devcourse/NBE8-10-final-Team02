@@ -8,12 +8,17 @@ export const ENDPOINTS = {
   // ── 인증 (토큰 없이 접근 가능) ─────────────────────────────────────────
   authStatus: `${BASE_URL}/api/v1/auth/status`,
 
-  // ── CS / 면접 질문 목록 (공개 or 인증 필요) ──────────────────────────────
-  csQuestions:         `${BASE_URL}/api/v1/interview/cs-questions`,
-  interviewQuestions:  (setId) => `${BASE_URL}/api/v1/interview-question-sets/${setId}/questions`,
-
   // ── 사용자 ────────────────────────────────────────────────────────────
   me: `${BASE_URL}/api/v1/users/me`,
+
+  // ── 문서 ──────────────────────────────────────────────────────────────
+  documents:       `${BASE_URL}/api/v1/documents`,
+  document:        (id) => `${BASE_URL}/api/v1/documents/${id}`,
+
+  // ── GitHub ────────────────────────────────────────────────────────────
+  githubRepositories:   `${BASE_URL}/api/v1/github/repositories`,
+  analyzeRepository:    (id) => `${BASE_URL}/api/v1/github/repositories/${id}/analyze`,
+  repoSyncStatus:       (id) => `${BASE_URL}/api/v1/github/repositories/${id}/sync-status`,
 
   // ── Application (자소서) ─────────────────────────────────────────────
   applications:           `${BASE_URL}/api/v1/applications`,
@@ -21,13 +26,18 @@ export const ENDPOINTS = {
   applicationQuestions:   (id) => `${BASE_URL}/api/v1/applications/${id}/questions`,
   generateAnswers:        (id) => `${BASE_URL}/api/v1/applications/${id}/questions/generate-answers`,
 
+  // ── CS / 면접 질문 목록 ───────────────────────────────────────────────
+  csQuestions: `${BASE_URL}/api/v1/practice/questions`,
+
   // ── 면접 질문 세트 ────────────────────────────────────────────────────
-  questionSets:       `${BASE_URL}/api/v1/interview/question-sets`,
+  questionSets: `${BASE_URL}/api/v1/interview/question-sets`,
 
   // ── 면접 세션 ─────────────────────────────────────────────────────────
-  sessions:           `${BASE_URL}/api/v1/interview-sessions`,
-  session:            (id) => `${BASE_URL}/api/v1/interview-sessions/${id}`,
-  sessionAnswer:      (id) => `${BASE_URL}/api/v1/interview-sessions/${id}/answers`,
+  interviewSessions:              `${BASE_URL}/api/v1/interview/sessions`,
+  interviewSession:               (id) => `${BASE_URL}/api/v1/interview/sessions/${id}`,
+  interviewSessionAnswers:        (id) => `${BASE_URL}/api/v1/interview/sessions/${id}/answers`,
+  interviewSessionComplete:       (id) => `${BASE_URL}/api/v1/interview/sessions/${id}/complete`,
+  interviewSessionResult:         (id) => `${BASE_URL}/api/v1/interview/sessions/${id}/result`,
 
   // ── 내부 관리 (스텁 모드 전환 / 테스트 토큰 발급) ──────────────────────
   loadTestEnable:  `${BASE_URL}/internal/load-test/enable`,

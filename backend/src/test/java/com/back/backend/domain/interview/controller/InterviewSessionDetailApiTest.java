@@ -82,6 +82,12 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.status").value("paused"))
                 .andExpect(jsonPath("$.data.currentQuestion.id").value(secondQuestion.getId()))
                 .andExpect(jsonPath("$.data.currentQuestion.questionOrder").value(2))
+                .andExpect(jsonPath("$.data.transcriptEntries[0].question.id").value(firstQuestion.getId()))
+                .andExpect(jsonPath("$.data.transcriptEntries[0].question.questionOrder").value(1))
+                .andExpect(jsonPath("$.data.transcriptEntries[0].answer.answerOrder").value(1))
+                .andExpect(jsonPath("$.data.transcriptEntries[0].answer.answerText")
+                        .value("첫 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다."))
+                .andExpect(jsonPath("$.data.transcriptEntries[0].answer.isSkipped").value(false))
                 .andExpect(jsonPath("$.data.totalQuestionCount").value(3))
                 .andExpect(jsonPath("$.data.answeredQuestionCount").value(1))
                 .andExpect(jsonPath("$.data.remainingQuestionCount").value(2))
@@ -103,6 +109,7 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.status").value("in_progress"))
                 .andExpect(jsonPath("$.data.currentQuestion.id").value(firstQuestion.getId()))
                 .andExpect(jsonPath("$.data.currentQuestion.questionOrder").value(1))
+                .andExpect(jsonPath("$.data.transcriptEntries").isEmpty())
                 .andExpect(jsonPath("$.data.answeredQuestionCount").value(0))
                 .andExpect(jsonPath("$.data.remainingQuestionCount").value(3))
                 .andExpect(jsonPath("$.data.completionFollowupContext").value(nullValue()))
@@ -182,6 +189,8 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.currentQuestion.questionType").value("follow_up"))
                 .andExpect(jsonPath("$.data.currentQuestion.questionText")
                         .value("그 선택 기준을 조금 더 구체적으로 설명해주실 수 있나요?"))
+                .andExpect(jsonPath("$.data.transcriptEntries[0].question.id").value(firstQuestion.getId()))
+                .andExpect(jsonPath("$.data.transcriptEntries[0].answer.answerOrder").value(1))
                 .andExpect(jsonPath("$.data.totalQuestionCount").value(4))
                 .andExpect(jsonPath("$.data.answeredQuestionCount").value(1))
                 .andExpect(jsonPath("$.data.remainingQuestionCount").value(3))
@@ -430,6 +439,12 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.currentQuestion.questionOrder").value(4))
                 .andExpect(jsonPath("$.data.currentQuestion.questionText")
                         .value("그 선택 기준을 조금 더 구체적으로 설명해주실 수 있나요?"))
+                .andExpect(jsonPath("$.data.transcriptEntries[0].question.id").value(refreshedFirstQuestion.getId()))
+                .andExpect(jsonPath("$.data.transcriptEntries[1].question.id").value(candidateFollowupQuestion.getId()))
+                .andExpect(jsonPath("$.data.transcriptEntries[1].question.questionType").value("follow_up"))
+                .andExpect(jsonPath("$.data.transcriptEntries[1].answer.answerOrder").value(2))
+                .andExpect(jsonPath("$.data.transcriptEntries[2].question.id").value(shiftedSecondQuestion.getId()))
+                .andExpect(jsonPath("$.data.transcriptEntries[2].answer.answerOrder").value(3))
                 .andExpect(jsonPath("$.data.totalQuestionCount").value(5));
 
         entityManager.flush();
@@ -490,9 +505,48 @@ class InterviewSessionDetailApiTest extends ApiTestBase {
                 .andExpect(jsonPath("$.data.totalQuestionCount").value(3))
                 .andExpect(jsonPath("$.data.answeredQuestionCount").value(3))
                 .andExpect(jsonPath("$.data.remainingQuestionCount").value(0))
+                .andExpect(jsonPath("$.data.transcriptEntries[0].question.id").value(firstQuestion.getId()))
+                .andExpect(jsonPath("$.data.transcriptEntries[1].question.id").value(secondQuestion.getId()))
+                .andExpect(jsonPath("$.data.transcriptEntries[2].question.id").value(thirdQuestion.getId()))
                 .andExpect(jsonPath("$.data.resumeAvailable").value(false))
                 .andExpect(jsonPath("$.data.startedAt").value(startedAt.toString()))
                 .andExpect(jsonPath("$.data.endedAt").value(endedAt.toString()));
+    }
+
+    @Test
+    void getSessionDetail_includesAnsweredCompletionFollowupInTranscriptEntries() throws Exception {
+        User user = persistUser("detail-history-followup@example.com", "detail-history-followup");
+        Instant startedAt = FIXED_NOW.minus(Duration.ofMinutes(20));
+        Instant endedAt = FIXED_NOW.minus(Duration.ofMinutes(5));
+        InterviewSession session = persistTerminalSession(user, InterviewSessionStatus.COMPLETED, startedAt, endedAt);
+        InterviewSessionQuestion firstQuestion = findSessionQuestion(entityManager, session, 1);
+        InterviewSessionQuestion secondQuestion = findSessionQuestion(entityManager, session, 2);
+        InterviewSessionQuestion thirdQuestion = findSessionQuestion(entityManager, session, 3);
+        InterviewSessionQuestion completionFollowupQuestion = InterviewSessionQuestion.builder()
+                .session(session)
+                .sourceQuestion(null)
+                .parentSessionQuestion(firstQuestion)
+                .questionOrder(4)
+                .questionType(InterviewQuestionType.FOLLOW_UP)
+                .difficultyLevel(DifficultyLevel.MEDIUM)
+                .questionText("마지막 답변에서 강조한 판단 기준을 더 구체적으로 설명해주세요.")
+                .build();
+        entityManager.persist(completionFollowupQuestion);
+        entityManager.flush();
+        persistAnswer(session, firstQuestion, 1, false, "첫 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.", true);
+        persistAnswer(session, secondQuestion, 2, false, "두 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.", true);
+        persistAnswer(session, thirdQuestion, 3, false, "세 번째 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.", true);
+        persistAnswer(session, completionFollowupQuestion, 4, false, "보완 질문 답변입니다. 충분히 긴 답변으로 조건을 만족합니다.", true);
+
+        mockMvc.perform(get("/api/v1/interview/sessions/{sessionId}", session.getId())
+                        .with(authenticated(user.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentQuestion").value(nullValue()))
+                .andExpect(jsonPath("$.data.transcriptEntries[3].question.id").value(completionFollowupQuestion.getId()))
+                .andExpect(jsonPath("$.data.transcriptEntries[3].question.questionType").value("follow_up"))
+                .andExpect(jsonPath("$.data.transcriptEntries[3].answer.answerOrder").value(4))
+                .andExpect(jsonPath("$.data.transcriptEntries[3].answer.answerText")
+                        .value("보완 질문 답변입니다. 충분히 긴 답변으로 조건을 만족합니다."));
     }
 
     private RequestPostProcessor authenticated(long userId) {
