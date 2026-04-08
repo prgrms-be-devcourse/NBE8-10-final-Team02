@@ -90,7 +90,9 @@ dependencies {
 }
 
 tasks.withType<Test> {
-  useJUnitPlatform()
+  useJUnitPlatform {
+    excludeTags("manual") // Vertex AI 연동 테스트 등 로컬 전용 테스트 제외
+  }
   finalizedBy(tasks.jacocoTestReport)
 }
 
