@@ -44,6 +44,12 @@ spring:
           kakao:
             clientId: ${KAKAO_CLIENT_ID:}
 
+app:
+  ocr:
+    enabled: ${APP_OCR_ENABLED:false}
+    tesseract-data-path: ${APP_OCR_TESSDATA_PATH:}
+    language: ${APP_OCR_LANGUAGE:eng+kor}
+
 logging:
   level:
     root: info
