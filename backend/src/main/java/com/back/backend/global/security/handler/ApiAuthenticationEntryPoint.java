@@ -37,16 +37,20 @@ public class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
     ) throws IOException, ServletException {
         ErrorCode code = ErrorCode.AUTH_REQUIRED;
         String message = "로그인이 필요합니다.";
+        boolean retryable = false;
 
         if (authException instanceof AuthenticationExpiredTokenException) {
             code = ErrorCode.AUTH_EXPIRED_TOKEN;
             message = authException.getMessage();
+            retryable = true; // 만료된 토큰은 리프레시 후 재시도 가능
         } else if (authException instanceof AuthenticationInvalidTokenException) {
             code = ErrorCode.AUTH_INVALID_TOKEN;
             message = authException.getMessage();
+            retryable = true; // 토큰이 잘못된 경우(혹은 중간에 유실된 경우) 재인증 유도
         } else if (authException instanceof AuthenticationRequiredException) {
             code = ErrorCode.AUTH_REQUIRED;
             message = authException.getMessage();
+            retryable = false;
         }
 
         apiErrorResponseWriter.write(
@@ -54,7 +58,7 @@ public class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
                 HttpStatus.UNAUTHORIZED,
                 code,
                 message,
-                false,
+                retryable,
                 null
         );
     }
