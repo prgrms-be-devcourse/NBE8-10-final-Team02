@@ -2987,7 +2987,8 @@ paths:
                       retryable: true
                     meta: *id001
       description: 지원 단위의 문항들에 대해 자소서 초안을 생성한다. 문항 수는 최대 10개이며 직무 기본 템플릿을 우선 적용한다.
-        서버는 timeout, malformed JSON, schema violation에 대해 최대 2회 재시도한다.
+        서버는 timeout, malformed JSON, schema violation에 대해 최대 2회 재시도한다. retryable 실패가 반환되면 원 요청 재전송 전에
+        `GET /applications/{applicationId}/questions`로 생성 결과 저장 여부를 먼저 재확인한다.
   /interview/question-sets:
     post:
       tags:
