@@ -14,12 +14,14 @@ import com.back.backend.domain.document.entity.DocumentType;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.entity.UserStatus;
 import com.back.backend.global.exception.ErrorCode;
+import com.back.backend.global.exception.ServiceException;
 import com.back.backend.global.security.auth.JwtAuthenticationToken;
 import com.back.backend.support.ApiTestBase;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -159,6 +161,60 @@ class ApplicationAiApiTest extends ApiTestBase {
                     new GenerateAnswersRequest(true, false))))
             .andExpect(status().isUnprocessableEntity())
             .andExpect(jsonPath("$.error.code").value(ErrorCode.APPLICATION_QUESTION_REQUIRED.name()));
+    }
+
+    @Test
+    void generateAnswers_normalizesAiValidationFailureTo502() throws Exception {
+        User user = persistUser("schema@example.com", "schema-tester");
+        Application application = persistApplication(user, "형식 오류 지원서", ApplicationStatus.DRAFT);
+        persistQuestion(application, 1, "지원 동기를 작성해주세요", null,
+            ApplicationToneOption.FORMAL, ApplicationLengthOption.MEDIUM, null);
+        persistDocument(user, application, "이력서 내용입니다.");
+
+        given(aiPipeline.execute(eq(TEMPLATE_ID), anyString()))
+            .willThrow(new ServiceException(
+                ErrorCode.INTERNAL_SERVER_ERROR,
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "AI 응답 검증 실패 - maxRetries 초과",
+                true
+            ));
+
+        mockMvc.perform(post("/api/v1/applications/{applicationId}/questions/generate-answers",
+                application.getId())
+                .with(authenticated(user.getId()))
+                .contentType("application/json")
+                .content(OBJECT_MAPPER.writeValueAsString(
+                    new GenerateAnswersRequest(true, false))))
+            .andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.error.code").value(ErrorCode.SELF_INTRO_RESULT_INVALID.name()))
+            .andExpect(jsonPath("$.error.retryable").value(true));
+    }
+
+    @Test
+    void generateAnswers_preservesTimeoutContract() throws Exception {
+        User user = persistUser("timeout@example.com", "timeout-tester");
+        Application application = persistApplication(user, "타임아웃 지원서", ApplicationStatus.DRAFT);
+        persistQuestion(application, 1, "지원 동기를 작성해주세요", null,
+            ApplicationToneOption.FORMAL, ApplicationLengthOption.MEDIUM, null);
+        persistDocument(user, application, "이력서 내용입니다.");
+
+        given(aiPipeline.execute(eq(TEMPLATE_ID), anyString()))
+            .willThrow(new ServiceException(
+                ErrorCode.SELF_INTRO_GENERATION_TIMEOUT,
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "AI 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.",
+                true
+            ));
+
+        mockMvc.perform(post("/api/v1/applications/{applicationId}/questions/generate-answers",
+                application.getId())
+                .with(authenticated(user.getId()))
+                .contentType("application/json")
+                .content(OBJECT_MAPPER.writeValueAsString(
+                    new GenerateAnswersRequest(true, false))))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(jsonPath("$.error.code").value(ErrorCode.SELF_INTRO_GENERATION_TIMEOUT.name()))
+            .andExpect(jsonPath("$.error.retryable").value(true));
     }
 
     // --- 헬퍼 ---

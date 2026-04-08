@@ -169,6 +169,49 @@ describe('GeneratePage', () => {
     expect(within(successCard).getByRole('link', { name: '면접 준비로 이동' })).toBeInTheDocument();
   });
 
+  it('생성 요청은 성공했는데 후속 재조회가 실패해도 성공 상태를 유지한다', async () => {
+    getApplicationMock
+      .mockResolvedValueOnce({
+        id: 1,
+        applicationTitle: '2026 상반기 공채',
+        companyName: '네이버',
+        jobRole: '백엔드 개발자',
+        status: 'ready',
+        createdAt: '2026-04-07T00:00:00Z',
+        updatedAt: '2026-04-07T00:00:00Z',
+        applicationType: null,
+      })
+      .mockRejectedValueOnce(new Error('지원 준비 재조회 실패'));
+    getQuestionsMock
+      .mockResolvedValueOnce([buildQuestion()])
+      .mockRejectedValueOnce(new Error('문항 재조회 실패'));
+    generateAnswersMock.mockResolvedValueOnce({
+      applicationId: 1,
+      generatedCount: 1,
+      regenerate: false,
+      answers: [
+        {
+          questionId: 11,
+          questionText: '지원 동기를 설명해주세요.',
+          generatedAnswer: '생성된 답변',
+          toneOption: 'formal',
+          lengthOption: 'medium',
+        },
+      ],
+    });
+
+    render(<GeneratePage />);
+
+    await screen.findByRole('button', { name: 'AI 답변 생성' });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'AI 답변 생성' }));
+
+    const successCard = await screen.findByRole('status', { name: 'AI 답변 생성 완료 상태' });
+    expect(within(successCard).getByText('1개 문항 생성 완료 · 저장됨')).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'AI 답변 생성 오류 상태' })).not.toBeInTheDocument();
+  });
+
   it('생성 실패 시 같은 위치에서 에러 상태를 노출하고 다시 생성할 수 있다', async () => {
     generateAnswersMock.mockRejectedValueOnce(new Error('AI 생성이 일시적으로 실패했습니다.'));
 
@@ -182,5 +225,78 @@ describe('GeneratePage', () => {
     expect(await screen.findByRole('status', { name: 'AI 답변 생성 오류 상태' })).toBeInTheDocument();
     expect(screen.getByText('AI 생성이 일시적으로 실패했습니다.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'AI 답변 생성' })).toBeEnabled();
+  });
+
+  it('생성 요청이 실패해도 questions 재조회에서 저장이 확인되면 자동 성공으로 복구한다', async () => {
+    getQuestionsMock
+      .mockResolvedValueOnce([buildQuestion()])
+      .mockResolvedValueOnce([buildQuestion({ generatedAnswer: '재확인된 생성 답변' })]);
+    generateAnswersMock.mockRejectedValueOnce(new Error('오류가 발생했습니다. (500)'));
+
+    render(<GeneratePage />);
+
+    await screen.findByRole('button', { name: 'AI 답변 생성' });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'AI 답변 생성' }));
+
+    const successCard = await screen.findByRole('status', { name: 'AI 답변 생성 완료 상태' });
+    expect(within(successCard).getByText('1개 문항 생성 완료 · 저장됨')).toBeInTheDocument();
+    expect(within(successCard).getByText('응답 확인 중 오류가 있었지만 생성 결과는 저장되었습니다.')).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'AI 답변 생성 오류 상태' })).not.toBeInTheDocument();
+  });
+
+  it('생성 실패 후 재조회가 저장 완료를 증명하지 못하면 에러 상태를 유지한다', async () => {
+    getQuestionsMock
+      .mockResolvedValueOnce([buildQuestion()])
+      .mockResolvedValueOnce([buildQuestion()]);
+    generateAnswersMock.mockRejectedValueOnce(new Error('오류가 발생했습니다. (500)'));
+
+    render(<GeneratePage />);
+
+    await screen.findByRole('button', { name: 'AI 답변 생성' });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'AI 답변 생성' }));
+
+    expect(await screen.findByRole('status', { name: 'AI 답변 생성 오류 상태' })).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'AI 답변 생성 완료 상태' })).not.toBeInTheDocument();
+  });
+
+  it('재생성은 재조회에서 값 변화가 확인된 경우에만 자동 성공으로 복구한다', async () => {
+    getQuestionsMock
+      .mockResolvedValueOnce([buildQuestion({ generatedAnswer: '기존 생성 답변' })])
+      .mockResolvedValueOnce([buildQuestion({ generatedAnswer: '변경된 생성 답변' })]);
+    generateAnswersMock.mockRejectedValueOnce(new Error('오류가 발생했습니다. (500)'));
+
+    render(<GeneratePage />);
+
+    await screen.findByRole('button', { name: 'AI 답변 재생성' });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('checkbox', { name: /기존 답변 포함 전체 재생성/ }));
+    await user.click(screen.getByRole('button', { name: 'AI 답변 재생성' }));
+
+    const successCard = await screen.findByRole('status', { name: 'AI 답변 생성 완료 상태' });
+    expect(within(successCard).getByText('1개 문항 생성 완료 · 저장됨')).toBeInTheDocument();
+    expect(within(successCard).getByText('응답 확인 중 오류가 있었지만 생성 결과는 저장되었습니다.')).toBeInTheDocument();
+  });
+
+  it('재생성은 값 변화가 없으면 자동 성공으로 복구하지 않는다', async () => {
+    getQuestionsMock
+      .mockResolvedValueOnce([buildQuestion({ generatedAnswer: '기존 생성 답변' })])
+      .mockResolvedValueOnce([buildQuestion({ generatedAnswer: '기존 생성 답변' })]);
+    generateAnswersMock.mockRejectedValueOnce(new Error('오류가 발생했습니다. (500)'));
+
+    render(<GeneratePage />);
+
+    await screen.findByRole('button', { name: 'AI 답변 재생성' });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('checkbox', { name: /기존 답변 포함 전체 재생성/ }));
+    await user.click(screen.getByRole('button', { name: 'AI 답변 재생성' }));
+
+    expect(await screen.findByRole('status', { name: 'AI 답변 생성 오류 상태' })).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'AI 답변 생성 완료 상태' })).not.toBeInTheDocument();
   });
 });
