@@ -205,6 +205,21 @@ class InterviewResultGenerationServiceTest {
     }
 
     @Test
+    void generate_normalizesUnexpectedRuntimeToGenerationFailed() {
+        List<FeedbackTag> tagMaster = List.of(feedbackTag("근거 부족", FeedbackTagCategory.EVIDENCE));
+        List<InterviewAnswer> answers = List.of(answer(1, "첫 번째 질문", "첫 번째 답변"));
+
+        given(feedbackTagRepository.findAllByOrderByIdAsc()).willReturn(tagMaster);
+        given(aiPipeline.execute(eq("ai.interview.evaluate.v1"), anyString(), anyString()))
+                .willThrow(new IllegalStateException("unexpected failure"));
+
+        assertThatThrownBy(() -> interviewResultGenerationService.generate(1L, 901L, 301L, answers, "백엔드 개발자"))
+                .isInstanceOf(ServiceException.class)
+                .satisfies(exception -> assertThat(((ServiceException) exception).getErrorCode())
+                        .isEqualTo(ErrorCode.INTERVIEW_RESULT_GENERATION_FAILED));
+    }
+
+    @Test
     void generate_includesDynamicFollowupAnswerInEvaluatePayload() throws Exception {
         List<FeedbackTag> tagMaster = List.of(feedbackTag("근거 부족", FeedbackTagCategory.EVIDENCE));
         List<InterviewAnswer> answers = List.of(

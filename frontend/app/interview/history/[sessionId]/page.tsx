@@ -134,6 +134,7 @@ export default function InterviewHistoryDetailPage() {
   }
 
   const isActiveSession = ACTIVE_STATUSES.has(session.status);
+  const showSessionOverviewCard = isActiveSession || !!pendingMessage || !!error || !result;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10">
@@ -147,48 +148,50 @@ export default function InterviewHistoryDetailPage() {
         </p>
       </div>
 
-      <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs font-medium ${SESSION_STATUS_BADGE_META[session.status].tone}`}
-          >
-            {SESSION_STATUS_BADGE_META[session.status].label}
-          </span>
-          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-            세션 #{session.id}
-          </span>
-          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-            질문 세트 #{session.questionSetId}
-          </span>
-        </div>
+      {showSessionOverviewCard && (
+        <section className="rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${SESSION_STATUS_BADGE_META[session.status].tone}`}
+            >
+              {SESSION_STATUS_BADGE_META[session.status].label}
+            </span>
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+              세션 #{session.id}
+            </span>
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+              질문 세트 #{session.questionSetId}
+            </span>
+          </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl bg-zinc-50 px-4 py-4">
-            <p className="text-xs text-zinc-500">진행률</p>
-            <p className="mt-1 text-sm font-medium text-zinc-900">
-              {session.answeredQuestionCount}/{session.totalQuestionCount}
+          <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-xl bg-zinc-50 px-4 py-4">
+              <p className="text-xs text-zinc-500">진행률</p>
+              <p className="mt-1 text-sm font-medium text-zinc-900">
+                {session.answeredQuestionCount}/{session.totalQuestionCount}
+              </p>
+            </div>
+            <div className="rounded-xl bg-zinc-50 px-4 py-4">
+              <p className="text-xs text-zinc-500">남은 질문</p>
+              <p className="mt-1 text-sm font-medium text-zinc-900">{session.remainingQuestionCount}개</p>
+            </div>
+            <div className="rounded-xl bg-zinc-50 px-4 py-4">
+              <p className="text-xs text-zinc-500">시작 시각</p>
+              <p className="mt-1 text-sm font-medium text-zinc-900">{formatDateTime(session.startedAt)}</p>
+            </div>
+            <div className="rounded-xl bg-zinc-50 px-4 py-4">
+              <p className="text-xs text-zinc-500">종료 시각</p>
+              <p className="mt-1 text-sm font-medium text-zinc-900">{formatDateTime(session.endedAt)}</p>
+            </div>
+          </div>
+
+          {session.lastActivityAt && (
+            <p className="mt-4 text-sm text-zinc-500">
+              마지막 활동 시각: {formatDateTime(session.lastActivityAt)}
             </p>
-          </div>
-          <div className="rounded-xl bg-zinc-50 px-4 py-4">
-            <p className="text-xs text-zinc-500">남은 질문</p>
-            <p className="mt-1 text-sm font-medium text-zinc-900">{session.remainingQuestionCount}개</p>
-          </div>
-          <div className="rounded-xl bg-zinc-50 px-4 py-4">
-            <p className="text-xs text-zinc-500">시작 시각</p>
-            <p className="mt-1 text-sm font-medium text-zinc-900">{formatDateTime(session.startedAt)}</p>
-          </div>
-          <div className="rounded-xl bg-zinc-50 px-4 py-4">
-            <p className="text-xs text-zinc-500">종료 시각</p>
-            <p className="mt-1 text-sm font-medium text-zinc-900">{formatDateTime(session.endedAt)}</p>
-          </div>
-        </div>
-
-        {session.lastActivityAt && (
-          <p className="mt-4 text-sm text-zinc-500">
-            마지막 활동 시각: {formatDateTime(session.lastActivityAt)}
-          </p>
-        )}
-      </section>
+          )}
+        </section>
+      )}
 
       {isActiveSession && (
         <section className="mt-6 rounded-2xl border border-green-200 bg-green-50 px-5 py-5 shadow-sm">

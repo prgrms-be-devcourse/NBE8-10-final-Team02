@@ -216,8 +216,9 @@ public class InterviewSessionService {
             handleResultGenerationFailure(preparation.sessionId(), exception);
             throw exception;
         } catch (RuntimeException exception) {
-            finishResultGenerationAttempt(preparation.sessionId());
-            throw exception;
+            ServiceException generationFailure = unexpectedResultGenerationFailure();
+            handleResultGenerationFailure(preparation.sessionId(), generationFailure);
+            throw generationFailure;
         }
     }
 
@@ -466,8 +467,9 @@ public class InterviewSessionService {
             }
             throw exception;
         } catch (RuntimeException exception) {
-            finishResultGenerationAttempt(preparation.sessionId());
-            throw exception;
+            ServiceException generationFailure = unexpectedResultGenerationFailure();
+            handleResultGenerationFailure(preparation.sessionId(), generationFailure);
+            return;
         }
     }
 
@@ -520,6 +522,15 @@ public class InterviewSessionService {
     private void clearResultGenerationRetryState(long sessionId) {
         deferredResultRetryAt.remove(sessionId);
         finishResultGenerationAttempt(sessionId);
+    }
+
+    private ServiceException unexpectedResultGenerationFailure() {
+        return new ServiceException(
+                ErrorCode.INTERVIEW_RESULT_GENERATION_FAILED,
+                HttpStatus.BAD_GATEWAY,
+                "면접 결과 생성 중 오류가 발생했습니다.",
+                true
+        );
     }
 
     private void finishResultGenerationAttempt(long sessionId) {
