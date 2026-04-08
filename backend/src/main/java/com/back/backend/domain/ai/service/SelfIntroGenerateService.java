@@ -18,10 +18,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -37,6 +39,7 @@ public class SelfIntroGenerateService {
     private final ApplicationStatusService applicationStatusService;
     private final SelfIntroPayloadBuilder payloadBuilder;
     private final AiPipeline aiPipeline;
+    private final TransactionTemplate transactionTemplate;
 
     public record GenerateResult(
         List<ApplicationQuestion> allQuestions,
@@ -44,83 +47,106 @@ public class SelfIntroGenerateService {
     ) {
     }
 
-    @Transactional
     public GenerateResult generate(long userId, long applicationId, boolean regenerate) {
-        // Application 조회 + 소유권 확인
-        Application application = applicationRepository.findByIdAndUserId(applicationId, userId)
-            .orElseThrow(() -> new ServiceException(
-                ErrorCode.APPLICATION_NOT_FOUND,
-                HttpStatus.NOT_FOUND,
-                "지원 준비를 찾을 수 없습니다."
-            ));
+        // Phase 1: DB 읽기 (짧은 TX — lazy Document 접근 포함, 즉시 커밋)
+        record ReadCtx(
+            List<ApplicationQuestion> allQuestions,
+            List<ApplicationQuestion> targetQuestions,
+            String payload
+        ) {}
 
-        // ApplicationQuestion 목록 조회
-        List<ApplicationQuestion> allQuestions =
-            applicationQuestionRepository.findAllByApplicationIdOrderByQuestionOrderAsc(applicationId);
+        ReadCtx ctx = Objects.requireNonNull(transactionTemplate.execute(status -> {
+            Application application = applicationRepository.findByIdAndUserId(applicationId, userId)
+                .orElseThrow(() -> new ServiceException(
+                    ErrorCode.APPLICATION_NOT_FOUND,
+                    HttpStatus.NOT_FOUND,
+                    "지원 준비를 찾을 수 없습니다."
+                ));
 
-        if (allQuestions.isEmpty()) {
-            throw new ServiceException(
-                ErrorCode.APPLICATION_QUESTION_REQUIRED,
-                HttpStatus.UNPROCESSABLE_CONTENT,
-                "자소서 문항이 없습니다."
+            List<ApplicationQuestion> allQuestions =
+                applicationQuestionRepository.findAllByApplicationIdOrderByQuestionOrderAsc(applicationId);
+
+            if (allQuestions.isEmpty()) {
+                throw new ServiceException(
+                    ErrorCode.APPLICATION_QUESTION_REQUIRED,
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "자소서 문항이 없습니다."
+                );
+            }
+
+            List<ApplicationQuestion> targetQuestions = regenerate
+                ? allQuestions
+                : allQuestions.stream()
+                    .filter(q -> q.getGeneratedAnswer() == null)
+                    .toList();
+
+            // Lazy 연관 Document 접근 — TX 안에서 수행해야 LazyInitializationException 방지
+            List<String> documentTexts = sourceDocumentBindingRepository
+                .findAllByApplicationId(applicationId).stream()
+                .map(ApplicationSourceDocument::getDocument)
+                .filter(doc -> doc.getExtractStatus() == DocumentExtractStatus.SUCCESS)
+                .map(Document::getExtractedText)
+                .toList();
+
+            List<QuestionInput> questionInputs = targetQuestions.stream()
+                .map(q -> new QuestionInput(
+                    q.getQuestionOrder(),
+                    q.getQuestionText(),
+                    q.getToneOption() != null ? q.getToneOption().getValue() : null,
+                    q.getLengthOption() != null ? q.getLengthOption().getValue() : null,
+                    q.getEmphasisPoint()
+                ))
+                .toList();
+
+            String payload = payloadBuilder.build(
+                application.getJobRole(),
+                application.getCompanyName(),
+                questionInputs,
+                documentTexts
+            );
+
+            return new ReadCtx(allQuestions, targetQuestions, payload);
+        }));
+
+        if (ctx.targetQuestions().isEmpty()) {
+            return new GenerateResult(ctx.allQuestions(), 0);
+        }
+
+        // Phase 2: AI 호출 — 트랜잭션 없음, DB 커넥션 미점유
+        JsonNode responseNode = aiPipeline.execute(TEMPLATE_ID, ctx.payload());
+
+        // 응답 파싱 (메모리, 트랜잭션 불필요)
+        Map<Integer, String> answerByOrder = new HashMap<>();
+        for (JsonNode answer : responseNode.get("answers")) {
+            answerByOrder.put(
+                answer.get("questionOrder").asInt(),
+                answer.get("answerText").asText()
             );
         }
 
-        List<ApplicationQuestion> targetQuestions = regenerate
-            ? allQuestions
-            : allQuestions.stream()
-            .filter(q -> q.getGeneratedAnswer() == null)
-            .toList();
+        // Phase 3: DB 쓰기 (짧은 TX — managed 엔티티로 dirty checking)
+        List<ApplicationQuestion> finalQuestions = Objects.requireNonNull(
+            transactionTemplate.execute(status -> {
+                List<ApplicationQuestion> managedQuestions =
+                    applicationQuestionRepository.findAllByApplicationIdOrderByQuestionOrderAsc(applicationId);
 
-        if (targetQuestions.isEmpty()) {
-            return new GenerateResult(allQuestions, 0);
-        }
+                Map<Integer, ApplicationQuestion> questionByOrder = managedQuestions.stream()
+                    .collect(Collectors.toMap(ApplicationQuestion::getQuestionOrder, Function.identity()));
 
-        // Document.extractedText 수집 (PII 마스킹 완료 플레인텍스트)
-        List<String> documentTexts = sourceDocumentBindingRepository
-            .findAllByApplicationId(applicationId).stream()
-            .map(ApplicationSourceDocument::getDocument)
-            .filter(doc -> doc.getExtractStatus() == DocumentExtractStatus.SUCCESS)
-            .map(Document::getExtractedText)
-            .toList();
+                answerByOrder.forEach((order, text) -> {
+                    ApplicationQuestion q = questionByOrder.get(order);
+                    if (q != null) q.updateGeneratedAnswer(text);
+                });
 
-        // Payload 빌드
-        List<QuestionInput> questionInputs = targetQuestions.stream()
-            .map(q -> new QuestionInput(
-                q.getQuestionOrder(),
-                q.getQuestionText(),
-                q.getToneOption() != null ? q.getToneOption().getValue() : null,
-                q.getLengthOption() != null ? q.getLengthOption().getValue() : null,
-                q.getEmphasisPoint()
-            ))
-            .toList();
+                Application managedApp = applicationRepository
+                    .findByIdAndUserId(applicationId, userId)
+                    .orElseThrow(); // Phase 1에서 이미 검증됨
+                applicationStatusService.syncStatus(managedApp);
 
-        String payload = payloadBuilder.build(
-            application.getJobRole(),
-            application.getCompanyName(),
-            questionInputs,
-            documentTexts
+                return managedQuestions;
+            })
         );
 
-        // AI 파이프라인 실행
-        JsonNode responseNode = aiPipeline.execute(TEMPLATE_ID, payload);
-
-        // questionOrder 매칭 → updateGeneratedAnswer()
-        Map<Integer, ApplicationQuestion> questionByOrder = targetQuestions.stream()
-            .collect(Collectors.toMap(ApplicationQuestion::getQuestionOrder, Function.identity()));
-
-        JsonNode answers = responseNode.get("answers");
-        for (JsonNode answer : answers) {
-            int questionOrder = answer.get("questionOrder").asInt();
-            ApplicationQuestion question = questionByOrder.get(questionOrder);
-            if (question != null) {
-                question.updateGeneratedAnswer(answer.get("answerText").asText());
-            }
-        }
-
-        applicationStatusService.syncStatus(application);
-
-        // 전체 문항 목록 반환
-        return new GenerateResult(allQuestions, targetQuestions.size());
+        return new GenerateResult(finalQuestions, ctx.targetQuestions().size());
     }
 }
