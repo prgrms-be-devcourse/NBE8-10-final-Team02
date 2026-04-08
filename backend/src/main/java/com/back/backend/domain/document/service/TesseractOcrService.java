@@ -53,18 +53,6 @@ public class TesseractOcrService implements OcrService {
     /** PDF 페이지를 이미지로 렌더링할 해상도(DPI). 높을수록 정확도가 올라가나 속도가 느려진다. */
     private static final float RENDER_DPI = 300f;
 
-    /**
-     * OCR을 수행할 최대 페이지 수.
-     *
-     * <p>A4 300 DPI GRAY 이미지 ≈ 8.7 MB/page. 페이지 수 제한이 없으면
-     * 200페이지 스캔 PDF 한 건이 수 GB 메모리를 점유하고,
-     * {@code documentTaskExecutor}에서 동시 OCR 시 OOM으로 이어질 수 있다.</p>
-     *
-     * <p>이 한도를 초과하는 페이지는 OCR하지 않고 잘라내며,
-     * 처리한 페이지까지의 텍스트만 반환한다. (잘렸음을 INFO 로그로 남긴다)</p>
-     */
-    static final int MAX_OCR_PAGES = 30;
-
     private final String tessdataPath;
     private final String language;
 
@@ -102,20 +90,15 @@ public class TesseractOcrService implements OcrService {
         StringBuilder sb = new StringBuilder();
 
         int totalPages = document.getNumberOfPages();
-        int pagesToProcess = Math.min(totalPages, MAX_OCR_PAGES);
-        if (totalPages > MAX_OCR_PAGES) {
-            log.info("PDF page count {} exceeds OCR limit {}, processing first {} pages only",
-                totalPages, MAX_OCR_PAGES, MAX_OCR_PAGES);
-        }
 
-        for (int i = 0; i < pagesToProcess; i++) {
+        for (int i = 0; i < totalPages; i++) {
             BufferedImage image = null;
             try {
                 image = renderer.renderImageWithDPI(i, RENDER_DPI, ImageType.GRAY);
                 String pageText = tess.doOCR(image);
                 if (pageText != null) {
                     sb.append(pageText);
-                    if (i < pagesToProcess - 1) sb.append("\n");
+                    if (i < totalPages - 1) sb.append("\n");
                 }
             } catch (IOException | TesseractException e) {
                 // 한 페이지 실패가 전체 OCR 결과를 버리지 않도록 처리한 페이지까지의 텍스트는 보존한다.
@@ -123,7 +106,7 @@ public class TesseractOcrService implements OcrService {
                 log.warn("OCR 실패 (페이지 {}/{}): {} — 처리한 페이지까지의 결과만 반환",
                     i, totalPages, e.getMessage());
                 if (sb.length() == 0) {
-                    // 첫 페이지부터 실패한 경우에만 빈 결과로 처리 — caller가 EMPTY로 판단
+                    // 첫 페이지부터 실패한 경우에만 예외 — caller가 DOCUMENT_EXTRACT_EMPTY로 판단
                     throw new ServiceException(
                         ErrorCode.DOCUMENT_EXTRACT_FAILED,
                         HttpStatus.UNPROCESSABLE_ENTITY,
@@ -132,7 +115,8 @@ public class TesseractOcrService implements OcrService {
                 }
                 break;
             } finally {
-                // BufferedImage 의 backing Raster 메모리를 즉시 해제 (다음 페이지 렌더링 전)
+                // 각 페이지 렌더링 후 즉시 raster 메모리 해제.
+                // flush() 없이는 GC가 처리할 때까지 모든 페이지 이미지가 힙에 남아 있을 수 있다.
                 if (image != null) image.flush();
             }
         }
