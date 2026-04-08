@@ -1,18 +1,15 @@
 package com.back.backend.domain.document.repository;
 
-import com.back.backend.config.PGroongaTestcontainersConfiguration;
 import com.back.backend.domain.document.entity.Document;
 import com.back.backend.domain.document.entity.DocumentExtractStatus;
 import com.back.backend.domain.document.entity.DocumentType;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.entity.UserStatus;
+import com.back.backend.support.PGroongaIntegrationTest;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -23,15 +20,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * PGroonga 전문 검색(FTS) 통합 테스트.
  *
- * <p>PGroonga가 설치된 PostgreSQL 컨테이너({@link PGroongaTestcontainersConfiguration})를 사용해
+ * <p>{@link PGroongaIntegrationTest}로 PGroonga 설치 PostgreSQL 컨테이너를 자동 구성한다.
  * {@code &@~} 연산자 기반 검색이 실제로 동작하는지 검증한다.</p>
- *
- * <p>일반 {@code @IntegrationTest}와 달리 PGroonga 이미지를 사용하므로
- * Docker Hub에서 이미지를 처음 pull하는 경우 시간이 걸릴 수 있다.</p>
  */
-@SpringBootTest
-@ActiveProfiles("test")
-@Import(PGroongaTestcontainersConfiguration.class)
+@PGroongaIntegrationTest
 @Transactional
 class DocumentSearchRepositoryTest {
 
