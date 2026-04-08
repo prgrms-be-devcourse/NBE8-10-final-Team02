@@ -2,7 +2,7 @@
 owner: 플랫폼/공통 기반 + 인프라/배포/관측성
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-04-08
 linked_issue_or_pr: docs-sync-quality-ops-v7
 applies_to: logs-metrics-health
 ---
@@ -57,6 +57,7 @@ applies_to: logs-metrics-health
 - 자소서 생성 시작/성공/실패
 - 면접 질문 생성 시작/성공/실패
 - 세션 시작, pause, resume, complete
+- 실시간 transcription 연결, fallback 전환, 실패
 - 결과 생성 성공/실패
 
 ### 3.3 로그 금지 항목
@@ -66,6 +67,9 @@ applies_to: logs-metrics-health
 - OAuth code 전체 값
 - 문서 원문 전체
 - 면접 답변 원문 전체
+- raw audio
+- raw video
+- 실시간 transcript 전문
 - AI 프롬프트 전문 전체
 - 외부 API secret
 
@@ -105,6 +109,8 @@ AI 생성
 면접 세션
 - 시작/완료/자동 pause/resume 수
 - 활성 세션 수
+- 실시간 transcription 성공/실패 수
+- 텍스트 fallback 전환 수
 - 결과 생성 성공/실패 수
 
 ## 5. 헬스체크 기준
@@ -146,5 +152,6 @@ MVP 기준으로 아래 상황은 우선 알림 후보로 둔다.
 - 모든 API 응답에서 requestId 추적이 가능하다.
 - 오류 로그에서 errorCode와 외부 연동 대상을 식별할 수 있다.
 - GitHub, 문서 추출, AI 생성, 면접 세션의 성공/실패 메트릭이 분리된다.
+- 실시간 transcription 실패와 텍스트 fallback 전환을 메트릭으로 구분할 수 있다.
 - health endpoint로 애플리케이션과 핵심 의존성 상태를 구분할 수 있다.
 - 민감정보가 로그에 그대로 남지 않는다.

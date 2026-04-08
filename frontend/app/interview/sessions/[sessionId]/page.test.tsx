@@ -12,7 +12,6 @@ import {
 } from '@/api/interview';
 import type {
   CompletionFollowupContext,
-  InterviewQuestionType,
   InterviewSessionCurrentQuestion,
   InterviewSessionDetail,
   InterviewSessionTranscriptEntry,
@@ -57,6 +56,98 @@ const completeSessionMock = vi.mocked(completeSession);
 const pauseSessionMock = vi.mocked(pauseSession);
 const resumeSessionMock = vi.mocked(resumeSession);
 const scrollIntoViewMock = vi.fn();
+const getUserMediaMock = vi.fn();
+
+interface MockSpeechRecognitionResultEntry {
+  transcript: string;
+  isFinal: boolean;
+}
+
+class MockSpeechRecognition {
+  static instances: MockSpeechRecognition[] = [];
+
+  continuous = false;
+  interimResults = false;
+  lang = '';
+  maxAlternatives = 1;
+  onstart: (() => void) | null = null;
+  onresult: ((event: { results: ArrayLike<{ isFinal: boolean; length: number; 0: { transcript: string } }> }) => void) | null = null;
+  onerror: ((event: { error?: string }) => void) | null = null;
+  onend: (() => void) | null = null;
+
+  constructor() {
+    MockSpeechRecognition.instances.push(this);
+  }
+
+  start() {
+    this.onstart?.();
+  }
+
+  stop() {
+    this.onend?.();
+  }
+
+  abort() {
+    this.onend?.();
+  }
+
+  emitResult(entries: MockSpeechRecognitionResultEntry[]) {
+    const results = entries.map((entry) => ({
+      0: { transcript: entry.transcript },
+      length: 1,
+      isFinal: entry.isFinal,
+    }));
+
+    this.onresult?.({ results });
+  }
+
+  emitError(error?: string) {
+    this.onerror?.({ error });
+  }
+}
+
+function setUserAgent(value: string) {
+  Object.defineProperty(window.navigator, 'userAgent', {
+    configurable: true,
+    value,
+  });
+}
+
+function installSupportedVoiceBrowser() {
+  MockSpeechRecognition.instances = [];
+  setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36');
+  Object.defineProperty(window.navigator, 'mediaDevices', {
+    configurable: true,
+    value: {
+      getUserMedia: getUserMediaMock,
+    },
+  });
+  Object.defineProperty(window, 'webkitSpeechRecognition', {
+    configurable: true,
+    value: MockSpeechRecognition,
+  });
+  Object.defineProperty(window, 'SpeechRecognition', {
+    configurable: true,
+    value: undefined,
+  });
+}
+
+function installUnsupportedVoiceBrowser() {
+  MockSpeechRecognition.instances = [];
+  setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7; rv:137.0) Gecko/20100101 Firefox/137.0');
+  Object.defineProperty(window.navigator, 'mediaDevices', {
+    configurable: true,
+    value: undefined,
+  });
+  Object.defineProperty(window, 'webkitSpeechRecognition', {
+    configurable: true,
+    value: undefined,
+  });
+  Object.defineProperty(window, 'SpeechRecognition', {
+    configurable: true,
+    value: undefined,
+  });
+}
 
 function createCurrentQuestion(
   overrides?: Partial<InterviewSessionCurrentQuestion>,
@@ -160,11 +251,12 @@ function createIncompleteError() {
 
 async function renderPage() {
   render(<InterviewSessionPage />);
-  await screen.findByText('텍스트 모의 면접');
+  await screen.findByText('실시간 음성 모의 면접');
 }
 
 describe('InterviewSessionPage', () => {
   beforeEach(() => {
+    installUnsupportedVoiceBrowser();
     paramsMock.mockReturnValue({ sessionId: '1' });
     pushMock.mockReset();
     getSessionDetailMock.mockReset();
@@ -172,6 +264,7 @@ describe('InterviewSessionPage', () => {
     completeSessionMock.mockReset();
     pauseSessionMock.mockReset();
     resumeSessionMock.mockReset();
+    getUserMediaMock.mockReset();
     scrollIntoViewMock.mockReset();
     window.sessionStorage.clear();
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
@@ -336,7 +429,10 @@ describe('InterviewSessionPage', () => {
     await renderPage();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: '이전 문맥 펼치기' }));
+    const expandButton = screen.queryByRole('button', { name: '이전 문맥 펼치기' });
+    if (expandButton) {
+      await user.click(expandButton);
+    }
 
     const transcriptPanel = screen.getByText('이전 질문 기록').closest('div[class*="resize-y"]');
     expect(transcriptPanel).toBeInTheDocument();
@@ -354,6 +450,137 @@ describe('InterviewSessionPage', () => {
     expect(screen.queryByText('이전 문맥')).not.toBeInTheDocument();
     expect(screen.getByText('현재 질문')).toBeInTheDocument();
     expect(screen.getAllByText('마지막 일반 질문입니다.')).toHaveLength(1);
+  });
+
+  it('지원 브라우저에서는 마이크 상태 배너와 음성 입력 시작 버튼을 보여준다', async () => {
+    installSupportedVoiceBrowser();
+    getUserMediaMock.mockResolvedValue({
+      getTracks: () => [{ stop: vi.fn() }],
+    });
+    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+
+    await renderPage();
+
+    await waitFor(() => {
+      expect(getUserMediaMock).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('음성 입력 가능')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '음성 입력 시작' })).toBeEnabled();
+    });
+    expect(
+      screen.getByText('시작 후 답변하고, 중지한 뒤 내용을 확인하세요.'),
+    ).toBeInTheDocument();
+  });
+
+  it('미지원 브라우저에서는 음성 UI를 fallback 안내로만 보여주고 textarea 입력을 유지한다', async () => {
+    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+
+    await renderPage();
+
+    expect(screen.getByText('텍스트 입력')).toBeInTheDocument();
+    expect(
+      screen.getByText('Chrome, Edge 등 일부 브라우저에서만 음성 입력을 지원합니다. 현재는 텍스트 입력을 사용해주세요.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toBeEnabled();
+    expect(screen.getByRole('button', { name: '음성 입력 시작' })).toBeDisabled();
+  });
+
+  it('마이크 권한이 거부되면 같은 세션에서 텍스트 fallback과 권한 재요청 버튼을 유지한다', async () => {
+    installSupportedVoiceBrowser();
+    getUserMediaMock.mockRejectedValue(new DOMException('denied', 'NotAllowedError'));
+    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+
+    await renderPage();
+
+    await waitFor(() => {
+      expect(getUserMediaMock).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('권한 필요')).toBeInTheDocument();
+    });
+    expect(screen.getByText('마이크 권한을 켜주세요. 권한을 허용하면 음성 입력을 사용할 수 있습니다.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '마이크 권한 다시 요청' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toBeEnabled();
+  });
+
+  it('interim transcript는 별도 패널에만 보이고 최종 transcript는 수정 후 기존 answerText payload로 제출한다', async () => {
+    installSupportedVoiceBrowser();
+    getUserMediaMock.mockResolvedValue({
+      getTracks: () => [{ stop: vi.fn() }],
+    });
+    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+    submitSessionAnswerMock.mockResolvedValueOnce({
+      sessionId: 1,
+      questionId: 101,
+      answerOrder: 8,
+      isSkipped: false,
+      submittedAt: '2026-04-07T10:10:00Z',
+    });
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        currentQuestion: createCurrentQuestion({
+          id: 102,
+          questionOrder: 9,
+          questionText: '다음 질문으로 넘어왔습니다. 이전 음성 transcript는 남지 않아야 합니다.',
+        }),
+        totalQuestionCount: 9,
+        answeredQuestionCount: 8,
+        remainingQuestionCount: 1,
+      }),
+    );
+
+    await renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '음성 입력 시작' })).toBeEnabled();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '음성 입력 시작' }));
+
+    const recognition = MockSpeechRecognition.instances.at(-1);
+    expect(recognition).toBeDefined();
+
+    recognition?.emitResult([
+      {
+        transcript: '이 interim transcript는 별도 패널에만 보여야 하고 textarea에 바로 반영되면 안 됩니다.',
+        isFinal: false,
+      },
+    ]);
+
+    await waitFor(() => {
+      expect(screen.getByText('실시간 interim transcript')).toBeInTheDocument();
+      expect(
+        screen.getByText('이 interim transcript는 별도 패널에만 보여야 하고 textarea에 바로 반영되면 안 됩니다.'),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole('textbox')).toHaveValue('');
+
+    recognition?.emitResult([
+      {
+        transcript: '이 최종 transcript는 입력란에 반영된 뒤 제출 전에 사용자가 문장을 조금 더 다듬을 수 있어야 합니다.',
+        isFinal: true,
+      },
+    ]);
+    await user.click(screen.getByRole('button', { name: '음성 입력 중지' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).toHaveValue(
+        '이 최종 transcript는 입력란에 반영된 뒤 제출 전에 사용자가 문장을 조금 더 다듬을 수 있어야 합니다.',
+      );
+    });
+
+    await user.type(screen.getByRole('textbox'), ' 여기에 마지막 수동 보완 문장을 덧붙입니다.');
+    await user.click(screen.getByRole('button', { name: '제출' }));
+
+    await screen.findByText('다음 질문으로 넘어왔습니다. 이전 음성 transcript는 남지 않아야 합니다.');
+
+    expect(submitSessionAnswerMock).toHaveBeenCalledWith(1, {
+      questionId: 101,
+      answerOrder: 8,
+      isSkipped: false,
+      answerText: '이 최종 transcript는 입력란에 반영된 뒤 제출 전에 사용자가 문장을 조금 더 다듬을 수 있어야 합니다. 여기에 마지막 수동 보완 문장을 덧붙입니다.',
+    });
+    expect(
+      screen.queryByText('이 interim transcript는 별도 패널에만 보여야 하고 textarea에 바로 반영되면 안 됩니다.'),
+    ).not.toBeInTheDocument();
   });
 
   it('일반 답변 제출 후 다음 기본 질문으로 넘어가면 입력창으로 다시 포커스한다', async () => {

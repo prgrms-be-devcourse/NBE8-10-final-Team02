@@ -21,6 +21,7 @@ import {
   getSessionStatusSummary,
   SESSION_STATUS_BADGE_META,
 } from '@/lib/interview-status-ui';
+import { useBrowserSpeechRecognition } from '@/hooks/useBrowserSpeechRecognition';
 import type {
   CompletionFollowupAnswerSummary,
   InterviewQuestionType,
@@ -85,6 +86,9 @@ interface PendingQuestionFocusRequest {
   previousQuestionId: number | null;
   previousCompletionMode: boolean;
 }
+
+type MicrophonePermissionState = 'idle' | 'requesting' | 'granted' | 'denied' | 'unsupported';
+type AnswerInputSource = 'typed' | 'voice' | 'mixed';
 
 function formatDateTime(value: string | null) {
   if (!value) {
@@ -330,21 +334,53 @@ function getTranscriptMessages(messages: ChatMessage[], currentQuestionId: numbe
   );
 }
 
+function mergeVoiceTranscript(currentText: string, nextTranscript: string) {
+  const normalizedTranscript = nextTranscript.trim();
+  if (!normalizedTranscript) {
+    return currentText;
+  }
+
+  const normalizedCurrent = currentText.trim();
+  if (!normalizedCurrent) {
+    return normalizedTranscript;
+  }
+
+  if (normalizedCurrent.endsWith(normalizedTranscript)) {
+    return currentText;
+  }
+
+  return `${normalizedCurrent} ${normalizedTranscript}`.trim();
+}
+
 export default function InterviewSessionPage() {
   const params = useParams();
   const router = useRouter();
   const sessionId = Number(params.sessionId);
+  const {
+    browserSupport,
+    supportMessage,
+    isListening,
+    finalTranscript,
+    interimTranscript,
+    errorMessage: speechRecognitionErrorMessage,
+    startListening,
+    stopListening,
+    cancelListening,
+    resetTranscript,
+  } = useBrowserSpeechRecognition();
   const skipNextDraftPersistRef = useRef(false);
   const transcriptInitializedRef = useRef(false);
   const answerSectionRef = useRef<HTMLDivElement | null>(null);
   const answerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingQuestionFocusRef = useRef<PendingQuestionFocusRequest | null>(null);
+  const committedVoiceTranscriptRef = useRef<string | null>(null);
 
   const [session, setSession] = useState<InterviewSessionDetail | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredMessages(sessionId));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [answerText, setAnswerText] = useState('');
+  const [answerInputSource, setAnswerInputSource] = useState<AnswerInputSource | null>(null);
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submittingMode, setSubmittingMode] = useState<'answer' | 'skip' | null>(null);
@@ -356,6 +392,9 @@ export default function InterviewSessionPage() {
   const [needsManualCompleteAfterCompletionAnswer, setNeedsManualCompleteAfterCompletionAnswer] =
     useState(false);
   const [justResumed, setJustResumed] = useState(false);
+  const [microphonePermission, setMicrophonePermission] = useState<MicrophonePermissionState>('idle');
+  const [voiceRuntimeError, setVoiceRuntimeError] = useState<string | null>(null);
+  const [voiceCaptureStatusMessage, setVoiceCaptureStatusMessage] = useState<string | null>(null);
   const currentQuestionId = session?.currentQuestion?.id ?? null;
   const completionFollowupContext = session?.completionFollowupContext ?? null;
   const isCompletionFollowupMode = !!completionFollowupContext;
@@ -373,6 +412,7 @@ export default function InterviewSessionPage() {
   useEffect(() => {
     transcriptInitializedRef.current = false;
     setTranscriptCollapsed(false);
+    committedVoiceTranscriptRef.current = null;
   }, [sessionId]);
 
   useEffect(() => {
@@ -389,6 +429,7 @@ export default function InterviewSessionPage() {
     if (!currentQuestionId) {
       writeStoredDraft(sessionId, null);
       setAnswerText('');
+      setAnswerInputSource(null);
       setDraftSavedAt(null);
       return;
     }
@@ -399,11 +440,13 @@ export default function InterviewSessionPage() {
         writeStoredDraft(sessionId, null);
       }
       setAnswerText('');
+      setAnswerInputSource(null);
       setDraftSavedAt(null);
       return;
     }
 
     setAnswerText(storedDraft.text);
+    setAnswerInputSource(storedDraft.text.trim().length > 0 ? 'typed' : null);
     setDraftSavedAt(storedDraft.savedAt);
   }, [currentQuestionId, sessionId]);
 
@@ -457,6 +500,7 @@ export default function InterviewSessionPage() {
       setMessages((previousMessages) => mergeMessagesWithSessionDetail(previousMessages, data));
       if (options?.resetAnswerText) {
         setAnswerText('');
+        setAnswerInputSource(null);
       }
       return data;
     } catch (err) {
@@ -485,6 +529,144 @@ export default function InterviewSessionPage() {
     setTranscriptCollapsed(hasInitialTranscriptHistory);
     transcriptInitializedRef.current = true;
   }, [session, sessionId]);
+
+  const stopVoiceCaptureForBoundary = useCallback((options?: { clearMessages?: boolean }) => {
+    cancelListening();
+    committedVoiceTranscriptRef.current = null;
+    if (options?.clearMessages) {
+      setVoiceRuntimeError(null);
+      setVoiceCaptureStatusMessage(null);
+    }
+  }, [cancelListening]);
+
+  useEffect(() => {
+    if (browserSupport === 'supported') {
+      setMicrophonePermission((current) => (current === 'unsupported' ? 'idle' : current));
+      return;
+    }
+
+    setMicrophonePermission('unsupported');
+  }, [browserSupport]);
+
+  const requestMicrophonePermission = useCallback(async () => {
+    if (browserSupport !== 'supported') {
+      setMicrophonePermission('unsupported');
+      return false;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMicrophonePermission('denied');
+      setVoiceRuntimeError('마이크 권한을 확인할 수 없어 텍스트 입력으로 계속 진행합니다.');
+      return false;
+    }
+
+    setMicrophonePermission('requesting');
+    setVoiceRuntimeError(null);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setMicrophonePermission('granted');
+      return true;
+    } catch (permissionError) {
+      setMicrophonePermission('denied');
+      if (permissionError instanceof DOMException && permissionError.name === 'NotFoundError') {
+        setVoiceRuntimeError('사용 가능한 마이크를 찾지 못했습니다. 텍스트 입력으로 계속 진행해주세요.');
+      } else {
+        setVoiceRuntimeError('마이크 권한을 사용할 수 없어 텍스트 입력으로 계속 진행합니다.');
+      }
+      return false;
+    }
+  }, [browserSupport]);
+
+  useEffect(() => {
+    if (!session || browserSupport !== 'supported' || microphonePermission !== 'idle') {
+      return;
+    }
+
+    void requestMicrophonePermission();
+  }, [browserSupport, microphonePermission, requestMicrophonePermission, session]);
+
+  useEffect(() => {
+    if (!speechRecognitionErrorMessage) {
+      return;
+    }
+
+    setVoiceRuntimeError(speechRecognitionErrorMessage);
+    setVoiceCaptureStatusMessage(null);
+  }, [speechRecognitionErrorMessage]);
+
+  useEffect(() => {
+    if (isListening) {
+      return;
+    }
+
+    const normalizedTranscript = finalTranscript.trim();
+    if (!normalizedTranscript || committedVoiceTranscriptRef.current === normalizedTranscript) {
+      return;
+    }
+
+    committedVoiceTranscriptRef.current = normalizedTranscript;
+    setAnswerText((previousText) => mergeVoiceTranscript(previousText, normalizedTranscript));
+    setAnswerInputSource((current) => {
+      if (current === 'typed' || current === 'mixed') {
+        return 'mixed';
+      }
+
+      return 'voice';
+    });
+    setVoiceRuntimeError(null);
+    setVoiceCaptureStatusMessage('음성 transcript가 답변 입력란에 반영되었습니다. 제출 전에 문장을 다듬어주세요.');
+    resetTranscript();
+  }, [finalTranscript, isListening, resetTranscript]);
+
+  useEffect(() => {
+    stopVoiceCaptureForBoundary({ clearMessages: true });
+  }, [currentQuestionId, sessionId, stopVoiceCaptureForBoundary]);
+
+  const handleAnswerTextChange = useCallback((nextText: string) => {
+    setAnswerText(nextText);
+    setAnswerInputSource((current) => {
+      if (nextText.trim().length === 0) {
+        return null;
+      }
+
+      if (current === 'voice' || current === 'mixed') {
+        return 'mixed';
+      }
+
+      return 'typed';
+    });
+  }, []);
+
+  const handleStartVoiceCapture = useCallback(async () => {
+    if (!session?.currentQuestion || session.status !== 'in_progress') {
+      return;
+    }
+
+    let permissionGranted = microphonePermission === 'granted';
+    if (!permissionGranted) {
+      permissionGranted = await requestMicrophonePermission();
+    }
+
+    if (!permissionGranted) {
+      return;
+    }
+
+    committedVoiceTranscriptRef.current = null;
+    setVoiceRuntimeError(null);
+    setVoiceCaptureStatusMessage(null);
+    startListening();
+  }, [microphonePermission, requestMicrophonePermission, session, startListening]);
+
+  const handleStopVoiceCapture = useCallback(() => {
+    if (!isListening) {
+      return;
+    }
+
+    setVoiceCaptureStatusMessage('음성 입력을 정리 중입니다. transcript가 입력란에 반영되면 문장을 확인해주세요.');
+    stopListening();
+  }, [isListening, stopListening]);
 
   const recoverSessionForCompleteFallback = useCallback(async () => {
     if (!Number.isFinite(sessionId)) {
@@ -529,10 +711,12 @@ export default function InterviewSessionPage() {
     return null;
   }
 
-  async function attemptSessionComplete(options?: { autoTriggered?: boolean }) {
+  async function attemptSessionComplete() {
     if (!session) {
       return;
     }
+
+    stopVoiceCaptureForBoundary({ clearMessages: true });
 
     const moveToResultPage = () => {
       pendingQuestionFocusRef.current = null;
@@ -600,6 +784,11 @@ export default function InterviewSessionPage() {
       return;
     }
 
+    if (isListening) {
+      setSubmitError('음성 입력을 먼저 중지하고 transcript를 확인해주세요.');
+      return;
+    }
+
     if (!isSkipped) {
       const trimmed = answerText.trim();
       if (trimmed.length < MIN_ANSWER_LENGTH) {
@@ -633,6 +822,8 @@ export default function InterviewSessionPage() {
     setTransitionError(null);
     setCompleteError(null);
     setNeedsManualCompleteAfterCompletionAnswer(false);
+    setVoiceRuntimeError(null);
+    setVoiceCaptureStatusMessage(null);
     setMessages((previousMessages) => [...previousMessages, pendingMessage]);
 
     try {
@@ -671,7 +862,7 @@ export default function InterviewSessionPage() {
           refreshedSession: refreshed,
         })
       ) {
-        await attemptSessionComplete({ autoTriggered: true });
+        await attemptSessionComplete();
         return;
       }
 
@@ -716,6 +907,8 @@ export default function InterviewSessionPage() {
       return;
     }
 
+    stopVoiceCaptureForBoundary({ clearMessages: true });
+
     setTransitionMode(action);
     setTransitionError(null);
     setSubmitError(null);
@@ -752,7 +945,8 @@ export default function InterviewSessionPage() {
   }
 
   async function handleCompleteSession() {
-    await attemptSessionComplete({ autoTriggered: false });
+    stopVoiceCaptureForBoundary({ clearMessages: true });
+    await attemptSessionComplete();
   }
 
   const answerLength = answerText.trim().length;
@@ -773,14 +967,26 @@ export default function InterviewSessionPage() {
         : draftSavedAt
           ? `브라우저 임시 저장됨 · ${formatTime(draftSavedAt)}`
           : '브라우저 임시 저장 중';
+  const answerInputSourceLabel =
+    answerInputSource === 'voice'
+      ? '음성 transcript 반영'
+      : answerInputSource === 'mixed'
+        ? '음성 transcript + 수동 수정'
+        : answerInputSource === 'typed'
+          ? '직접 입력'
+          : '입력 대기';
   const canSubmitAnswer =
     session?.status === 'in_progress' &&
     !!session.currentQuestion &&
     answerLength >= MIN_ANSWER_LENGTH &&
     answerLength <= MAX_ANSWER_LENGTH &&
-    !actionBusy;
+    !actionBusy &&
+    !isListening;
   const canSkip =
-    session?.status === 'in_progress' && !!session.currentQuestion && !actionBusy;
+    session?.status === 'in_progress'
+    && !!session.currentQuestion
+    && !actionBusy
+    && !isListening;
   const canPause = session?.status === 'in_progress' && !actionBusy;
   const canResume = session?.status === 'paused' && !actionBusy;
   const canComplete =
@@ -806,7 +1012,7 @@ export default function InterviewSessionPage() {
     ? '이 질문은 이전 답변 전체를 바탕으로 AI가 추가 확인이 필요하다고 판단한 보완 질문입니다.'
     : session?.currentQuestion?.questionType === 'follow_up'
       ? '직전 답변을 더 구체화해 설명하는 꼬리 질문입니다.'
-      : '지금 이 질문에 대한 답변을 작성하면 다음 질문은 서버의 currentQuestion 기준으로 이어집니다.';
+      : '지금 이 질문에 대한 답변을 작성하면 다음 질문은 서버의 currentQuestion 기준으로 이어집니다. 음성 transcript를 사용하더라도 제출 전 textarea를 최종 기준으로 확인합니다.';
   const completeButtonDescription = needsManualCompleteAfterCompletionAnswer
     ? '보완 질문 답변이 끝났습니다. 종료 버튼을 다시 눌러 결과를 생성합니다.'
     : isCompletionFollowupMode
@@ -814,6 +1020,35 @@ export default function InterviewSessionPage() {
     : session?.status === 'paused'
     ? '같은 세션을 재개하거나, 답변이 모두 끝났다면 종료를 진행할 수 있습니다.'
     : '필요하면 잠시 일시정지한 뒤 다시 이어가거나, 답변이 모두 끝났다면 종료를 진행할 수 있습니다.';
+  const voiceSectionBadge = isListening
+    ? { label: '음성 입력 중', tone: 'bg-emerald-50 text-emerald-700' }
+    : microphonePermission === 'granted'
+      ? { label: '음성 입력 가능', tone: 'bg-blue-50 text-blue-700' }
+      : microphonePermission === 'requesting'
+        ? { label: '권한 확인 중', tone: 'bg-amber-50 text-amber-700' }
+        : microphonePermission === 'denied'
+          ? { label: '권한 필요', tone: 'bg-amber-50 text-amber-700' }
+          : { label: '텍스트 입력', tone: 'bg-zinc-100 text-zinc-600' };
+  const voiceSupportDescription =
+    browserSupport === 'unsupported'
+      ? supportMessage
+      : microphonePermission === 'denied'
+        ? '마이크 권한을 켜주세요. 권한을 허용하면 음성 입력을 사용할 수 있습니다.'
+        : microphonePermission === 'requesting'
+          ? '마이크 권한을 확인하고 있습니다.'
+          : microphonePermission === 'granted'
+            ? '시작 후 답변하고, 중지한 뒤 내용을 확인하세요.'
+            : '음성 입력 준비 상태를 확인 중입니다.';
+  const canStartVoiceCapture =
+    browserSupport === 'supported'
+    && microphonePermission === 'granted'
+    && session?.status === 'in_progress'
+    && !!session.currentQuestion
+    && !actionBusy
+    && !isListening;
+  const canRetryMicrophonePermission =
+    browserSupport === 'supported'
+    && microphonePermission === 'denied';
 
   useEffect(() => {
     const pendingFocus = pendingQuestionFocusRef.current;
@@ -876,9 +1111,9 @@ export default function InterviewSessionPage() {
         >
           ← 질문 세트 상세로
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-zinc-900">텍스트 모의 면접</h1>
+        <h1 className="mt-2 text-2xl font-semibold text-zinc-900">실시간 음성 모의 면접</h1>
         <p className="mt-2 text-sm text-zinc-500">
-          다음 질문은 항상 서버가 내려주는 currentQuestion 기준으로 이어집니다. 마지막 일반 답변 제출 뒤에는 세션 상세 재조회 결과에 따라 자동 종료 검토 또는 보완 질문 흐름으로 이어집니다.
+          다음 질문은 항상 서버가 내려주는 currentQuestion 기준으로 이어집니다. 음성 transcript는 보조 입력 계층으로만 쓰고, 제출은 최종 textarea 기준으로 처리합니다.
         </p>
       </div>
 
@@ -1163,6 +1398,9 @@ export default function InterviewSessionPage() {
                     <p className="mt-1 text-xs text-zinc-500">
                       자동 저장 상태: {draftStatusText}
                     </p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      현재 입력 기준: {answerInputSourceLabel}
+                    </p>
                   </div>
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -1177,17 +1415,104 @@ export default function InterviewSessionPage() {
                   </span>
                 </div>
 
+                <div className="mt-4 rounded-3xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-zinc-900">음성 입력</p>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Chrome, Edge 등 일부 브라우저에서 음성 입력을 지원합니다.
+                      </p>
+                    </div>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${voiceSectionBadge.tone}`}>
+                      {voiceSectionBadge.label}
+                    </span>
+                  </div>
+
+                  <p className="mt-3 text-xs leading-5 text-zinc-600">
+                    {voiceSupportDescription}
+                  </p>
+
+                  {voiceRuntimeError && (
+                    <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      {voiceRuntimeError}
+                    </div>
+                  )}
+
+                  {voiceCaptureStatusMessage && (
+                    <div className="mt-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                      {voiceCaptureStatusMessage}
+                    </div>
+                  )}
+
+                  {(isListening
+                    || finalTranscript.length > 0
+                    || interimTranscript.length > 0) && (
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                          확정 transcript
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-900">
+                          {finalTranscript || '아직 확정된 음성 transcript가 없습니다.'}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-700">
+                          실시간 interim transcript
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-emerald-900">
+                          {interimTranscript || '음성을 듣는 동안 여기에 실시간 transcript가 표시됩니다.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleStartVoiceCapture()}
+                      disabled={!canStartVoiceCapture}
+                      className="rounded-full border border-blue-300 bg-white px-4 py-2.5 text-sm font-medium text-blue-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {microphonePermission === 'requesting'
+                        ? '권한 확인 중...'
+                        : isListening
+                          ? '음성 입력 중...'
+                          : '음성 입력 시작'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleStopVoiceCapture()}
+                      disabled={!isListening}
+                      className="rounded-full border border-emerald-300 bg-white px-4 py-2.5 text-sm font-medium text-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      음성 입력 중지
+                    </button>
+                    {canRetryMicrophonePermission && (
+                      <button
+                        type="button"
+                        onClick={() => void requestMicrophonePermission()}
+                        className="rounded-full border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700"
+                      >
+                        마이크 권한 다시 요청
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 <textarea
                   ref={answerTextareaRef}
                   rows={9}
                   value={answerText}
-                  onChange={(event) => setAnswerText(event.target.value)}
+                  onChange={(event) => handleAnswerTextChange(event.target.value)}
                   disabled={session.status !== 'in_progress' || !session.currentQuestion || actionBusy}
                   placeholder={
                     session.status === 'paused'
                       ? '일시정지된 세션은 재개 후 답변을 제출할 수 있습니다.'
                       : session.status !== 'in_progress'
                         ? '현재 상태에서는 답변을 제출할 수 없습니다.'
+                        : microphonePermission === 'granted'
+                          ? '음성 transcript가 반영되면 여기서 최종 문장을 다듬거나 직접 입력으로 이어서 작성할 수 있습니다.'
                         : session.currentQuestion?.questionType === 'follow_up'
                           ? '방금 답변을 더 구체화해서 이어서 적어보세요.'
                           : '면접 답변을 입력하세요.'
