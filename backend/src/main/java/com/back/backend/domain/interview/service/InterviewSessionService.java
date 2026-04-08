@@ -142,17 +142,23 @@ public class InterviewSessionService {
         InterviewSession session = getOwnedSession(userId, sessionId);
         normalizeAutoPauseIfExpired(session);
 
+        List<InterviewAnswer> answeredAnswers = interviewAnswerRepository
+                .findAllWithSessionQuestionBySessionIdOrderByAnswerOrderAsc(session.getId());
         long totalQuestionCount = interviewSessionQuestionRepository.countBySessionId(session.getId());
-        long answeredQuestionCount = interviewAnswerRepository.countBySessionId(session.getId());
+        long answeredQuestionCount = answeredAnswers.size();
         long remainingQuestionCount = Math.max(totalQuestionCount - answeredQuestionCount, 0);
         InterviewSessionQuestion currentQuestion = resolveCurrentQuestion(session, answeredQuestionCount, remainingQuestionCount);
         InterviewSessionCompletionFollowupContextResponse completionFollowupContext =
                 buildCompletionFollowupContext(session, currentQuestion);
+        var transcriptEntries = answeredAnswers.stream()
+                .map(interviewResponseMapper::toInterviewSessionTranscriptEntryResponse)
+                .toList();
 
         return interviewResponseMapper.toInterviewSessionDetailResponse(
                 session,
                 currentQuestion,
                 completionFollowupContext,
+                transcriptEntries,
                 totalQuestionCount,
                 answeredQuestionCount,
                 remainingQuestionCount,

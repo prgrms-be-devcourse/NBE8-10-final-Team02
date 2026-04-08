@@ -78,11 +78,13 @@ export interface CompletionFollowupQuestionSummary {
   questionText: string;
 }
 
-export interface CompletionFollowupAnswerSummary {
+export interface InterviewSessionAnswerSummary {
   answerOrder: number;
   answerText: string | null;
   isSkipped: boolean;
 }
+
+export type CompletionFollowupAnswerSummary = InterviewSessionAnswerSummary;
 
 export interface CompletionFollowupContext {
   rootQuestion: CompletionFollowupQuestionSummary;
@@ -93,12 +95,18 @@ export interface CompletionFollowupContext {
   parentQuestionOrder: number;
 }
 
+export interface InterviewSessionTranscriptEntry {
+  question: InterviewSessionCurrentQuestion;
+  answer: InterviewSessionAnswerSummary;
+}
+
 export interface InterviewSessionDetail {
   id: number;
   questionSetId: number;
   status: InterviewSessionStatus;
   currentQuestion: InterviewSessionCurrentQuestion | null;
   completionFollowupContext: CompletionFollowupContext | null;
+  transcriptEntries: InterviewSessionTranscriptEntry[];
   totalQuestionCount: number;
   answeredQuestionCount: number;
   remainingQuestionCount: number;

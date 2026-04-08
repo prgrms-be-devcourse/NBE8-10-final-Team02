@@ -15,6 +15,7 @@ import type {
   InterviewQuestionType,
   InterviewSessionCurrentQuestion,
   InterviewSessionDetail,
+  InterviewSessionTranscriptEntry,
 } from '@/types/interview';
 import InterviewSessionPage from './page';
 
@@ -107,6 +108,30 @@ function createCompletionContext(): CompletionFollowupContext {
   };
 }
 
+function createTranscriptEntry(
+  overrides?: {
+    question?: Partial<InterviewSessionTranscriptEntry['question']>;
+    answer?: Partial<InterviewSessionTranscriptEntry['answer']>;
+  },
+): InterviewSessionTranscriptEntry {
+  return {
+    question: createCurrentQuestion({
+      id: 77,
+      questionOrder: 7,
+      questionType: 'behavioral',
+      difficultyLevel: 'medium',
+      questionText: '이전 질문 기록',
+      ...overrides?.question,
+    }),
+    answer: {
+      answerOrder: 7,
+      answerText: '이전 답변 기록',
+      isSkipped: false,
+      ...overrides?.answer,
+    },
+  };
+}
+
 function createSessionDetail(overrides?: Partial<InterviewSessionDetail>): InterviewSessionDetail {
   return {
     id: 1,
@@ -114,6 +139,7 @@ function createSessionDetail(overrides?: Partial<InterviewSessionDetail>): Inter
     status: 'in_progress',
     currentQuestion: createCurrentQuestion(),
     completionFollowupContext: null,
+    transcriptEntries: [],
     totalQuestionCount: 8,
     answeredQuestionCount: 7,
     remainingQuestionCount: 1,
@@ -182,6 +208,7 @@ describe('InterviewSessionPage', () => {
     );
     getSessionDetailMock.mockResolvedValueOnce(
       createSessionDetail({
+        transcriptEntries: [createTranscriptEntry()],
         currentQuestion: createCurrentQuestion({
           questionText: '지금 답해야 하는 현재 질문입니다.',
         }),
@@ -245,7 +272,11 @@ describe('InterviewSessionPage', () => {
         },
       ]),
     );
-    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        transcriptEntries: [createTranscriptEntry()],
+      }),
+    );
 
     await renderPage();
 
@@ -259,6 +290,62 @@ describe('InterviewSessionPage', () => {
     expect(screen.getByText('세션을 재개했습니다. 이어서 답변을 제출할 수 있습니다.')).toBeInTheDocument();
   });
 
+  it('sessionStorage가 비어 있어도 서버 transcriptEntries로 이전 문맥을 복원한다', async () => {
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        transcriptEntries: [
+          createTranscriptEntry({
+            question: {
+              id: 55,
+              questionOrder: 5,
+              questionText: '서버에서 복원된 이전 질문입니다.',
+            },
+            answer: {
+              answerOrder: 5,
+              answerText: '서버에서 복원된 이전 답변입니다.',
+              isSkipped: false,
+            },
+          }),
+        ],
+      }),
+    );
+
+    await renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '이전 문맥 펼치기' })).toBeInTheDocument();
+    });
+    expect(screen.getByText('질문 1개')).toBeInTheDocument();
+    expect(screen.getByText('답변 1개')).toBeInTheDocument();
+    expect(screen.queryByText('서버에서 복원된 이전 질문입니다.')).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '이전 문맥 펼치기' }));
+
+    expect(screen.getByText('서버에서 복원된 이전 질문입니다.')).toBeInTheDocument();
+    expect(screen.getByText('서버에서 복원된 이전 답변입니다.')).toBeInTheDocument();
+  });
+
+  it('이전 문맥 펼침 패널은 세로 리사이즈 class를 가진다', async () => {
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        transcriptEntries: [createTranscriptEntry()],
+      }),
+    );
+
+    await renderPage();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '이전 문맥 펼치기' }));
+
+    const transcriptPanel = screen.getByText('이전 질문 기록').closest('div[class*="resize-y"]');
+    expect(transcriptPanel).toBeInTheDocument();
+    expect(transcriptPanel?.className).toContain('h-[20rem]');
+    expect(transcriptPanel?.className).toContain('min-h-[12rem]');
+    expect(transcriptPanel?.className).toContain('max-h-[36rem]');
+    expect(transcriptPanel?.className).toContain('resize-y');
+  });
+
   it('이전 기록이 거의 없는 초기 상태에서는 이전 문맥 영역을 과하게 노출하지 않는다', async () => {
     getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
 
@@ -270,7 +357,11 @@ describe('InterviewSessionPage', () => {
   });
 
   it('일반 답변 제출 후 다음 기본 질문으로 넘어가면 입력창으로 다시 포커스한다', async () => {
-    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        transcriptEntries: [createTranscriptEntry()],
+      }),
+    );
     submitSessionAnswerMock.mockResolvedValueOnce({
       sessionId: 1,
       questionId: 101,
@@ -309,7 +400,11 @@ describe('InterviewSessionPage', () => {
   });
 
   it('마지막 일반 답변 제출 후 남은 질문이 없으면 자동으로 complete를 호출한다', async () => {
-    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        transcriptEntries: [createTranscriptEntry()],
+      }),
+    );
     submitSessionAnswerMock.mockResolvedValueOnce({
       sessionId: 1,
       questionId: 101,
@@ -374,6 +469,7 @@ describe('InterviewSessionPage', () => {
     completeSessionMock.mockRejectedValueOnce(createIncompleteError());
     getSessionDetailMock.mockResolvedValueOnce(
       createSessionDetail({
+        transcriptEntries: [createTranscriptEntry()],
         currentQuestion: completionContext.completionFollowupQuestion,
         completionFollowupContext: completionContext,
         totalQuestionCount: 9,
@@ -431,7 +527,11 @@ describe('InterviewSessionPage', () => {
         },
       ]),
     );
-    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        transcriptEntries: [createTranscriptEntry()],
+      }),
+    );
     submitSessionAnswerMock.mockResolvedValueOnce({
       sessionId: 1,
       questionId: 101,
@@ -441,6 +541,7 @@ describe('InterviewSessionPage', () => {
     });
     getSessionDetailMock.mockResolvedValueOnce(
       createSessionDetail({
+        transcriptEntries: [createTranscriptEntry()],
         currentQuestion: createCurrentQuestion({
           id: 102,
           questionOrder: 9,
@@ -509,7 +610,11 @@ describe('InterviewSessionPage', () => {
         },
       ]),
     );
-    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        transcriptEntries: [createTranscriptEntry()],
+      }),
+    );
 
     await renderPage();
 
@@ -545,7 +650,11 @@ describe('InterviewSessionPage', () => {
         },
       ]),
     );
-    getSessionDetailMock.mockResolvedValueOnce(createSessionDetail());
+    getSessionDetailMock.mockResolvedValueOnce(
+      createSessionDetail({
+        transcriptEntries: [createTranscriptEntry()],
+      }),
+    );
     submitSessionAnswerMock.mockResolvedValueOnce({
       sessionId: 1,
       questionId: 101,
@@ -564,6 +673,7 @@ describe('InterviewSessionPage', () => {
     completeSessionMock.mockRejectedValueOnce(createIncompleteError());
     getSessionDetailMock.mockResolvedValueOnce(
       createSessionDetail({
+        transcriptEntries: [createTranscriptEntry()],
         currentQuestion: completionContext.completionFollowupQuestion,
         completionFollowupContext: completionContext,
         totalQuestionCount: 9,
@@ -652,6 +762,7 @@ describe('InterviewSessionPage', () => {
 
     getSessionDetailMock.mockResolvedValueOnce(
       createSessionDetail({
+        transcriptEntries: [createTranscriptEntry()],
         currentQuestion: completionContext.completionFollowupQuestion,
         completionFollowupContext: completionContext,
         totalQuestionCount: 9,

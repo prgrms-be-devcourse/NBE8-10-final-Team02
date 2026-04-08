@@ -683,8 +683,11 @@ public repository 조회 또는 OAuth 확장 연결을 시작한다.
 - 이전 문맥 transcript는 세션 화면 초기 진입 시 1회만 기본 접힘으로 시작하고, 사용자가 펼치거나 접은 상태는 이후 새 질문 전환이나 completion follow-up 전환으로 덮어쓰지 않는다.
 - 이전 문맥 transcript는 메인 작업 카드보다 한 단계 낮은 강조도의 보조 패널로 보여주고, 펼침 상태에서도 `현재 질문`/`답변 입력`보다 먼저 튀지 않게 유지한다.
 - 이전 문맥이 접힌 상태에서는 이전 질문/답변 개수와 최근 `system` 메시지 1건을 함께 요약해 보여준다.
+- 펼친 이전 문맥 패널은 브라우저 기본 `resize-y` 기반 세로 리사이즈를 지원한다. 기본 높이는 고정값으로 시작하고, 페이지 재진입 시에는 다시 기본 높이로 돌아간다.
 - 이전 문맥 transcript의 bubble에는 작은 역할 라벨을 붙인다. 질문은 `면접관`, 답변은 `내 답변`, `system` 메시지는 `상태 안내`를 사용한다.
 - 초기 진입 시 이전 문맥이 사실상 없으면 transcript 영역은 축약하거나 숨기고, 현재 질문 카드 중심으로 보여준다.
+- 이전 문맥의 질문/답변 기록은 로컬 storage 단독 기준이 아니라 `GET /interview/sessions/{sessionId}`의 answered transcript 응답을 기준으로 복원한다.
+- 세션 상세 응답의 answered transcript에는 answered question/answer pair만 포함하고, `system` 메시지와 현재 미응답 `currentQuestion`은 포함하지 않는다.
 - 답변 제출 후 채팅 transcript는 `POST /answers -> GET /interview/sessions/{sessionId}` 재조회 결과를 기준으로 다음 질문을 이어 붙인다.
 - 답변 제출 또는 `건너뛰기` 후 재조회 결과로 새 `currentQuestion`이 열리면, 프론트는 입력창이 다시 보이도록 `scrollIntoView + focus`로 포커스를 복귀한다.
 - 마지막 일반 답변 제출 뒤 재조회 결과가 `currentQuestion=null`, `remainingQuestionCount=0`이면 프론트는 `POST /interview/sessions/{sessionId}/complete`를 자동 호출해 보완 질문 필요 여부를 먼저 확인한다.

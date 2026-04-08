@@ -43,6 +43,7 @@ function createSessionDetail(overrides?: Partial<InterviewSessionDetail>): Inter
     status: 'completed',
     currentQuestion: null,
     completionFollowupContext: null,
+    transcriptEntries: [],
     totalQuestionCount: 5,
     answeredQuestionCount: 5,
     remainingQuestionCount: 0,
