@@ -40,8 +40,8 @@ spring:
             user-name-attribute: id
   servlet:
     multipart:
-      max-file-size: 50MB
-      max-request-size: 51MB
+      max-file-size: ${document.upload.max-file-size-mb}MB
+      max-request-size: ${document.upload.max-file-size-mb}MB
 
 # Actuator 설정 (Prometheus 수집을 위해 필수)
 management:
@@ -101,6 +101,13 @@ ai:
   portfolio:
     batch:
       global-budget-chars: 480000
+
+document:
+  upload:
+    # 업로드 허용 최대 파일 크기 (MB). spring.servlet.multipart 제한과 동기화됨.
+    max-file-size-mb: 50
+    # 사용자 1명이 보유할 수 있는 최대 문서 수.
+    max-document-count: 5
 
 analysis:
   # OCI 파일시스템의 repo clone 베이스 경로 (/data/repos/{userId}/{repoId}/)

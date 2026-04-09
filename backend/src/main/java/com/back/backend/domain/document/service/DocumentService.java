@@ -13,6 +13,7 @@ import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
 import com.back.backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -33,12 +34,15 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class DocumentService {
 
-    /** 허용되는 최대 파일 크기 (50MB). */
-    public static final long MAX_MB = 50;
-    public static final long MAX_FILE_SIZE_BYTES = MAX_MB * 1024 * 1024L;
+    @Value("${document.upload.max-file-size-mb}")
+    long maxFileSizeMb;
 
-    /** 사용자 1명이 보유할 수 있는 최대 문서 수. */
-    public static final int MAX_DOCUMENT_COUNT = 5;
+    /** maxFileSizeMb * 1024 * 1024 — Spring SpEL로 바이트 단위로 변환. */
+    @Value("#{${document.upload.max-file-size-mb} * 1024 * 1024}")
+    long maxFileSizeBytes;
+
+    @Value("${document.upload.max-document-count}")
+    int maxDocumentCount;
 
     /** 업로드 허용 MIME type 목록: PDF, DOCX, Markdown, Text.
      * Markdown은 OS/브라우저마다 MIME type이 달라 여러 값을 허용한다.
@@ -48,18 +52,36 @@ public class DocumentService {
      * application/x-zip-compressed 로 전송한다. 확장자 검사(.docx)가 최종 게이트 역할을
      * 하므로 이 값들을 허용해도 임의의 ZIP 파일 업로드는 차단된다. */
     static final Set<String> ALLOWED_MIME_TYPES = Set.of(
+        // PDF
         "application/pdf",
+        "application/x-pdf",
+        "application/acrobat",
+        // DOCX (MS Office + 변종)
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/msword",                          // .doc fallback
+        "application/vnd.ms-word",
+        "application/x-docx",
+        // 한글 오피스 / 한컴 계열
+        "application/haansoftdocx",
+        "application/x-hwp",
+        "application/vnd.hancom.hwp",
+        "application/vnd.hancom.hwpx",
+        // ZIP 계열 (docx는 결국 zip이라 이걸로 올라오는 경우 있음)
         "application/zip",
+        "application/x-zip",
         "application/x-zip-compressed",
+        // Markdown / Plain text
         "text/markdown",
         "text/x-markdown",
         "text/plain",
+
         "application/octet-stream"
     );
 
     /** 업로드 허용 파일 확장자 목록. MIME type과 함께 이중 검증한다. */
-    static final Set<String> ALLOWED_EXTENSIONS = Set.of(".pdf", ".docx", ".md", ".txt");
+    static final Set<String> ALLOWED_EXTENSIONS = Set.of(
+        ".pdf", ".docx", ".doc", ".md", ".markdown", ".txt"
+    );
 
     private final DocumentRepository documentRepository;
     private final DocumentStorageService documentStorageService;
@@ -90,7 +112,7 @@ public class DocumentService {
             throw new ServiceException(
                 ErrorCode.DOCUMENT_INVALID_TYPE,
                 HttpStatus.UNPROCESSABLE_CONTENT,
-                "지원하지 않는 파일 형식입니다."
+                mimeType + "은 지원하지 않는 파일 형식(MIME)입니다."
             );
         }
         String ext = filename != null && filename.contains(".")
@@ -103,18 +125,18 @@ public class DocumentService {
                 "지원하지 않는 파일 형식입니다."
             );
         }
-        if (fileSizeBytes > MAX_FILE_SIZE_BYTES) {
+        if (fileSizeBytes > maxFileSizeBytes) {
             throw new ServiceException(
                 ErrorCode.DOCUMENT_FILE_TOO_LARGE,
                 HttpStatus.UNPROCESSABLE_CONTENT,
-                "파일 크기는 " + MAX_MB + "MB를 초과할 수 없습니다."
+                "파일 크기는 " + maxFileSizeMb + "MB를 초과할 수 없습니다."
             );
         }
-        if (documentRepository.countByUserId(userId) >= MAX_DOCUMENT_COUNT) {
+        if (documentRepository.countByUserId(userId) >= maxDocumentCount) {
             throw new ServiceException(
                 ErrorCode.DOCUMENT_UPLOAD_FAILED,
                 HttpStatus.UNPROCESSABLE_CONTENT,
-                "문서는 최대 " + MAX_DOCUMENT_COUNT + "개까지 업로드할 수 있습니다."
+                "문서는 최대 " + maxDocumentCount + "개까지 업로드할 수 있습니다."
             );
         }
     }
