@@ -545,6 +545,7 @@ public class AnalysisPipelineService {
         codeIndexService.buildIndex(repo, userId, nodes, authoredFiles, pagerankMap);
 
         log.info("Batch: static analysis completed for repoId={}", repositoryId);
+        syncStatusService.setInProgress(userId, repositoryId, "ai_pending");
         return true; // 이 repo를 배치 AI 호출 대상에 포함
     }
 

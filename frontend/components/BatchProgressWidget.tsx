@@ -26,6 +26,7 @@ const STEP_LABEL: Record<string, string> = {
   significance_check: '변경 감지 중',
   clone: '저장소 복제 중',
   analysis: '코드 분석 중',
+  ai_pending: 'AI 분석 대기 중',
   summary: 'AI 요약 생성 중',
 };
 
