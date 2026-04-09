@@ -374,6 +374,8 @@ export default function InterviewSessionPage() {
   const answerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingQuestionFocusRef = useRef<PendingQuestionFocusRequest | null>(null);
   const committedVoiceTranscriptRef = useRef<string | null>(null);
+  const sessionStatusRef = useRef<string | null>(null);
+  const autoResumedRef = useRef(false);
 
   const [session, setSession] = useState<InterviewSessionDetail | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredMessages(sessionId));
@@ -388,7 +390,7 @@ export default function InterviewSessionPage() {
   const [transitionMode, setTransitionMode] = useState<'pause' | 'resume' | null>(null);
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [completingSession, setCompletingSession] = useState(false);
-  const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
+  const [transcriptCollapsed, setTranscriptCollapsed] = useState(true);
   const [needsManualCompleteAfterCompletionAnswer, setNeedsManualCompleteAfterCompletionAnswer] =
     useState(false);
   const [justResumed, setJustResumed] = useState(false);
@@ -516,6 +518,40 @@ export default function InterviewSessionPage() {
   useEffect(() => {
     void loadSession();
   }, [loadSession]);
+
+  // sessionStatusRef를 최신 session.status와 동기화 (cleanup/beforeunload에서 stale 방지)
+  useEffect(() => {
+    sessionStatusRef.current = session?.status ?? null;
+  }, [session]);
+
+  // paused 상태로 진입 시 자동 재개
+  useEffect(() => {
+    if (autoResumedRef.current || !session || session.status !== 'paused' || !session.resumeAvailable) return;
+    autoResumedRef.current = true;
+    void resumeSession(session.id)
+      .then(() => loadSession({ showPageLoading: false }))
+      .catch(() => { autoResumedRef.current = false; });
+  }, [session, loadSession]);
+
+  // in_progress 상태에서 이탈 시 자동 일시정지
+  useEffect(() => {
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
+    const pauseUrl = `${apiBase}/api/v1/interview/sessions/${sessionId}/pause`;
+
+    function handleBeforeUnload() {
+      if (sessionStatusRef.current === 'in_progress') {
+        navigator.sendBeacon(pauseUrl);
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (sessionStatusRef.current === 'in_progress') {
+        void pauseSession(sessionId);
+      }
+    };
+  }, [sessionId]);
 
   useEffect(() => {
     if (!session || transcriptInitializedRef.current) {
@@ -1019,7 +1055,7 @@ export default function InterviewSessionPage() {
     ? '보완 질문 답변 후 다시 종료를 눌러 결과를 생성합니다.'
     : session?.status === 'paused'
     ? '같은 세션을 재개하거나, 답변이 모두 끝났다면 종료를 진행할 수 있습니다.'
-    : '필요하면 잠시 일시정지한 뒤 다시 이어가거나, 답변이 모두 끝났다면 종료를 진행할 수 있습니다.';
+    : '필요하면 잠시 일시정지한 뒤 다시 이어가거나, 답변이 모두 끝났다면 종료를 진행할 수 있습니다. 그냥 나가더라도 상태는 저장됩니다.';
   const voiceSectionBadge = isListening
     ? { label: '음성 입력 중', tone: 'bg-emerald-50 text-emerald-700' }
     : microphonePermission === 'granted'
@@ -1077,6 +1113,13 @@ export default function InterviewSessionPage() {
     answerTextareaRef.current?.focus();
   }, [actionBusy, isCompletionFollowupMode, session]);
 
+  // 질문이 처음 로드되거나 바뀔 때 textarea 자동 포커스
+  useEffect(() => {
+    if (!session || session.status !== 'in_progress' || !session.currentQuestion) return;
+    answerTextareaRef.current?.focus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.currentQuestion?.id]);
+
   if (loading) {
     return (
       <main className="mx-auto max-w-4xl px-4 py-12">
@@ -1111,33 +1154,37 @@ export default function InterviewSessionPage() {
         >
           ← 질문 세트 상세로
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-zinc-900">실시간 음성 모의 면접</h1>
-        <p className="mt-2 text-sm text-zinc-500">
-          다음 질문은 항상 서버가 내려주는 currentQuestion 기준으로 이어집니다. 음성 transcript는 보조 입력 계층으로만 쓰고, 제출은 최종 textarea 기준으로 처리합니다.
-        </p>
+        <h1 className="mt-2 text-2xl font-semibold text-zinc-900">실시간 모의 면접</h1>
+        {/*<p className="mt-2 text-sm text-zinc-500">*/}
+        {/*  다음 질문은 항상 서버가 내려주는 currentQuestion 기준으로 이어집니다. 음성 transcript는 보조 입력 계층으로만 쓰고, 제출은 최종 textarea 기준으로 처리합니다.*/}
+        {/*</p>*/}
       </div>
 
       <section className="rounded-3xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs font-medium ${SESSION_STATUS_BADGE_META[session.status].tone}`}
-          >
-            상태 {SESSION_STATUS_BADGE_META[session.status].label}
-          </span>
-          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-            진행 {session.answeredQuestionCount}/{session.totalQuestionCount}
-          </span>
-          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-            남은 질문 {session.remainingQuestionCount}개
-          </span>
-        </div>
+        {/*<div className="flex flex-wrap items-center gap-2">*/}
+        {/*  <span*/}
+        {/*    className={`rounded-full px-2 py-0.5 text-xs font-medium ${SESSION_STATUS_BADGE_META[session.status].tone}`}*/}
+        {/*  >*/}
+        {/*    상태 {SESSION_STATUS_BADGE_META[session.status].label}*/}
+        {/*  </span>*/}
+        {/*  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">*/}
+        {/*    진행 {session.answeredQuestionCount}/{session.totalQuestionCount}*/}
+        {/*  </span>*/}
+        {/*  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">*/}
+        {/*    남은 질문 {session.remainingQuestionCount}개*/}
+        {/*  </span>*/}
+        {/*</div>*/}
 
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-2xl bg-zinc-50 px-4 py-4">
-            <p className="text-xs text-zinc-500">세션 복원 가능</p>
-            <p className="mt-1 text-sm font-medium text-zinc-900">
-              {session.resumeAvailable ? '가능' : '불가'}
-            </p>
+            <p className="text-xs text-zinc-500">상태
+            <span className={`ml-3 mt-1.5 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${SESSION_STATUS_BADGE_META[session.status].tone}`}>
+              {SESSION_STATUS_BADGE_META[session.status].label}
+            </span></p>
+            <div className="mt-3 flex gap-4 border-t border-zinc-200 pt-3 text-xs text-zinc-500">
+              <span>진행 <span className="font-semibold text-zinc-800">{session.answeredQuestionCount}/{session.totalQuestionCount}</span></span>
+              <span>남은 질문 <span className="font-semibold text-zinc-800">{session.remainingQuestionCount}개</span></span>
+            </div>
           </div>
           <div className="rounded-2xl bg-zinc-50 px-4 py-4">
             <p className="text-xs text-zinc-500">마지막 활동 시각</p>
@@ -1186,7 +1233,7 @@ export default function InterviewSessionPage() {
           <div className="mt-6 rounded-3xl border border-zinc-200/80 bg-zinc-50/70 px-4 py-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-zinc-900">이전 문맥</p>
+                <p className="text-sm font-semibold text-zinc-900">문맥 및 상태관리</p>
                 <p className="mt-1 text-xs text-zinc-500">
                   이전 질문/답변과 상태 안내를 참고용으로만 펼쳐 확인합니다.
                 </p>
@@ -1351,22 +1398,10 @@ export default function InterviewSessionPage() {
           <div className="space-y-4">
             <section
               aria-labelledby="current-answer-work-heading"
-              className="overflow-hidden rounded-[2rem] border border-zinc-300 bg-white shadow-sm ring-1 ring-zinc-950/5"
+              className="overflow-hidden rounded-[2rem] border border-zinc-300 bg-white shadow-md ring-2 ring-zinc-200"
             >
-              <div className="border-b border-zinc-200 bg-zinc-50/80 px-5 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
-                  현재 작업
-                </p>
-                <h2 id="current-answer-work-heading" className="mt-2 text-base font-semibold text-zinc-900">
-                  현재 답변 작업
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-zinc-600">
-                  현재 질문을 확인하고 바로 아래에서 답변을 작성한 뒤 제출합니다.
-                </p>
-              </div>
-
               {session.currentQuestion && (
-                <div className="border-b border-zinc-200 bg-zinc-50/60 px-5 py-5">
+                <div className="border-b border-zinc-100 bg-zinc-50/40 px-5 py-5">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-700 shadow-sm">
                       현재 Q{session.currentQuestion.questionOrder}
@@ -1378,11 +1413,10 @@ export default function InterviewSessionPage() {
                       {DIFFICULTY_LABEL[session.currentQuestion.difficultyLevel] ?? session.currentQuestion.difficultyLevel}
                     </span>
                   </div>
-                  <p className="mt-4 text-sm font-semibold text-zinc-900">현재 질문</p>
-                  <p className="mt-2 text-base font-medium leading-7 text-zinc-900">
+                  <p className="mt-4 text-lg font-semibold leading-7 text-zinc-900">
                     {session.currentQuestion.questionText}
                   </p>
-                  <p className="mt-3 text-xs leading-5 text-zinc-500">
+                  <p className="mt-3 text-sm leading-5 text-zinc-500">
                     {currentQuestionHint}
                   </p>
                 </div>
@@ -1395,11 +1429,8 @@ export default function InterviewSessionPage() {
                     <p className="mt-1 text-xs text-zinc-500">
                       일반 답변은 {MIN_ANSWER_LENGTH}자 이상 {MAX_ANSWER_LENGTH}자 이하로 입력합니다.
                     </p>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      자동 저장 상태: {draftStatusText}
-                    </p>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      현재 입력 기준: {answerInputSourceLabel}
+                    <p className="mt-0.5 text-[10px] text-zinc-400">
+                      자동 저장: {draftStatusText} · 입력 기준: {answerInputSourceLabel}
                     </p>
                   </div>
                   <span
@@ -1517,7 +1548,7 @@ export default function InterviewSessionPage() {
                           ? '방금 답변을 더 구체화해서 이어서 적어보세요.'
                           : '면접 답변을 입력하세요.'
                   }
-                  className="mt-4 w-full rounded-3xl border border-zinc-300 px-4 py-3 text-sm leading-6 text-zinc-900 focus:border-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-200/80 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
+                  className="mt-4 w-full resize-none rounded-3xl border border-zinc-400 px-4 py-3 text-sm leading-6 text-zinc-900 focus:border-zinc-600 focus:outline-none focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
                 />
 
                 {submitError && (
@@ -1606,7 +1637,7 @@ export default function InterviewSessionPage() {
                     disabled={!canComplete}
                     className="rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {completingSession ? '세션 종료 중...' : '세션 종료'}
+                    {completingSession ? '세션 종료 중...' : '세션 종료(면접 결과 보기)'}
                   </button>
                 </div>
 

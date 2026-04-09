@@ -70,7 +70,7 @@ export default function PracticeHistoryPage() {
         <h1 className="text-2xl font-bold">연습 이력</h1>
         <button
           onClick={() => router.push('/practice')}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
         >
           문제 풀기
         </button>
@@ -119,7 +119,7 @@ export default function PracticeHistoryPage() {
                       className={`rounded px-2 py-0.5 text-xs font-medium ${
                         s.questionType === 'behavioral'
                           ? 'bg-amber-100 text-amber-700'
-                          : 'bg-blue-100 text-blue-700'
+                          : 'bg-zinc-100 text-zinc-600'
                       }`}
                     >
                       {s.questionType === 'behavioral' ? '인성' : 'CS'}

@@ -61,7 +61,7 @@ function PracticeSolveContent() {
         <p className="text-zinc-500">잘못된 접근입니다.</p>
         <button
           onClick={() => router.push('/practice')}
-          className="mt-4 text-sm text-blue-600 underline"
+          className="mt-4 text-sm text-zinc-600 underline"
         >
           문제 목록으로 돌아가기
         </button>
@@ -77,7 +77,7 @@ function PracticeSolveContent() {
           className={`mb-2 inline-block rounded px-2 py-0.5 text-xs font-medium ${
             questionType === 'behavioral'
               ? 'bg-amber-100 text-amber-700'
-              : 'bg-blue-100 text-blue-700'
+              : 'bg-zinc-100 text-zinc-600'
           }`}
         >
           {questionType === 'behavioral' ? '인성' : 'CS'}
@@ -96,7 +96,7 @@ function PracticeSolveContent() {
             onChange={(e) => setAnswer(e.target.value)}
             disabled={submitting}
             placeholder="면접에서 답변하듯이 작성해보세요. (50자 이상)"
-            className="w-full rounded-lg border border-zinc-300 p-4 text-sm leading-relaxed focus:border-blue-400 focus:outline-none disabled:bg-zinc-50"
+            className="w-full rounded-lg border border-zinc-300 p-4 text-sm leading-relaxed focus:border-zinc-400 focus:outline-none disabled:bg-zinc-50"
             rows={10}
           />
           <div className="mt-2 flex items-center justify-between">
@@ -106,7 +106,7 @@ function PracticeSolveContent() {
             <button
               onClick={handleSubmit}
               disabled={submitting || answer.trim().length < 50}
-              className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-lg bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
             >
               {submitting ? (
                 <span className="flex items-center gap-2">
@@ -193,7 +193,7 @@ function PracticeSolveContent() {
           <div className="flex gap-3">
             <button
               onClick={() => router.push('/practice')}
-              className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+              className="rounded-lg bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-zinc-700"
             >
               다른 문제 풀기
             </button>

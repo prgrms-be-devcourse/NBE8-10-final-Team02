@@ -87,6 +87,16 @@ public class ApplicationController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/{applicationId}/sources")
+    public ApiResponse<ApplicationSourceBindingResponse> getSources(
+            Authentication authentication,
+            @PathVariable long applicationId
+    ) {
+        return ApiResponse.success(
+                applicationService.getSources(currentUserResolver.resolveUserId(authentication), applicationId)
+        );
+    }
+
     @PutMapping("/{applicationId}/sources")
     public ApiResponse<ApplicationSourceBindingResponse> saveSources(
             Authentication authentication,

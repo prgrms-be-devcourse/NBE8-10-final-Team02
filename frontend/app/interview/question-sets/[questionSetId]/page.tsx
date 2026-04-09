@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addManualQuestion,
   deleteQuestion,
@@ -69,13 +69,18 @@ export default function QuestionSetDetailPage() {
 
   const [startingSession, setStartingSession] = useState(false);
   const [sessionStartError, setSessionStartError] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+
+  // 초기 질문 blur 제어
+  const initialQuestionIds = useRef<Set<number> | null>(null);
+  const [revealedIds, setRevealedIds] = useState<Set<number>>(new Set());
 
   const questionCountValidForSession = useMemo(() => {
     if (!questionSet) {
       return false;
     }
 
-    return questionSet.questionCount >= 3 && questionSet.questionCount <= 20;
+    return questionSet.questionCount >= 3 && questionSet.questionCount <= 10;
   }, [questionSet]);
 
   const loadQuestionSet = useCallback(async () => {
@@ -91,6 +96,10 @@ export default function QuestionSetDetailPage() {
     try {
       const data = await getQuestionSetDetail(questionSetId);
       setQuestionSet(data);
+      // 최초 로드 시에만 blur 대상 ID 기록
+      if (initialQuestionIds.current === null) {
+        initialQuestionIds.current = new Set(data.questions.map((q) => q.id));
+      }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : '질문 세트를 불러오지 못했습니다.');
     } finally {
@@ -234,52 +243,74 @@ export default function QuestionSetDetailPage() {
               <p className="text-xs font-medium text-zinc-500">질문 리스트</p>
               <h2 className="mt-1 text-lg font-semibold text-zinc-900">세션 시작 전 최종 검토</h2>
             </div>
-            <button
-              type="button"
-              onClick={() => void loadQuestionSet()}
-              className="text-xs font-medium text-zinc-500 underline"
-            >
-              새로고침
-            </button>
+            {/*<button*/}
+            {/*  type="button"*/}
+            {/*  onClick={() => void loadQuestionSet()}*/}
+            {/*  className="text-xs font-medium text-zinc-500 underline"*/}
+            {/*>*/}
+            {/*  새로고침*/}
+            {/*</button>*/}
           </div>
 
           <div className="space-y-3">
-            {questionSet.questions.map((question) => (
-              <article
-                key={question.id}
-                className="rounded-2xl border border-zinc-200 px-4 py-4"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-                      Q{question.questionOrder}
-                    </span>
-                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                      {QUESTION_TYPE_LABEL[question.questionType] ?? question.questionType}
-                    </span>
-                    <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
-                      {DIFFICULTY_LABEL[question.difficultyLevel]}
-                    </span>
-                    {question.parentQuestionId && (
-                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-                        꼬리 질문
+            {questionSet.questions.map((question) => {
+              const isInitial = initialQuestionIds.current?.has(question.id) ?? false;
+              const isBlurred = isInitial && !revealedIds.has(question.id);
+
+              return (
+                <article
+                  key={question.id}
+                  onClick={() => {
+                    if (isBlurred) {
+                      setRevealedIds((prev) => new Set([...prev, question.id]));
+                    }
+                  }}
+                  className={`rounded-2xl border border-zinc-200 px-4 py-4 ${isBlurred ? 'cursor-pointer' : ''}`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+                        Q{question.questionOrder}
                       </span>
-                    )}
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                        {QUESTION_TYPE_LABEL[question.questionType] ?? question.questionType}
+                      </span>
+                      <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                        {DIFFICULTY_LABEL[question.difficultyLevel]}
+                      </span>
+                      {question.parentQuestionId && (
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                          꼬리 질문
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteConfirmId(question.id);
+                      }}
+                      disabled={deletingQuestionId === question.id}
+                      className="text-xs font-medium text-zinc-400 underline hover:text-red-600 disabled:no-underline disabled:opacity-50"
+                    >
+                      {deletingQuestionId === question.id ? '삭제 중...' : '삭제'}
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteQuestion(question.id)}
-                    disabled={deletingQuestionId === question.id}
-                    className="text-xs font-medium text-zinc-400 underline hover:text-red-600 disabled:no-underline disabled:opacity-50"
-                  >
-                    {deletingQuestionId === question.id ? '삭제 중...' : '삭제'}
-                  </button>
-                </div>
-
-                <p className="mt-3 text-sm leading-6 text-zinc-800">{question.questionText}</p>
-              </article>
-            ))}
+                  <div className="relative mt-3">
+                    <p className={`text-sm leading-6 text-zinc-800 transition-all duration-300 ${isBlurred ? 'select-none blur-sm' : ''}`}>
+                      {question.questionText}
+                    </p>
+                    {isBlurred && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-xs font-medium text-zinc-400">클릭하여 확인</span>
+                      </div>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
 
@@ -308,7 +339,7 @@ export default function QuestionSetDetailPage() {
 
             {!questionCountValidForSession && (
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                세션 시작은 질문 3개 이상 20개 이하일 때만 가능합니다. 현재 질문 수를 먼저 조정해주세요.
+                세션 시작은 질문 3개 이상 10개 이하일 때만 가능합니다. 현재 질문 수를 먼저 조정해주세요.
               </div>
             )}
 
@@ -402,6 +433,33 @@ export default function QuestionSetDetailPage() {
           </section>
         </aside>
       </div>
+      {/* 삭제 확인 모달 */}
+      {deleteConfirmId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-sm rounded-lg bg-white px-6 py-5 shadow-lg">
+            <p className="text-sm font-medium text-zinc-900">정말 삭제하시겠습니까?</p>
+            <p className="mt-2 text-xs text-zinc-500">삭제된 질문은 복구할 수 없습니다.</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="rounded px-3 py-1.5 text-sm text-zinc-500 hover:text-zinc-700"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  const id = deleteConfirmId;
+                  setDeleteConfirmId(null);
+                  void handleDeleteQuestion(id);
+                }}
+                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
