@@ -47,7 +47,7 @@ export default function PortfolioPage() {
                   href="/portfolio/github"
                   className="rounded border border-zinc-300 px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
                 >
-                  변경하기
+                  연결 설정
                 </Link>
               ) : (
                 <Link

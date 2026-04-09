@@ -111,21 +111,20 @@ public class GithubConnectionService {
     public void saveConnectionOnly(User user, Long githubUserId, String githubLogin, String token) {
         Instant now = Instant.now();
 
-        // 1순위: 현재 app 사용자로 찾기
-        // 2순위: GitHub 계정 ID로 찾기 — 이미 다른 app user에 연결된 경우 차단
-        connectionRepository.findByUser(user)
-                .or(() -> connectionRepository.findByGithubUserId(githubUserId))
+        Optional<GithubConnection> byUser = connectionRepository.findByUser(user);
+        Optional<GithubConnection> byGithubId = connectionRepository.findByGithubUserId(githubUserId);
+
+        // github_user_id가 다른 app 사용자에게 이미 연결된 경우 → 차단
+        if (byGithubId.isPresent() && !byGithubId.get().getUser().getId().equals(user.getId())) {
+            throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
+                    HttpStatus.CONFLICT,
+                    "이 GitHub 계정은 이미 다른 사용자와 연결되어 있습니다. " +
+                    "다른 GitHub 계정을 사용하거나, 해당 계정으로 로그인하세요.");
+        }
+
+        byUser.or(() -> byGithubId)
                 .ifPresentOrElse(
-                        existing -> {
-                            // 다른 app 사용자가 이미 이 GitHub 계정을 연결한 경우 → 차단
-                            if (!existing.getUser().getId().equals(user.getId())) {
-                                throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
-                                        HttpStatus.CONFLICT,
-                                        "이 GitHub 계정은 이미 다른 사용자와 연결되어 있습니다. " +
-                                        "다른 GitHub 계정을 사용하거나, 해당 계정으로 로그인하세요.");
-                            }
-                            existing.update(githubUserId, githubLogin, token, null, now);
-                        },
+                        existing -> existing.update(githubUserId, githubLogin, token, null, now),
                         () -> connectionRepository.save(GithubConnection.builder()
                                 .user(user)
                                 .githubUserId(githubUserId)
@@ -210,20 +209,24 @@ public class GithubConnectionService {
     ) {
         Instant now = Instant.now();
 
-        // 기존 연결 조회 전략:
-        //   1순위: 현재 app 사용자(user_id)로 찾기
-        //   2순위: GitHub 계정(github_user_id)으로 찾기 — OAuth 로그인 시 saveConnectionOnly가
-        //          먼저 만들었지만 findByUser가 놓친 경우(예: 멀티 소셜 계정 시나리오) 대비
-        GithubConnection connection = connectionRepository.findByUser(user)
-                .or(() -> connectionRepository.findByGithubUserId(githubUser.id()))
+        // 두 축으로 별도 조회:
+        //   byUser    — 현재 app 사용자의 기존 연결 행 (있으면 갱신 대상)
+        //   byGithubId — 연결하려는 GitHub 계정이 이미 어딘가에 연결된 행
+        // .or() 체인을 쓰면 byUser가 있을 때 byGithubId를 아예 조회하지 않아
+        // "다른 사용자가 점유한 github_user_id를 덮어쓰기" 하는 unique 제약 위반이 발생한다.
+        Optional<GithubConnection> byUser = connectionRepository.findByUser(user);
+        Optional<GithubConnection> byGithubId = connectionRepository.findByGithubUserId(githubUser.id());
+
+        // github_user_id가 다른 app 사용자에게 이미 연결된 경우 → 차단
+        if (byGithubId.isPresent() && !byGithubId.get().getUser().getId().equals(user.getId())) {
+            throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
+                    HttpStatus.CONFLICT,
+                    "이 GitHub 계정은 이미 다른 사용자와 연결되어 있습니다. " +
+                    "다른 GitHub 계정을 사용하거나, 해당 계정으로 로그인하세요.");
+        }
+
+        GithubConnection connection = byUser.or(() -> byGithubId)
                 .map(existing -> {
-                    // 다른 app 사용자가 이미 이 GitHub 계정을 연결한 경우 → 차단
-                    if (!existing.getUser().getId().equals(user.getId())) {
-                        throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
-                                HttpStatus.CONFLICT,
-                                "이 GitHub 계정은 이미 다른 사용자와 연결되어 있습니다. " +
-                                "다른 GitHub 계정을 사용하거나, 해당 계정으로 로그인하세요.");
-                    }
                     log.info("Updating existing GitHub connection for userId={}", user.getId());
                     existing.update(
                             githubUser.id(), githubUser.login(),
