@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { getAuthorizeUrl } from '@/api/auth';
 import type { Provider } from '@/types/auth';
 
@@ -10,9 +11,21 @@ const PROVIDERS: { id: Provider; label: string }[] = [
   { id: 'kakao', label: 'Kakao로 로그인' },
 ];
 
-export default function LoginPage() {
+function LoginContent() {
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (errorParam) {
+      if (errorParam === 'cancelled') {
+        setError('로그인이 취소되었습니다.');
+      } else {
+        setError(decodeURIComponent(errorParam));
+      }
+    }
+  }, [searchParams]);
 
   async function handleLogin(provider: Provider) {
     setLoading(provider);
@@ -36,12 +49,15 @@ export default function LoginPage() {
         </p>
 
         {error && (
-          <p className="text-center text-sm text-red-600">
-            {error}
-            <button onClick={() => setError(null)} className="ml-2 underline">
+          <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+            <p className="inline">{error}</p>
+            <button
+              onClick={() => setError(null)}
+              className="ml-2 font-semibold underline hover:text-red-800"
+            >
               닫기
             </button>
-          </p>
+          </div>
         )}
 
         <div className="flex flex-col gap-3">
@@ -50,7 +66,7 @@ export default function LoginPage() {
               key={id}
               onClick={() => handleLogin(id)}
               disabled={loading !== null}
-              className="h-12 rounded border border-zinc-300 px-4 font-medium disabled:opacity-50"
+              className="h-12 rounded border border-zinc-300 px-4 font-medium transition-colors hover:bg-zinc-50 disabled:opacity-50"
             >
               {loading === id ? '로딩 중...' : label}
             </button>
@@ -58,5 +74,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center">로딩 중...</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }
