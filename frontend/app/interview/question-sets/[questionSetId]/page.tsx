@@ -80,7 +80,7 @@ export default function QuestionSetDetailPage() {
       return false;
     }
 
-    return questionSet.questionCount >= 3 && questionSet.questionCount <= 20;
+    return questionSet.questionCount >= 3 && questionSet.questionCount <= 10;
   }, [questionSet]);
 
   const loadQuestionSet = useCallback(async () => {
@@ -339,7 +339,7 @@ export default function QuestionSetDetailPage() {
 
             {!questionCountValidForSession && (
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                세션 시작은 질문 3개 이상 20개 이하일 때만 가능합니다. 현재 질문 수를 먼저 조정해주세요.
+                세션 시작은 질문 3개 이상 10개 이하일 때만 가능합니다. 현재 질문 수를 먼저 조정해주세요.
               </div>
             )}
 

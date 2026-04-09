@@ -145,6 +145,13 @@ export default function NewQuestionSetPage() {
   async function handleCreate() {
     if (selectedTypes.size === 0) return;
 
+    if (existingSets.length >= MAX_SETS) {
+      const confirmed = window.confirm(
+        `질문 세트는 최대 ${MAX_SETS}개까지 보관됩니다.\n새로 만들면 가장 오래된 세트부터 교체됩니다.\n계속하시겠습니까?`,
+      );
+      if (!confirmed) return;
+    }
+
     setCreating(true);
     setCreateError(null);
 
@@ -233,7 +240,7 @@ export default function NewQuestionSetPage() {
           <p className="mb-4 text-xs text-zinc-500">
             이미 만든 세트가 있다면 바로 모의 면접을 시작할 수 있습니다.
           </p>
-          <ul className="flex flex-col gap-3">
+          <ul className="flex flex-col gap-3 mb-3">
             {existingSets.slice(0, MAX_SETS).map((set, index) => (
               <li key={set.questionSetId} className="rounded-xl border border-zinc-200 bg-white shadow-sm">
                 <div
@@ -272,6 +279,11 @@ export default function NewQuestionSetPage() {
               </li>
             ))}
           </ul>
+          {existingSets.length >= MAX_SETS && (
+            <p className="text-xs text-amber-700">
+              질문 세트는 최대 {MAX_SETS}개까지 보관됩니다. 새로 만들면 가장 오래된 세트부터 교체됩니다.
+            </p>
+          )}
         </section>
       )}
 
@@ -302,7 +314,7 @@ export default function NewQuestionSetPage() {
               <input
                 type="range"
                 min={1}
-                max={20}
+                max={10}
                 value={questionCount}
                 onChange={(e) => setQuestionCount(Number(e.target.value))}
                 disabled={creating}
@@ -312,7 +324,7 @@ export default function NewQuestionSetPage() {
                 {questionCount}개
               </span>
             </div>
-            <p className="mt-1 text-xs text-zinc-400">1~20개 (모의면접 세션은 3개 이상 필요)</p>
+            <p className="mt-1 text-xs text-zinc-400">1~10개 (모의면접 세션은 3개 이상 필요)</p>
             {questionCount < selectedTypes.size && (
               <p className="mt-1 text-xs text-amber-600">
                 질문 수({questionCount}개)가 선택한 유형({selectedTypes.size}개)보다 적어,
@@ -376,13 +388,6 @@ export default function NewQuestionSetPage() {
               ))}
             </div>
           </div>
-
-          {/* 5개 한계 안내 */}
-          {existingSets.length >= MAX_SETS && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              질문 세트는 최대 {MAX_SETS}개까지 보관됩니다. 새로 만들면 가장 오래된 세트부터 교체됩니다.
-            </div>
-          )}
 
           {/* 생성 버튼 */}
           <button
