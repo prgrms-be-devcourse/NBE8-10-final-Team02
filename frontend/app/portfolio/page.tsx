@@ -7,6 +7,7 @@ import { getPortfolioReadiness, UnauthenticatedError } from '@/api/portfolio';
 export default function PortfolioPage() {
   const [githubConnected, setGithubConnected] = useState(false);
   const [repoSelected, setRepoSelected] = useState(false);
+  const [docUploaded, setDocUploaded] = useState(false);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
@@ -14,6 +15,7 @@ export default function PortfolioPage() {
       .then((data) => {
         setGithubConnected(data.github.connectionStatus === 'connected');
         setRepoSelected(data.github.selectedRepositoryCount > 0);
+        setDocUploaded(data.documents.totalCount > 0);
       })
       .catch((err) => {
         if (err instanceof UnauthenticatedError) return;
@@ -100,12 +102,35 @@ export default function PortfolioPage() {
             <Link
               href="/portfolio/documents"
               className={`shrink-0 rounded px-4 py-1.5 text-sm font-medium ${
-                checked && githubConnected && repoSelected
+                checked && githubConnected && repoSelected && !docUploaded
                   ? 'bg-zinc-900 text-white'
                   : 'border border-zinc-300 text-zinc-700 hover:bg-zinc-50'
               }`}
             >
               업로드하기
+            </Link>
+          </div>
+        </li>
+
+        {/* Step 4 */}
+        <li className="rounded border border-zinc-200 px-5 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-medium text-zinc-400 mb-0.5">Step 4</p>
+              <p className="text-sm font-medium">지원 준비</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                AI 자소서 생성과 면접 준비를 시작합니다.
+              </p>
+            </div>
+            <Link
+              href="/applications"
+              className={`shrink-0 rounded px-4 py-1.5 text-sm font-medium ${
+                checked && docUploaded
+                  ? 'bg-zinc-900 text-white'
+                  : 'border border-zinc-300 text-zinc-700 hover:bg-zinc-50'
+              }`}
+            >
+              시작하기
             </Link>
           </div>
         </li>
