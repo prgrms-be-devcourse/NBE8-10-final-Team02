@@ -12,6 +12,7 @@ import {
   addContributionByUrl,
   removeRepository,
   refreshGithubConnection,
+  getGithubConnection,
 } from '@/api/github';
 import { useBatchAnalysis } from '@/context/BatchAnalysisContext';
 import ResyncConfirmModal from '@/components/ResyncConfirmModal';
@@ -53,12 +54,22 @@ type Tab = 'owned' | 'contributed';
 
 export default function RepositoriesPage() {
   const [activeTab, setActiveTab] = useState<Tab>('owned');
+  const [githubLogin, setGithubLogin] = useState<string | null>(null);
+
+  useEffect(() => {
+    getGithubConnection().then((c) => setGithubLogin(c?.githubLogin ?? null)).catch(() => {});
+  }, []);
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
       <h1 className="mb-1 text-xl font-semibold">Repository 관리</h1>
       <p className="mb-5 text-sm text-zinc-500">
         포트폴리오에 활용할 repository를 선택하고 분석을 시작하세요.
+        {githubLogin && (
+          <span className="ml-1 text-zinc-400">
+            (현재 브라우저에 <span className="font-medium text-zinc-600">{githubLogin}</span> 계정으로 로그인되어 있어야 합니다.)
+          </span>
+        )}
       </p>
 
       <div className="mb-6 flex rounded border border-zinc-200">
