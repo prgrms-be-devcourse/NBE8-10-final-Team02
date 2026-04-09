@@ -101,21 +101,23 @@ public class AiPipeline {
             overrideTemplate.temperature(), overrideTemplate.maxTokens()
         );
 
-        try {
-            return executeWithClient(resolveClient(overrideTemplate), request, overrideTemplate, validator, templateId);
-        } catch (AiClientException e) {
-            // allowFallback=false이면 fallback 사용 안 함 (repo 분석은 Vertex/Gemini만)
-            if (e.getRateLimitType() == null || !overrideTemplate.retryPolicy().allowFallback()) {
-                throw e;
+        return concurrencyLimiter.executeWithLimit(() -> {
+            try {
+                return executeWithClient(resolveClient(overrideTemplate), request, overrideTemplate, validator, templateId);
+            } catch (AiClientException e) {
+                // allowFallback=false이면 fallback 사용 안 함 (repo 분석은 Vertex/Gemini만)
+                if (e.getRateLimitType() == null || !overrideTemplate.retryPolicy().allowFallback()) {
+                    throw e;
+                }
+                return router.getFallback()
+                    .map(fallbackClient -> {
+                        log.warn("[Fallback] provider({}) rate limit → fallback provider({})로 전환. 원인: {}",
+                            e.getProvider(), fallbackClient.getProvider(), e.getMessage());
+                        return executeWithClient(fallbackClient, request, overrideTemplate, validator, templateId);
+                    })
+                    .orElseThrow(() -> e);
             }
-            return router.getFallback()
-                .map(fallbackClient -> {
-                    log.warn("[Fallback] provider({}) rate limit → fallback provider({})로 전환. 원인: {}",
-                        e.getProvider(), fallbackClient.getProvider(), e.getMessage());
-                    return executeWithClient(fallbackClient, request, overrideTemplate, validator, templateId);
-                })
-                .orElseThrow(() -> e);
-        }
+        });
     }
 
     /**
