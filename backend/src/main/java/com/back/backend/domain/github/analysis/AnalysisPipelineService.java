@@ -306,6 +306,9 @@ public class AnalysisPipelineService {
                     significanceCheckService.markAnalyzed(userId, repo.getId()));
 
             log.info("Batch pipeline completed: userId={}, analyzedRepos={}", userId, analyzedRepos.size());
+            // 성공 시에만 clone 삭제 (용량 확보)
+            analyzedRepos.forEach(repo ->
+                    repoCloneService.deleteRepo(userId, repo.getId()));
 
         } catch (Exception e) {
             log.error("Batch: AI call failed for userId={}: {}", userId, e.getMessage(), e);
@@ -316,19 +319,7 @@ public class AnalysisPipelineService {
             // 배치 AI 호출 실패를 실패 로그에 기록 (repo 수에 관계없이 1건)
             failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
                     ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE.name(), errorMsg);
-            // AI 호출 실패 시 이번 run에서 새로 저장한 CodeIndex를 정리
-            analyzedRepos.forEach(repo -> {
-                try {
-                    codeIndexService.deleteByRepository(repo);
-                } catch (Exception cleanupEx) {
-                    log.warn("Batch: code index cleanup failed for repoId={}: {}",
-                            repo.getId(), cleanupEx.getMessage());
-                }
-            });
-        } finally {
-            // 배치 완료 후 모든 clone 디렉터리 정리
-            analyzedRepos.forEach(repo ->
-                    repoCloneService.deleteRepo(userId, repo.getId()));
+            // CodeIndex · clone 유지 — 정적 분석 결과 보존, CloneDirectoryCleanupScheduler가 주기 청소
         }
     }
 
