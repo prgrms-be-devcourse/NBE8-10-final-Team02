@@ -104,7 +104,8 @@ public class AiPipeline {
         try {
             return executeWithClient(resolveClient(overrideTemplate), request, overrideTemplate, validator, templateId);
         } catch (AiClientException e) {
-            if (e.getRateLimitType() == null) {
+            // allowFallback=false이면 fallback 사용 안 함 (repo 분석은 Vertex/Gemini만)
+            if (e.getRateLimitType() == null || !overrideTemplate.retryPolicy().allowFallback()) {
                 throw e;
             }
             return router.getFallback()
