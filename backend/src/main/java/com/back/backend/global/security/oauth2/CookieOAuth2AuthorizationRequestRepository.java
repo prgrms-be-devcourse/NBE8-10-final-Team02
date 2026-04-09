@@ -1,5 +1,6 @@
 package com.back.backend.global.security.oauth2;
 
+import com.back.backend.global.security.CookieManager;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -28,9 +29,14 @@ public class CookieOAuth2AuthorizationRequestRepository
     private static final String COOKIE_NAME = "oauth2_auth_request";
     private static final Duration COOKIE_MAX_AGE = Duration.ofMinutes(5);
 
+    private final CookieManager cookieManager;
+    public CookieOAuth2AuthorizationRequestRepository(CookieManager cookieManager) {
+        this.cookieManager = cookieManager;
+    }
+
     @Override
     public OAuth2AuthorizationRequest loadAuthorizationRequest(HttpServletRequest request) {
-        String value = getCookieValue(request, COOKIE_NAME);
+        String value = cookieManager.getCookieValue(request, COOKIE_NAME);
         return value != null ? deserialize(value) : null;
     }
 
@@ -41,10 +47,10 @@ public class CookieOAuth2AuthorizationRequestRepository
             HttpServletResponse response
     ) {
         if (authorizationRequest == null) {
-            clearCookie(response, COOKIE_NAME);
+            cookieManager.clear(response, COOKIE_NAME);
             return;
         }
-        addCookie(response, COOKIE_NAME, serialize(authorizationRequest), COOKIE_MAX_AGE);
+        cookieManager.add(response, COOKIE_NAME, serialize(authorizationRequest), COOKIE_MAX_AGE);
     }
 
     @Override
@@ -53,7 +59,7 @@ public class CookieOAuth2AuthorizationRequestRepository
             HttpServletResponse response
     ) {
         OAuth2AuthorizationRequest req = loadAuthorizationRequest(request);
-        clearCookie(response, COOKIE_NAME);
+        cookieManager.clear(response, COOKIE_NAME);
         return req;
     }
 

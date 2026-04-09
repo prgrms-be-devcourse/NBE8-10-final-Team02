@@ -1,8 +1,5 @@
 import type { PortfolioReadinessDashboard } from '@/types/portfolio';
-
-const base = () =>
-  (process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000') +
-  '/api/v1/portfolios/me/readiness';
+import { apiFetch } from '@/lib/api-client';
 
 async function parseError(res: Response): Promise<string> {
   try {
@@ -18,8 +15,7 @@ export class UnauthenticatedError extends Error {
 }
 
 export async function getPortfolioReadiness(): Promise<PortfolioReadinessDashboard> {
-  const res = await fetch(base(), {
-    credentials: 'include',
+  const res = await apiFetch('/api/v1/portfolios/me/readiness', {
     cache: 'no-store',
   });
 
