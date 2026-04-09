@@ -128,6 +128,85 @@ export default function BatchProgressWidget() {
     );
   }
 
+  // ── 일부 실패 완료 상태 ──
+  if (allDone && hasFailure) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50 w-72 rounded-2xl border border-amber-200 bg-white shadow-lg">
+        <div className="flex items-center justify-between px-4 py-3">
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="flex flex-1 items-center gap-2 text-left cursor-pointer"
+          >
+            <span className="text-base">⚠️</span>
+            <span className="text-sm font-medium text-amber-700">
+              분석 완료 ({counts.completed}/{counts.total}), {counts.failed}개 실패
+            </span>
+          </button>
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="text-xs text-zinc-400 hover:text-zinc-600 cursor-pointer shrink-0 ml-2"
+          >
+            {expanded ? '▲' : '▼'}
+          </button>
+        </div>
+
+        {/* 진행 바 (완료 비율) */}
+        <div className="px-4 pb-2">
+          <div className="h-1 w-full rounded-full bg-zinc-100">
+            <div
+              className="h-1 rounded-full bg-amber-400 transition-all duration-500"
+              style={{ width: `${(counts.completed / counts.total) * 100}%` }}
+            />
+          </div>
+        </div>
+
+        {/* 확장 패널 */}
+        {expanded && (
+          <ul className="mx-4 mb-2 mt-1 flex flex-col gap-1.5 max-h-48 overflow-y-auto">
+            {repoIds.map((id) => {
+              const s = statuses[id];
+              const isDone = s?.status === 'COMPLETED' || s?.status === 'SKIPPED';
+              const isFailed = s?.status === 'FAILED';
+              const name = activeBatch.repoNames?.[id] ?? `repo #${id}`;
+              return (
+                <li key={id} className="flex items-start gap-2 text-xs">
+                  <span className="mt-0.5 shrink-0">
+                    {isDone && <span className="text-green-600">✓</span>}
+                    {isFailed && <span className="text-red-500">✕</span>}
+                  </span>
+                  <span className={`min-w-0 ${isFailed ? 'text-red-700' : 'text-zinc-700'}`}>
+                    <span className="truncate block">{name}</span>
+                    {isFailed && s?.error && (
+                      <span className="text-red-500">{s.error}</span>
+                    )}
+                    {s?.status === 'SKIPPED' && s?.skipReason && (
+                      <span className="text-zinc-400">{s.skipReason}</span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <div className="flex gap-2 border-t border-zinc-100 px-4 py-2">
+          <button
+            onClick={handleRetryFailed}
+            className="flex-1 rounded border border-indigo-300 bg-indigo-50 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 cursor-pointer"
+          >
+            실패 repo 재시도 ({failedIds.length}개)
+          </button>
+          <button
+            onClick={dismissWidget}
+            className="rounded border border-zinc-200 px-3 py-1.5 text-xs text-zinc-500 hover:bg-zinc-50 cursor-pointer"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed bottom-4 right-4 z-50 w-72 rounded-2xl border border-zinc-200 bg-white shadow-lg">
       {/* 헤더 */}
