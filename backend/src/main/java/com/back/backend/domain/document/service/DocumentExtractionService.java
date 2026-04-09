@@ -28,6 +28,10 @@ import java.util.concurrent.Executor;
  * <p><b>Spring 6.2+ 제약</b>: {@code @TransactionalEventListener}와 {@code @Async}를
  * 동일 메서드에 조합하면 {@code IllegalStateException}이 발생한다.
  * 따라서 이벤트 리스너 내에서 {@code Executor}에 직접 제출하는 방식을 사용한다.</p>
+ *
+ * <h3>성능 모니터링</h3>
+ * <p>각 처리 단계(추출 → 정제 → 시크릿 마스킹 → PII 마스킹)의 소요 시간을 INFO 로그로 기록한다.
+ * 이를 통해 병목 단계를 파악하고 최적화 우선순위를 결정할 수 있다.</p>
  */
 @Service
 public class DocumentExtractionService {
@@ -72,22 +76,27 @@ public class DocumentExtractionService {
     /**
      * 실제 텍스트 추출 로직. executor 스레드에서 실행된다.
      *
-     * <p>각 repository 메서드가 자체 트랜잭션을 가지므로 별도 트랜잭션 관리가 불필요하다.
+     * <p>각 단계의 소요 시간을 INFO 레벨로 기록해 병목 구간을 파악한다.
      * 단위 테스트에서 직접 호출 가능하도록 package-private으로 선언한다.</p>
      */
     void performExtraction(DocumentUploadedEvent event) {
+        long totalStart = System.nanoTime();
         log.info("Starting text extraction for document id={}", event.documentId());
 
         documentRepository.findById(event.documentId()).ifPresentOrElse(doc -> {
             try {
+                // 1) 텍스트 추출 (PDFBox / POI / plain text)
+                long t0 = System.nanoTime();
                 String rawText = textExtractor.extract(event.storagePath(), event.mimeType());
+                log.info("[doc={}] extract={}ms", event.documentId(), ms(t0));
 
-                // 0) 텍스트 정제: \r\n, zero-width 문자 등 OCR 아티팩트 제거
+                // 2) 텍스트 정제: \r\n, zero-width 문자 등 OCR 아티팩트 제거
+                long t1 = System.nanoTime();
                 String sanitized = textSanitizationService.sanitize(rawText);
+                log.info("[doc={}] sanitize={}ms", event.documentId(), ms(t1));
 
-                // 1) 시크릿 마스킹 먼저: PII 패턴이 토큰 일부를 먼저 치환하면 Gitleaks가 못 잡음
-                //    예) PiiMasking의 PASSPORT 패턴이 github_pat 토큰 내 알파벳+숫자 구간을 ****로 치환
-                //    → Gitleaks가 github_pat_****_sdfsdf 를 유효한 PAT으로 인식 불가
+                // 3) 시크릿 마스킹 먼저: PII 패턴이 토큰 일부를 먼저 치환하면 Gitleaks가 못 잡음
+                long t2 = System.nanoTime();
                 String afterSecret;
                 try {
                     afterSecret = secretMaskingService.mask(sanitized);
@@ -96,8 +105,10 @@ public class DocumentExtractionService {
                         event.documentId(), secretEx.getMessage());
                     afterSecret = sanitized;
                 }
+                log.info("[doc={}] secret-mask={}ms", event.documentId(), ms(t2));
 
-                // 2) PII 마스킹: 시크릿이 이미 [REDACTED]로 치환된 텍스트에 적용
+                // 4) PII 마스킹: 시크릿이 이미 [REDACTED]로 치환된 텍스트에 적용
+                long t3 = System.nanoTime();
                 String textToSave;
                 try {
                     textToSave = piiMaskingService.mask(afterSecret);
@@ -106,10 +117,13 @@ public class DocumentExtractionService {
                         event.documentId(), maskEx.getMessage());
                     textToSave = afterSecret;
                 }
+                log.info("[doc={}] pii-mask={}ms", event.documentId(), ms(t3));
 
                 doc.markExtracted(textToSave, clock.instant());
                 documentRepository.save(doc);
-                log.info("Text extraction succeeded for document id={}", event.documentId());
+                log.info("Text extraction succeeded for document id={} total={}ms",
+                    event.documentId(), ms(totalStart));
+
             } catch (ServiceException e) {
                 log.warn("Text extraction failed for document id={}: {}", event.documentId(), e.getMessage());
                 doc.markFailed();
@@ -120,5 +134,10 @@ public class DocumentExtractionService {
                 documentRepository.save(doc);
             }
         }, () -> log.warn("Document not found for extraction, id={}", event.documentId()));
+    }
+
+    /** 나노초를 밀리초로 변환 (로그 가독성). */
+    private static long ms(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000L;
     }
 }

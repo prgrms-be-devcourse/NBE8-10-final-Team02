@@ -5,8 +5,10 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+
+import java.net.http.HttpClient;
 
 import java.io.IOException;
 
@@ -35,9 +37,17 @@ public class VertexAiClientConfig {
         return new VertexAiClient(restClient, properties, tokenProvider);
     }
 
+    /**
+     * HTTP/2 + 커넥션 풀이 적용된 RequestFactory를 생성
+     * JdkClientHttpRequestFactory는 HTTP/2 멀티플렉싱과 TLS 세션 재사용을 지원하여
+     * 동시 요청 시 SSL 핸드쉐이크 CPU 비용을 대폭 절감함
+     */
     private ClientHttpRequestFactory clientHttpRequestFactory(VertexAiClientProperties properties) {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(properties.timeout().connect());
+        HttpClient httpClient = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_2)
+            .connectTimeout(properties.timeout().connect())
+            .build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(properties.timeout().read());
         return factory;
     }

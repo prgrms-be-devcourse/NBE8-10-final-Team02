@@ -28,6 +28,9 @@ import org.springframework.context.ApplicationEventPublisher;
 import java.util.List;
 import java.util.Optional;
 
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.test.util.ReflectionTestUtils;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -65,6 +68,14 @@ class DocumentServiceTest {
 
     @InjectMocks
     private DocumentService documentService;
+
+    @BeforeEach
+    void injectConfigValues() {
+        // @Value 필드는 Spring context 없이 Mockito가 주입하지 않으므로 직접 설정
+        ReflectionTestUtils.setField(documentService, "maxFileSizeMb", 50L);
+        ReflectionTestUtils.setField(documentService, "maxFileSizeBytes", 50L * 1024 * 1024);
+        ReflectionTestUtils.setField(documentService, "maxDocumentCount", 5);
+    }
 
     // --- validateUpload ---
 
@@ -120,7 +131,7 @@ class DocumentServiceTest {
 
     @Test
     void validateUpload_failWhenFileTooLarge() {
-        long overLimit = DocumentService.MAX_FILE_SIZE_BYTES + 1;
+        long overLimit = 50L * 1024 * 1024 + 1;
 
         assertThatThrownBy(() ->
             documentService.validateUpload(1L, "application/pdf", "resume.pdf", overLimit)
@@ -132,7 +143,7 @@ class DocumentServiceTest {
 
     @Test
     void validateUpload_failWhenExceedsDocumentCount() {
-        given(documentRepository.countByUserId(1L)).willReturn(DocumentService.MAX_DOCUMENT_COUNT);
+        given(documentRepository.countByUserId(1L)).willReturn(5);
 
         assertThatThrownBy(() ->
             documentService.validateUpload(1L, "application/pdf", "resume.pdf", 1024L)

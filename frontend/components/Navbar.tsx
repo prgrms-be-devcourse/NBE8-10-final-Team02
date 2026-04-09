@@ -27,7 +27,7 @@ export default function Navbar() {
   async function handleLogout() {
     await logout();
     setUser(null);
-    window.location.href = '/login';
+    window.location.href = '/';
   }
 
   return (
@@ -46,7 +46,7 @@ export default function Navbar() {
 
         {user ? (
           <>
-            <span className="text-zinc-500">{user.displayName}</span>
+            <Link href="/portfolio/readiness" className="text-zinc-500 hover:text-zinc-900">{user.displayName}</Link>
             <button onClick={handleLogout} className="underline">
               로그아웃
             </button>

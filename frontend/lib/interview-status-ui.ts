@@ -32,8 +32,8 @@ export interface PendingResultPanelCopy {
   manualDetail: string;
 }
 
-export const PENDING_RESULT_AUTO_RECHECK_INTERVAL_MS = 4_000;
-export const PENDING_RESULT_AUTO_RECHECK_MAX_ATTEMPTS = 3;
+export const PENDING_RESULT_AUTO_RECHECK_INTERVAL_MS = 5_000;
+export const PENDING_RESULT_AUTO_RECHECK_MAX_ATTEMPTS = 12;
 
 export const SESSION_STATUS_BADGE_META = {
   ready: {

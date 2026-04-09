@@ -141,7 +141,11 @@ public class GitleaksService {
      * @return 발견된 시크릿 값 목록 (빈 리스트 = 발견 없음 또는 스캔 실패)
      */
     public List<String> scanTextForMasking(String text) {
-        if (!enabled || text == null || text.isBlank()) {
+        if (text == null || text.isBlank()) {
+            return Collections.emptyList();
+        }
+        if (!enabled) {
+            log.debug("Gitleaks disabled, skipping text scan.");
             return Collections.emptyList();
         }
 

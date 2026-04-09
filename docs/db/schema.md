@@ -2,7 +2,7 @@
 owner: 플랫폼/공통 기반 + 인프라/배포/관측성
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-31
+last_updated: 2026-04-08
 linked_issue_or_pr: docs-sync-requirements-v5
 applies_to: storage-schema
 ---
@@ -274,6 +274,7 @@ applies_to: storage-schema
 비고
 - `total_score`는 0~100 범위를 권장한다.
 - `last_activity_at`는 세션 생성, 답변 제출 성공, 재개 성공 시점에 갱신한다.
+- Track A 실시간 음성 입력도 별도 session 테이블을 만들지 않고 이 테이블을 그대로 재사용한다.
 - `completion_followup_reviewed_at`는 complete 직전 마지막 전체 보완 follow-up 검토를 세션당 1회로 제한하는 내부 마커다.
 
 ## 3.14 interview_session_questions
@@ -318,6 +319,8 @@ applies_to: storage-schema
 - `(session_id, session_question_id)`는 유일해야 한다.
 - API의 `questionId`는 세션 질문 id와 매핑한다.
 - `is_skipped = false`이면 `answer_text`가 있어야 한다.
+- `answer_text`에는 직접 입력 답변과 사용자가 최종 확인한 음성 transcript를 함께 저장한다.
+- v1 실시간 음성 면접은 raw audio/video를 저장하는 별도 컬럼이나 테이블을 두지 않는다.
 - `followup_resolved_at`은 dynamic follow-up 생성이 성공, null, fallback으로 최종 처리된 시각을 기록한다.
 
 ## 3.16 feedback_tags

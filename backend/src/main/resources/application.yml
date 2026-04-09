@@ -38,6 +38,10 @@ spring:
             token-uri: https://kauth.kakao.com/oauth/token
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
+  servlet:
+    multipart:
+      max-file-size: ${document.upload.max-file-size-mb}MB
+      max-request-size: ${document.upload.max-file-size-mb}MB
 
 # Actuator 설정 (Prometheus 수집을 위해 필수)
 management:
@@ -57,10 +61,22 @@ management:
 app:
   storage:
     upload-dir: ${APP_STORAGE_UPLOAD_DIR:uploads}
+  ocr:
+    # Tesseract OCR 활성화 여부. true로 설정하면 스캔 PDF에서 텍스트를 추출한다.
+    # 런타임에 Tesseract 5.x 네이티브 라이브러리 및 tessdata가 필요하다 (Dockerfile 참고).
+    # 로컬 개발 환경에서는 Tesseract 미설치 시 false로 유지한다.
+    enabled: ${APP_OCR_ENABLED:false}
+    # tessdata 디렉토리 경로. 비어 있으면 Tesseract 기본 경로를 사용한다.
+    tesseract-data-path: ${APP_OCR_TESSDATA_PATH:}
+    # OCR 언어 코드. 복수 언어는 '+'로 구분 (예: eng+kor)
+    language: ${APP_OCR_LANGUAGE:eng+kor}
 
 ai:
   provider: gemini
   fallback-provider: gemini  # 글로벌 fallback을 Gemini AI Studio(무료)로 변경 — GROQ 템플릿 실패 시 다른 provider로 가야 함
+  concurrency:
+    max-concurrent-calls: 4      # 2 vCPU × 2 — I/O-bound AI 호출의 적정 동시성
+    queue-timeout-seconds: 90    # 대기 한도 (AI 응답 60s + 큐 대기 30s)
   rate-limit:
     gemini:
       rpm: 10
@@ -111,6 +127,13 @@ ai:
   portfolio:
     batch:
       global-budget-chars: 480000
+
+document:
+  upload:
+    # 업로드 허용 최대 파일 크기 (MB). spring.servlet.multipart 제한과 동기화됨.
+    max-file-size-mb: 50
+    # 사용자 1명이 보유할 수 있는 최대 문서 수.
+    max-document-count: 5
 
 analysis:
   # OCI 파일시스템의 repo clone 베이스 경로 (/data/repos/{userId}/{repoId}/)

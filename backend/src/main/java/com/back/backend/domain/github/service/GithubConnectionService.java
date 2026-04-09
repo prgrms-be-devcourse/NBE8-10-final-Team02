@@ -112,14 +112,17 @@ public class GithubConnectionService {
         Instant now = Instant.now();
 
         // 1순위: 현재 app 사용자로 찾기
-        // 2순위: GitHub 계정 ID로 찾기 — 연동 흐름에서 같은 GitHub 계정이 다른 app user에 연결된 경우 재할당
+        // 2순위: GitHub 계정 ID로 찾기 — 이미 다른 app user에 연결된 경우 차단
         connectionRepository.findByUser(user)
                 .or(() -> connectionRepository.findByGithubUserId(githubUserId))
                 .ifPresentOrElse(
                         existing -> {
-                            // 다른 app user의 연결이면 현재 user로 재할당
+                            // 다른 app 사용자가 이미 이 GitHub 계정을 연결한 경우 → 차단
                             if (!existing.getUser().getId().equals(user.getId())) {
-                                existing.reassignUser(user);
+                                throw new ServiceException(ErrorCode.REQUEST_VALIDATION_FAILED,
+                                        HttpStatus.CONFLICT,
+                                        "이 GitHub 계정은 이미 다른 사용자와 연결되어 있습니다. " +
+                                        "다른 GitHub 계정을 사용하거나, 해당 계정으로 로그인하세요.");
                             }
                             existing.update(githubUserId, githubLogin, token, null, now);
                         },

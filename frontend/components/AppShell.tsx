@@ -20,10 +20,10 @@ export default function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-6">
+    <div className="mx-auto w-full max-w-7xl px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-6 lg:items-start">
       <div className="min-w-0">{children}</div>
-      <aside className="pb-6 lg:pb-0">
-        <div className="lg:sticky lg:top-6">
+      <aside className="mx-auto w-full max-w-2xl px-4 pb-6 lg:mx-0 lg:max-w-none lg:px-0 lg:pb-0">
+        <div className="lg:sticky lg:top-16">
           <PortfolioReadinessWidget />
         </div>
       </aside>

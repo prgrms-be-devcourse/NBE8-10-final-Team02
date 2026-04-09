@@ -161,16 +161,13 @@ export default function PortfolioReadinessWidget() {
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       {/* 1. 포트폴리오 현황 섹션 */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-zinc-500">준비 현황</p>
-          <h2 className="mt-1 text-lg font-semibold text-zinc-900">{dashboard.profile.displayName}님의 상태</h2>
+          <h2 className="mt-1 text-base font-semibold text-zinc-900 truncate">{dashboard.profile.displayName}님의 상태</h2>
         </div>
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={() => setReloadToken((v) => v + 1)} className="text-xs font-medium text-zinc-500 underline">
-            새로고침
-          </button>
-          <Link href="/portfolio/readiness" className="text-xs font-medium text-zinc-700 underline">
+        <div className="flex shrink-0 items-center">
+          <Link href="/portfolio/readiness" className="text-sm font-medium text-zinc-700 underline">
             상세 보기
           </Link>
         </div>

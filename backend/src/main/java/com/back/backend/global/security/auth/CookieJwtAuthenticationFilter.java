@@ -15,14 +15,19 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
 
-// @Component : filter 이중등록문제를 막기위해 제거
+/**
+ * 쿠키와 헤더를 기반으로 JWT 및 API Key 인증을 처리하는 필터입니다.
+ * <p>
+ * 1. API Key 검증 (Redis)
+ * 2. Access Token 검증 (JWT)
+ * 3. Access Token 만료 시 Refresh Token을 통한 자동 재발급 (Refresh Token Rotation 포함)
+ */
 public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
 
     public static final String COOKIE_API_KEY = "apiKey";
@@ -81,7 +86,8 @@ public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
         String accessToken = authTokens.accessToken() != null ? authTokens.accessToken() : cookieValue(request, COOKIE_ACCESS_TOKEN);
         String refreshToken = cookieValue(request, COOKIE_REFRESH_TOKEN);
 
-        if (!StringUtils.hasText(apiKey) || !StringUtils.hasText(accessToken)) {
+        // API Key가 없으면 인증 불가
+        if (!StringUtils.hasText(apiKey)) {
             apiAuthenticationEntryPoint.commence(request, response, new AuthenticationRequiredException("로그인이 필요합니다."));
             return;
         }
@@ -93,41 +99,44 @@ public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        try {
-            long accessTokenUserId = authenticateWithAccessToken(accessToken);
-
-            // API Key의 userId와 Access Token의 userId가 일치하는지 검증
-            if (!apiKeyUserId.equals(accessTokenUserId)) {
-                apiAuthenticationEntryPoint.commence(request, response, new AuthenticationInvalidTokenException("API Key와 토큰이 일치하지 않습니다."));
-                return;
-            }
-            filterChain.doFilter(request, response);
-            return;
-        } catch (AuthenticationExpiredTokenException expired) {
-            // exp 된 accessToken을 refreshToken으로 재발급 후 인증
-            if (!StringUtils.hasText(refreshToken)) {
-                apiAuthenticationEntryPoint.commence(request, response, expired);
-                return;
-            }
-
+        // Access Token이 있으면 먼저 시도
+        if (StringUtils.hasText(accessToken)) {
             try {
+                long accessTokenUserId = authenticateWithAccessToken(accessToken);
+
+                // API Key의 userId와 Access Token의 userId가 일치하는지 검증
+                if (!apiKeyUserId.equals(accessTokenUserId)) {
+                    apiAuthenticationEntryPoint.commence(request, response, new AuthenticationInvalidTokenException("API Key와 토큰이 일치하지 않습니다."));
+                    return;
+                }
+                filterChain.doFilter(request, response);
+                return;
+            } catch (AuthenticationExpiredTokenException ignored) {
+                // Access Token 만료 시 Refresh Token 로직으로 넘어감
+            } catch (AuthenticationInvalidTokenException invalid) {
+                apiAuthenticationEntryPoint.commence(request, response, invalid);
+                return;
+            }
+        }
+
+        // Access Token이 없거나 만료된 경우 Refresh Token으로 재발급 시도
+        if (StringUtils.hasText(refreshToken)) {
+            try {
+                // [RTR] Refresh Token Rotation: 새로운 Access Token과 함께 새로운 Refresh Token도 발급하여 세션 연장
                 authenticateWithRefreshAndReissue(refreshToken, response);
                 filterChain.doFilter(request, response);
-            } catch (AuthenticationExpiredTokenException refreshFailed) {
-                apiAuthenticationEntryPoint.commence(request, response, refreshFailed);
+                return;
+            } catch (AuthenticationExpiredTokenException e) {
+                apiAuthenticationEntryPoint.commence(request, response, e);
+            } catch (AuthenticationInvalidTokenException e) {
+                apiAuthenticationEntryPoint.commence(request, response, e);
             }
-        } catch (AuthenticationInvalidTokenException invalid) {
-            apiAuthenticationEntryPoint.commence(request, response, invalid);
+        } else {
+            // Access Token이 문제가 있고 Refresh Token도 없는 경우
+            apiAuthenticationEntryPoint.commence(request, response, new AuthenticationRequiredException("세션이 만료되었습니다. 다시 로그인해주세요."));
         }
     }
 
-    /**
-     * Access Token을 검증하고 Spring Security Context에 인증 정보를 등록합니다.
-     * * @param accessToken 검증할 JWT 액세스 토큰
-     * @return userId 토큰에서 추출한 사용자 ID
-     * @throws AuthenticationExpiredTokenException 토큰이 만료된 경우 발생
-     * @throws AuthenticationInvalidTokenException 토큰이 변조되었거나 형식이 잘못된 경우 발생
-     */
     private long authenticateWithAccessToken(String accessToken) {
         try {
             Jws<Claims> parsed = jwtTokenService.parseAccessToken(accessToken);
@@ -141,14 +150,23 @@ public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 
+    /**
+     * Refresh Token을 검증하고 새로운 Access Token 및 Refresh Token을 발급합니다 (Rotation).
+     */
     private void authenticateWithRefreshAndReissue(String refreshToken, HttpServletResponse response) {
         try {
             Jws<Claims> parsed = jwtTokenService.parseRefreshToken(refreshToken);
             long userId = Long.parseLong(parsed.getBody().getSubject());
 
+            // 새로운 토큰 세트 생성
             String newAccessToken = jwtTokenService.createAccessToken(userId);
+            String newRefreshToken = jwtTokenService.createRefreshToken(userId);
+
             SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(userId, List.of()));
+
+            // 쿠키 갱신
             setAccessTokenCookie(response, newAccessToken);
+            setRefreshTokenCookie(response, newRefreshToken);
         } catch (ExpiredJwtException e) {
             throw new AuthenticationExpiredTokenException("세션이 만료되었습니다. 다시 로그인해주세요.", e);
         } catch (JwtException e) {
@@ -160,49 +178,28 @@ public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
         cookieManager.add(response, COOKIE_ACCESS_TOKEN, newAccessToken, jwtTokenService.getAccessTtl());
     }
 
-    /**
-     * HTTP 요청의 쿠키 목록에서 특정 이름({@code name})에 해당하는 값을 추출합니다.
-     * * @param request HTTP 요청 객체
-     * @param name 찾고자 하는 쿠키의 이름 (예: "access_token")
-     * @return 쿠키의 값(Value), 해당 이름의 쿠키가 없거나 목록이 비어있으면 null 반환
-     */
+    private void setRefreshTokenCookie(HttpServletResponse response, String newRefreshToken) {
+        cookieManager.add(response, COOKIE_REFRESH_TOKEN, newRefreshToken, jwtTokenService.getRefreshTtl());
+    }
+
     private String cookieValue(HttpServletRequest request, String name) {
         Cookie[] cookies = request.getCookies();
-        if (cookies == null) {
-            return null;
-        }
-
+        if (cookies == null) return null;
         for (Cookie cookie : cookies) {
-            if (name.equals(cookie.getName())) {
-                return cookie.getValue();
-            }
+            if (name.equals(cookie.getName())) return cookie.getValue();
         }
-
         return null;
     }
 
-    /**
-     * HTTP 요청 헤더에서 인증 토큰 세트(API Key, Access Token)를 추출합니다.
-     * * 형식: {@code Authorization: Bearer {apiKey} {accessToken}}
-     * * @param request HTTP 요청 객체
-     * @return 추출된 인증 토큰 객체 (누락되거나 형식이 틀리면 빈 객체 반환)
-     */
     private AuthorizationTokens authorizationTokens(HttpServletRequest request) {
         String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (!StringUtils.hasText(authHeader)) {
-            return AuthorizationTokens.none();
-        }
-
-        // Authorization: Bearer {apiKey} {accessToken}
-        if (!authHeader.startsWith("Bearer ")) {
+        if (!StringUtils.hasText(authHeader) || !authHeader.startsWith("Bearer ")) {
             return AuthorizationTokens.none();
         }
 
         String afterBearer = authHeader.substring("Bearer ".length()).trim();
         String[] parts = afterBearer.split("\\s+");
-        if (parts.length < 2) {
-            return AuthorizationTokens.none();
-        }
+        if (parts.length < 2) return AuthorizationTokens.none();
 
         return new AuthorizationTokens(parts[0], parts[1]);
     }
@@ -213,4 +210,3 @@ public class CookieJwtAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 }
-

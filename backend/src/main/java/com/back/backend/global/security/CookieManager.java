@@ -1,5 +1,7 @@
 package com.back.backend.global.security;
 
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
@@ -35,6 +37,15 @@ public class CookieManager {
 
     public void clear(HttpServletResponse response, String name) {
         response.addHeader("Set-Cookie", build(name, "", Duration.ZERO).toString());
+    }
+
+    public String getCookieValue(HttpServletRequest request, String name) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) return null;
+        for (Cookie cookie : cookies) {
+            if (name.equals(cookie.getName())) return cookie.getValue();
+        }
+        return null;
     }
 
     private ResponseCookie build(String name, String value, Duration maxAge) {

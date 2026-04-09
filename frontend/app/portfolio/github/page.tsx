@@ -21,8 +21,18 @@ export default function GithubConnectPage() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [connected, setConnected] = useState<GithubConnection | null>(null);
 
-  // ── 진입 시: 이미 연결된 GitHub 계정 확인 ─────────────────
+  // ── 진입 시: 이미 연결된 GitHub 계정 확인 + URL 에러 파라미터 처리 ──
   useEffect(() => {
+    // OAuth 콜백 실패 시 ?error= 파라미터로 돌아오는 경우 처리
+    const params = new URLSearchParams(window.location.search);
+    const urlError = params.get('error');
+    if (urlError) {
+      setApiError(decodeURIComponent(urlError));
+      // URL에서 error 파라미터 제거
+      const clean = window.location.pathname;
+      window.history.replaceState(null, '', clean);
+    }
+
     Promise.all([getMe(), getGithubConnection().catch(() => null)])
       .then(([user, connection]) => {
         if (!user) {

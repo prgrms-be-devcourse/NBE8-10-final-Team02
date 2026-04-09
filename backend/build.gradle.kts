@@ -85,6 +85,10 @@ dependencies {
   implementation("org.apache.pdfbox:pdfbox:3.0.3")
   implementation("org.apache.poi:poi-ooxml:5.3.0")
 
+  // OCR: 스캔 PDF 텍스트 추출용 Tesseract Java 바인딩
+  // 런타임에 Tesseract 5.x 네이티브 라이브러리 및 tessdata 필요 (Dockerfile 참고)
+  implementation("net.sourceforge.tess4j:tess4j:5.13.0")
+  
   // Vertex AI 인증 (Service Account OAuth2)
   implementation("com.google.auth:google-auth-library-oauth2-http:1.30.1")
 }

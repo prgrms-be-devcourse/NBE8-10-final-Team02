@@ -2,7 +2,7 @@
 owner: 플랫폼/공통 기반 + 인프라/배포/관측성
 reviewer: 팀 전체
 status: reviewed
-last_updated: 2026-03-17
+last_updated: 2026-04-08
 linked_issue_or_pr: docs-sync-quality-ops-v7
 applies_to: security-policy
 ---
@@ -91,6 +91,7 @@ applies_to: security-policy
 - 생성형 AI에 전달하는 데이터는 목적에 필요한 최소 범위만 포함한다.
 - 다른 사용자 데이터가 같은 프롬프트 컨텍스트에 섞이면 안 된다.
 - 사용자 문서 원문 전체를 그대로 전달하기보다 필요한 발췌와 정규화된 요약을 우선 사용한다.
+- Track A 실시간 음성 면접 v1은 raw audio/video를 평가 입력으로 직접 넘기지 않고, 사용자가 최종 확인한 transcript text를 우선 사용한다.
 - AI 응답이 형식 불일치 또는 빈 응답인 경우 정상 결과로 저장하지 않는다.
 
 ## 6. Secret 및 저장 보호
@@ -124,6 +125,7 @@ applies_to: security-policy
 - GitHub 연결 생성/해제
 - private repository scope 부족 또는 접근 거부
 - 문서 업로드 차단과 추출 실패
+- 실시간 transcription provider 실패 및 텍스트 fallback 전환
 - 비정상 반복 요청 또는 rate limit 발생
 
 ## 9. 최소 수용 기준
@@ -134,5 +136,5 @@ applies_to: security-policy
 - 다른 사용자 리소스 접근은 소유권 검증을 통과하면 안 된다.
 - private repository는 추가 동의와 scope 없이는 조회/동기화되면 안 된다.
 - 지원하지 않는 형식 또는 10MB 초과 파일은 업로드되면 안 된다.
-- access token, refresh token, OAuth code, 문서 원문 전체, 면접 답변 원문 전체는 운영 로그에 남지 않아야 한다.
+- access token, refresh token, OAuth code, 문서 원문 전체, 면접 답변 원문 전체, raw audio/video, 실시간 transcript 전문은 운영 로그에 남지 않아야 한다.
 - AI 프롬프트 컨텍스트에 다른 사용자 데이터가 섞이지 않아야 한다.

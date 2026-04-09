@@ -25,10 +25,18 @@ import java.nio.file.Paths;
  *
  * <p>지원 형식:
  * <ul>
- *   <li>PDF: Apache PDFBox</li>
+ *   <li>PDF: Apache PDFBox (텍스트 레이어 우선) → OCR 폴백 ({@link OcrService})</li>
  *   <li>DOCX: Apache POI</li>
  *   <li>Markdown: plain text 읽기 (UTF-8)</li>
  * </ul>
+ * </p>
+ *
+ * <p>PDF 처리 순서:
+ * <ol>
+ *   <li>PDFBox로 텍스트 레이어 추출 시도 — 대부분의 일반 PDF 처리</li>
+ *   <li>결과가 비어 있으면 {@link OcrService}로 OCR 폴백 — 스캔 PDF 대응</li>
+ *   <li>OCR도 실패하거나 빈 결과면 {@code DOCUMENT_EXTRACT_EMPTY} 예외</li>
+ * </ol>
  * </p>
  *
  * <p>storagePath는 DB에 저장된 상대 경로 (예: "uploads/uuid_resume.pdf").
@@ -42,8 +50,14 @@ public class DocumentTextExtractor {
     /** 파일이 저장된 업로드 디렉토리 (절대 경로). */
     private final Path uploadDir;
 
-    public DocumentTextExtractor(@Value("${app.storage.upload-dir}") String uploadDir) {
+    /** OCR 서비스 — Tesseract 활성화 시 TesseractOcrService, 비활성화 시 NoOpOcrService. */
+    private final OcrService ocrService;
+
+    public DocumentTextExtractor(
+            @Value("${app.storage.upload-dir}") String uploadDir,
+            OcrService ocrService) {
         this.uploadDir = Paths.get(uploadDir).toAbsolutePath().normalize();
+        this.ocrService = ocrService;
     }
 
     /**
@@ -56,7 +70,6 @@ public class DocumentTextExtractor {
      *                          추출 결과가 비어 있으면 DOCUMENT_EXTRACT_EMPTY
      */
     public String extract(String storagePath, String mimeType) {
-        // storagePath = "uploads/uuid_file.pdf" → 파일명만 추출해 uploadDir 기준으로 절대 경로 구성
         String filename = Path.of(storagePath).getFileName().toString();
         Path absolutePath = uploadDir.resolve(filename);
 
@@ -73,7 +86,6 @@ public class DocumentTextExtractor {
             );
         };
 
-        // 추출 결과가 공백만 있거나 비어 있으면 실패로 간주 (스캔 PDF 등)
         if (text == null || text.isBlank()) {
             throw new ServiceException(
                 ErrorCode.DOCUMENT_EXTRACT_EMPTY,
@@ -86,14 +98,12 @@ public class DocumentTextExtractor {
 
     /**
      * MIME type과 파일명 확장자를 조합해 추출 형식("pdf"/"docx"/"md"/unknown)을 결정한다.
-     * Windows 등에서 .md 파일이 application/octet-stream으로 전송될 수 있으므로 확장자를 우선 본다.
      */
     private static String resolveFormat(String filename, String mimeType) {
         String lower = filename.toLowerCase();
         if (lower.endsWith(".pdf")) return "pdf";
         if (lower.endsWith(".docx")) return "docx";
         if (lower.endsWith(".md")) return "md";
-        // 확장자로 판단 불가 시 MIME type으로 fallback
         return switch (mimeType) {
             case "application/pdf" -> "pdf";
             case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> "docx";
@@ -103,14 +113,31 @@ public class DocumentTextExtractor {
     }
 
     /**
-     * PDFBox를 사용해 PDF 파일에서 텍스트를 추출한다.
+     * PDF에서 텍스트를 추출한다.
      *
-     * <p>스캔 PDF는 텍스트 레이어가 없어 빈 문자열이 반환될 수 있다.
-     * 호출자가 빈 결과를 DOCUMENT_EXTRACT_EMPTY로 처리한다.</p>
+     * <ol>
+     *   <li>PDFBox의 {@link PDFTextStripper}로 텍스트 레이어 추출 시도</li>
+     *   <li>결과가 비어 있으면 {@link OcrService}로 OCR 폴백 (스캔 PDF 대응)</li>
+     * </ol>
+     *
+     * <p>OCR이 비활성화된 경우({@link NoOpOcrService}) 스캔 PDF는 빈 문자열을 반환하며,
+     * 호출자({@link #extract})가 {@code DOCUMENT_EXTRACT_EMPTY}를 던진다.</p>
      */
     private String extractPdf(Path path) {
         try (PDDocument doc = Loader.loadPDF(path.toFile())) {
-            return new PDFTextStripper().getText(doc);
+            String text = new PDFTextStripper().getText(doc);
+            if (!text.isBlank()) {
+                return text;
+            }
+            // 텍스트 레이어가 없음 → OCR 시도 (스캔 PDF)
+            log.info("PDF has no text layer, attempting OCR: {}", path.getFileName());
+            try {
+                return ocrService.extractTextFromPdf(doc);
+            } catch (ServiceException ocrEx) {
+                // OCR 실패 → 빈 문자열 반환 → 호출자가 DOCUMENT_EXTRACT_EMPTY 처리
+                log.warn("OCR failed for {}: {}", path.getFileName(), ocrEx.getMessage());
+                return "";
+            }
         } catch (IOException e) {
             log.warn("PDF extraction failed for {}: {}", path.getFileName(), e.getMessage());
             throw new ServiceException(
@@ -123,9 +150,6 @@ public class DocumentTextExtractor {
 
     /**
      * Apache POI를 사용해 DOCX 파일에서 텍스트를 추출한다.
-     *
-     * <p>IOEXception 외에도 손상된 파일에서 발생하는
-     * NotOfficeXmlFileException(RuntimeException 계열)까지 모두 잡는다.</p>
      */
     private String extractDocx(Path path) {
         try (InputStream is = Files.newInputStream(path);
@@ -144,8 +168,6 @@ public class DocumentTextExtractor {
 
     /**
      * Markdown 파일을 UTF-8로 읽어 그대로 반환한다.
-     *
-     * <p>Markdown은 plain text이므로 별도 파싱 없이 원문을 사용한다.</p>
      */
     private String extractMarkdown(Path path) {
         try {

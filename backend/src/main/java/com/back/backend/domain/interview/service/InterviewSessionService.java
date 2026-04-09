@@ -85,6 +85,7 @@ public class InterviewSessionService {
     private final InterviewCompletionFollowupGenerationService interviewCompletionFollowupGenerationService;
     private final InterviewResultGenerationService interviewResultGenerationService;
     private final InterviewResponseMapper interviewResponseMapper;
+    private final AsyncInterviewResultGenerator asyncInterviewResultGenerator;
     private final Clock clock;
     private final PlatformTransactionManager transactionManager;
     private final ApplicationEventPublisher eventPublisher;
@@ -203,28 +204,78 @@ public class InterviewSessionService {
         );
         beginResultGenerationAttempt(preparation.sessionId());
 
-        try {
-            InterviewResultGenerationService.GeneratedInterviewResult generatedResult =
-                    interviewResultGenerationService.generate(
-                            userId,
-                            preparation.sessionId(),
-                            preparation.questionSetId(),
-                            preparation.answers(),
-                            preparation.jobRole()
-                    );
+        // AI 결과 생성을 비동기로 제출
+        java.util.concurrent.CompletableFuture<InterviewResultGenerationService.GeneratedInterviewResult> resultFuture =
+                asyncInterviewResultGenerator.submitAsync(
+                        userId,
+                        preparation.sessionId(),
+                        preparation.questionSetId(),
+                        preparation.answers(),
+                        preparation.jobRole()
+                );
 
+        // 동기 완료 시 (테스트 환경, CallerRunsPolicy) 원래 응답 반환
+        if (resultFuture.isDone()) {
+            return handleSynchronousCompletion(userId, preparation, resultFuture);
+        }
+
+        // 비동기 완료 시 — 콜백 등록 후 즉시 반환
+        // 결과는 GET /result 폴링 시 retryPendingResultGenerationIfNeeded()로 확인/재시도
+        resultFuture.thenAccept(generatedResult -> {
+            executeInTransaction(
+                    () -> finalizeSessionCompletion(userId, preparation, generatedResult)
+            );
+            clearResultGenerationRetryState(preparation.sessionId());
+        }).exceptionally(throwable -> {
+            Throwable cause = throwable instanceof java.util.concurrent.CompletionException
+                    ? throwable.getCause() : throwable;
+            if (cause instanceof ServiceException se) {
+                handleResultGenerationFailure(preparation.sessionId(), se);
+            } else {
+                handleResultGenerationFailure(preparation.sessionId(), unexpectedResultGenerationFailure());
+            }
+            return null;
+        });
+
+        return new InterviewSessionCompletionResponse(
+                preparation.sessionId(),
+                InterviewSessionStatus.COMPLETED.getValue(),
+                null,
+                null,
+                preparation.endedAt()
+        );
+    }
+
+    /**
+     * 동기 완료된 CompletableFuture에서 결과를 추출하여 원래 응답을 반환
+     * 테스트 환경(Runnable::run)이나 CallerRunsPolicy에서 사용됨
+     */
+    private InterviewSessionCompletionResponse handleSynchronousCompletion(
+            long userId,
+            SessionCompletionPreparation preparation,
+            java.util.concurrent.CompletableFuture<InterviewResultGenerationService.GeneratedInterviewResult> resultFuture
+    ) {
+        try {
+            InterviewResultGenerationService.GeneratedInterviewResult generatedResult = resultFuture.get();
             InterviewSessionCompletionResponse response = executeInTransaction(
                     () -> finalizeSessionCompletion(userId, preparation, generatedResult)
             );
             clearResultGenerationRetryState(preparation.sessionId());
             return response;
-        } catch (ServiceException exception) {
-            handleResultGenerationFailure(preparation.sessionId(), exception);
-            throw exception;
-        } catch (RuntimeException exception) {
-            ServiceException generationFailure = unexpectedResultGenerationFailure();
-            handleResultGenerationFailure(preparation.sessionId(), generationFailure);
-            throw generationFailure;
+        } catch (java.util.concurrent.ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof ServiceException se) {
+                handleResultGenerationFailure(preparation.sessionId(), se);
+                throw se;
+            }
+            ServiceException failure = unexpectedResultGenerationFailure();
+            handleResultGenerationFailure(preparation.sessionId(), failure);
+            throw failure;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            ServiceException failure = unexpectedResultGenerationFailure();
+            handleResultGenerationFailure(preparation.sessionId(), failure);
+            throw failure;
         }
     }
 
