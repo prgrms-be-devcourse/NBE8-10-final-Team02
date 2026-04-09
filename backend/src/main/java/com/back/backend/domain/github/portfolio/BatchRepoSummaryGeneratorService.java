@@ -1,5 +1,8 @@
 package com.back.backend.domain.github.portfolio;
 
+import com.back.backend.domain.ai.batch.BatchProviderStrategy;
+import com.back.backend.domain.ai.batch.BatchProviderStrategyFactory;
+import com.back.backend.domain.ai.client.AiProvider;
 import com.back.backend.domain.ai.pipeline.AiPipeline;
 import com.back.backend.domain.github.analysis.CodeIndexService;
 import com.back.backend.domain.github.analysis.ContributionExtractorService;
@@ -66,6 +69,7 @@ public class BatchRepoSummaryGeneratorService {
 
     private final AiPipeline aiPipeline;
     private final BatchPortfolioPromptBuilder promptBuilder;
+    private final BatchProviderStrategyFactory strategyFactory;
     private final CodeIndexService codeIndexService;
     private final ContributionExtractorService contributionExtractorService;
     private final RepoCloneService repoCloneService;
@@ -82,6 +86,7 @@ public class BatchRepoSummaryGeneratorService {
     public BatchRepoSummaryGeneratorService(
             AiPipeline aiPipeline,
             BatchPortfolioPromptBuilder promptBuilder,
+            BatchProviderStrategyFactory strategyFactory,
             CodeIndexService codeIndexService,
             ContributionExtractorService contributionExtractorService,
             RepoCloneService repoCloneService,
@@ -93,6 +98,7 @@ public class BatchRepoSummaryGeneratorService {
     ) {
         this.aiPipeline = aiPipeline;
         this.promptBuilder = promptBuilder;
+        this.strategyFactory = strategyFactory;
         this.codeIndexService = codeIndexService;
         this.contributionExtractorService = contributionExtractorService;
         this.repoCloneService = repoCloneService;
@@ -135,36 +141,52 @@ public class BatchRepoSummaryGeneratorService {
             return List.of();
         }
 
-        // ── Step 2: 2D Rollover 예산 생성 ──────────────────────────────
-        // 배치 호출 1회에 대한 전체 예산을 repo 수로 나눠 관리
-        BatchTokenBudget budget = new BatchTokenBudget(
-                budgetProperties.getGlobalBudgetChars(), repoBatchDataList.size());
+        // ── Step 2: provider 전략 결정 (Gemini free vs Vertex AI) ─────────
+        BatchProviderStrategy strategy = strategyFactory.resolve(AiProvider.VERTEX_AI);
+        int chunkSize = strategy.getMaxReposPerCall();
+        log.info("BatchProviderStrategy resolved: maxReposPerCall={}, maxOutputTokens={}, englishOnly={}",
+                chunkSize, strategy.getMaxOutputTokens(), strategy.isEnglishOnly());
 
-        // ── Step 3: XML 배치 페이로드 조립 ────────────────────────────
-        String batchPayload = promptBuilder.build(repoBatchDataList, budget);
-        log.info("Batch payload built: chars={}, repoCount={}",
-                batchPayload.length(), repoBatchDataList.size());
+        // ── Step 3~6: 청크별 AI 호출 + 저장 ──────────────────────────────
+        List<RepoSummary> allSaved = new ArrayList<>();
+        List<List<BatchPortfolioPromptBuilder.RepoBatchData>> chunks =
+                partitionList(repoBatchDataList, chunkSize);
 
-        // ── Step 4: 단 1회 AI 호출 ────────────────────────────────────
-        // ai.portfolio.summary.batch.v1 템플릿 → JSON 배열 응답
-        JsonNode rawResponse = aiPipeline.execute(BATCH_TEMPLATE_ID, batchPayload);
+        for (int chunkIdx = 0; chunkIdx < chunks.size(); chunkIdx++) {
+            List<BatchPortfolioPromptBuilder.RepoBatchData> chunk = chunks.get(chunkIdx);
+            log.info("Processing chunk {}/{}: repoCount={}", chunkIdx + 1, chunks.size(), chunk.size());
 
-        // 일부 모델이 1개 repo일 때 배열 대신 단일 객체로 반환하는 경우 정규화
-        JsonNode responseArray;
-        if (rawResponse.isObject()) {
-            log.warn("Batch AI response was a single object, not an array. Wrapping in array.");
-            responseArray = objectMapper.createArrayNode().add(rawResponse);
-        } else {
-            responseArray = rawResponse;
+            // 2D Rollover 예산 (청크 단위로 독립 계산)
+            BatchTokenBudget budget = new BatchTokenBudget(
+                    budgetProperties.getGlobalBudgetChars(), chunk.size());
+
+            // XML 페이로드 조립 (Gemini free이면 "Only English" 지시 삽입)
+            String batchPayload = promptBuilder.build(chunk, budget, strategy.isEnglishOnly());
+            log.info("Chunk {}/{} payload built: chars={}", chunkIdx + 1, chunks.size(), batchPayload.length());
+
+            // provider별 maxTokens로 AI 호출
+            JsonNode rawResponse = aiPipeline.executeWithMaxTokens(
+                    BATCH_TEMPLATE_ID, batchPayload, strategy.getMaxOutputTokens());
+
+            // 일부 모델이 1개 repo일 때 배열 대신 단일 객체로 반환하는 경우 정규화
+            JsonNode responseArray;
+            if (rawResponse.isObject()) {
+                log.warn("Chunk {}/{}: AI response was a single object, wrapping in array.",
+                        chunkIdx + 1, chunks.size());
+                responseArray = objectMapper.createArrayNode().add(rawResponse);
+            } else {
+                responseArray = rawResponse;
+            }
+            log.info("Chunk {}/{} AI call completed. responseSize={}",
+                    chunkIdx + 1, chunks.size(), responseArray.size());
+
+            // repoKey → GithubRepository 역매핑
+            Map<String, GithubRepository> repoByKey = buildRepoKeyMap(chunk);
+            allSaved.addAll(saveAllSummaries(user, responseArray, repoByKey, triggerReason));
         }
-        log.info("Batch AI call completed. responseSize={}", responseArray.size());
 
-        // ── Step 5: 응답 배열 파싱 → repoId 기준으로 repo 매핑 ─────────
-        // repoKey → GithubRepository 역매핑 테이블 구성
-        Map<String, GithubRepository> repoByKey = buildRepoKeyMap(repoBatchDataList);
-
-        // ── Step 6: 각 repo의 RepoSummary 저장 ─────────────────────────
-        return saveAllSummaries(user, responseArray, repoByKey, triggerReason);
+        log.info("All chunks processed: userId={}, totalSaved={}", user.getId(), allSaved.size());
+        return allSaved;
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -355,6 +377,17 @@ public class BatchRepoSummaryGeneratorService {
     // ─────────────────────────────────────────────────────────────────────
     // 헬퍼
     // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * 리스트를 size 크기의 청크로 분할한다.
+     */
+    private static <T> List<List<T>> partitionList(List<T> list, int size) {
+        List<List<T>> result = new ArrayList<>();
+        for (int i = 0; i < list.size(); i += size) {
+            result.add(list.subList(i, Math.min(i + size, list.size())));
+        }
+        return result;
+    }
 
     /**
      * repoBatchDataList에서 repoKey → GithubRepository 역매핑 테이블을 구성한다.
