@@ -80,6 +80,8 @@ export default function NewQuestionSetPage() {
     }
   }
 
+  const MAX_SETS = 5;
+
   // ── 데이터 로딩 ─────────────────────────────────
   const loadPageData = useCallback(async () => {
     setLoading(true);
@@ -225,27 +227,32 @@ export default function NewQuestionSetPage() {
       {/* 기존 질문 세트 목록 */}
       {existingSets.length > 0 && (
         <section className="mb-8">
-          <h2 className="mb-3 text-sm font-medium text-zinc-700">
-            이전 질문 세트 ({existingSets.length}개)
+          <h2 className="mb-1 text-base font-semibold text-zinc-900">
+            이전 질문 세트 <span className="text-sm font-normal text-zinc-400">({Math.min(existingSets.length, MAX_SETS)}/{MAX_SETS})</span>
           </h2>
-          <p className="mb-3 text-xs text-zinc-500">
-            이미 만든 세트가 있다면 바로 열어 검토하거나 모의 면접을 시작할 수 있습니다.
+          <p className="mb-4 text-xs text-zinc-500">
+            이미 만든 세트가 있다면 바로 모의 면접을 시작할 수 있습니다.
           </p>
-          <ul className="flex flex-col gap-2">
-            {existingSets.map((set) => (
-              <li key={set.questionSetId} className="rounded border border-zinc-200">
+          <ul className="flex flex-col gap-3">
+            {existingSets.slice(0, MAX_SETS).map((set, index) => (
+              <li key={set.questionSetId} className="rounded-xl border border-zinc-200 bg-white shadow-sm">
                 <div
                   role="link"
                   tabIndex={0}
                   onClick={() => navigateToQuestionSet(set.questionSetId)}
                   onKeyDown={(event) => handleCardKeyDown(event, set.questionSetId)}
-                  className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-300 focus:ring-offset-2"
+                  className="flex cursor-pointer items-center justify-between gap-4 px-5 py-4 transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-300 focus:ring-offset-2 rounded-xl"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-zinc-900">
-                      {set.title}
-                    </p>
-                    <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-zinc-500">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-base font-semibold text-zinc-900">
+                        {set.title}
+                      </p>
+                      {existingSets.length >= MAX_SETS && index === existingSets.slice(0, MAX_SETS).length - 1 && (
+                        <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">가장 오래됨</span>
+                      )}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-x-3 text-sm text-zinc-500">
                       <span>질문 {set.questionCount}개</span>
                       <span>난이도 {DIFFICULTY_LABEL[set.difficultyLevel]}</span>
                       <span>{new Date(set.createdAt).toLocaleDateString('ko-KR')}</span>
@@ -257,9 +264,9 @@ export default function NewQuestionSetPage() {
                       stopCardNavigation(event);
                       navigateToQuestionSet(set.questionSetId);
                     }}
-                    className="shrink-0 rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700"
+                    className="shrink-0 rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-zinc-700"
                   >
-                    세트 열기
+                    모의면접시작
                   </button>
                 </div>
               </li>
@@ -369,6 +376,13 @@ export default function NewQuestionSetPage() {
               ))}
             </div>
           </div>
+
+          {/* 5개 한계 안내 */}
+          {existingSets.length >= MAX_SETS && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              질문 세트는 최대 {MAX_SETS}개까지 보관됩니다. 새로 만들면 가장 오래된 세트부터 교체됩니다.
+            </div>
+          )}
 
           {/* 생성 버튼 */}
           <button
