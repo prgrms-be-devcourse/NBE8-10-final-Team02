@@ -334,7 +334,7 @@ public class AnalysisPipelineService {
         } catch (Exception e) {
             log.error("Batch: AI call failed for userId={}: {}", userId, e.getMessage(), e);
             // AI 호출 실패: 이미 COMPLETED 처리된 repo는 건드리지 않고 나머지만 FAILED
-            String errorMsg = "배치 AI 호출 실패: " + summarizeError(e);
+            String errorMsg = toUserFacingBatchError(e);
             analyzedRepos.forEach(repo -> {
                 if (!completedRepoIds.contains(repo.getId())) {
                     syncStatusService.setFailed(userId, repo.getId(), errorMsg);
@@ -810,6 +810,26 @@ public class AnalysisPipelineService {
         String msg = e.getMessage();
         if (msg == null) return e.getClass().getSimpleName();
         return msg.length() > 200 ? msg.substring(0, 200) + "..." : msg;
+    }
+
+    /**
+     * AI 응답 JSON이 잘려서 파싱 실패한 경우 — 재시도하면 성공할 수 있는 일시적 오류
+     */
+    private boolean isRetryableAiError(Exception e) {
+        String msg = e.getMessage();
+        if (msg == null) return false;
+        return msg.contains("JSON 파싱 실패") || msg.contains("Unexpected end-of-input");
+    }
+
+    /**
+     * 사용자에게 보여줄 에러 메시지를 반환한다.
+     * 재시도 가능한 에러는 [RETRY] 접두사를 붙여서 프론트엔드가 구분할 수 있게 한다.
+     */
+    private String toUserFacingBatchError(Exception e) {
+        if (isRetryableAiError(e)) {
+            return "[RETRY] AI 출력이 중간에 잘렸습니다. 재시도하면 성공할 수 있습니다.";
+        }
+        return "배치 AI 호출 실패: " + summarizeError(e);
     }
 
     private static String threadKey(Long userId, Long repositoryId) {

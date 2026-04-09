@@ -22,6 +22,11 @@ function countByStatus(
   return { completed, failed, inProgress, total: repoIds.length };
 }
 
+const RETRYABLE_PREFIX = '[RETRY]';
+const isRetryable = (error?: string | null) => error?.startsWith(RETRYABLE_PREFIX) ?? false;
+const displayError = (error?: string | null) =>
+  error?.startsWith(RETRYABLE_PREFIX) ? error.slice(RETRYABLE_PREFIX.length).trim() : (error ?? '');
+
 const STEP_LABEL: Record<string, string> = {
   significance_check: '변경 감지 중',
   clone: '저장소 복제 중',
@@ -130,6 +135,7 @@ export default function BatchProgressWidget() {
 
   // ── 일부 실패 완료 상태 ──
   if (allDone && hasFailure) {
+    const allFailuresRetryable = failedIds.every((id) => isRetryable(statuses[id]?.error));
     return (
       <div className="fixed bottom-4 right-4 z-50 w-72 rounded-2xl border border-amber-200 bg-white shadow-lg">
         <div className="flex items-center justify-between px-4 py-3">
@@ -138,9 +144,14 @@ export default function BatchProgressWidget() {
             className="flex flex-1 items-center gap-2 text-left cursor-pointer"
           >
             <span className="text-base">⚠️</span>
-            <span className="text-sm font-medium text-amber-700">
-              분석 완료 ({counts.completed}/{counts.total}), {counts.failed}개 실패
-            </span>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-amber-700">
+                분석 완료 ({counts.completed}/{counts.total}), {counts.failed}개 실패
+              </span>
+              {allFailuresRetryable && (
+                <span className="text-xs text-amber-600">재시도하면 성공할 수 있습니다</span>
+              )}
+            </div>
           </button>
           <button
             onClick={() => setExpanded((v) => !v)}
@@ -167,17 +178,21 @@ export default function BatchProgressWidget() {
               const s = statuses[id];
               const isDone = s?.status === 'COMPLETED' || s?.status === 'SKIPPED';
               const isFailed = s?.status === 'FAILED';
+              const retryable = isFailed && isRetryable(s?.error);
               const name = activeBatch.repoNames?.[id] ?? `repo #${id}`;
               return (
                 <li key={id} className="flex items-start gap-2 text-xs">
                   <span className="mt-0.5 shrink-0">
                     {isDone && <span className="text-green-600">✓</span>}
-                    {isFailed && <span className="text-red-500">✕</span>}
+                    {retryable && <span className="text-amber-500">↺</span>}
+                    {isFailed && !retryable && <span className="text-red-500">✕</span>}
                   </span>
-                  <span className={`min-w-0 ${isFailed ? 'text-red-700' : 'text-zinc-700'}`}>
+                  <span className={`min-w-0 ${retryable ? 'text-amber-700' : isFailed ? 'text-red-700' : 'text-zinc-700'}`}>
                     <span className="truncate block">{name}</span>
                     {isFailed && s?.error && (
-                      <span className="text-red-500">{s.error}</span>
+                      <span className={retryable ? 'text-amber-500' : 'text-red-500'}>
+                        {displayError(s.error)}
+                      </span>
                     )}
                     {s?.status === 'SKIPPED' && s?.skipReason && (
                       <span className="text-zinc-400">{s.skipReason}</span>
@@ -194,7 +209,7 @@ export default function BatchProgressWidget() {
             onClick={handleRetryFailed}
             className="flex-1 rounded border border-indigo-300 bg-indigo-50 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 cursor-pointer"
           >
-            실패 repo 재시도 ({failedIds.length}개)
+            {allFailuresRetryable ? `↺ 재시도 (${failedIds.length}개)` : `실패 재시도 (${failedIds.length}개)`}
           </button>
           <button
             onClick={dismissWidget}
@@ -255,6 +270,7 @@ export default function BatchProgressWidget() {
             const s = statuses[id];
             const isDone = s?.status === 'COMPLETED' || s?.status === 'SKIPPED';
             const isFailed = s?.status === 'FAILED';
+            const retryable = isFailed && isRetryable(s?.error);
             const isActive = !isDone && !isFailed;
             const name = activeBatch.repoNames?.[id] ?? `repo #${id}`;
             const stepLabel = isActive
@@ -264,16 +280,19 @@ export default function BatchProgressWidget() {
               <li key={id} className="flex items-start gap-2 text-xs">
                 <span className="mt-0.5 shrink-0">
                   {isDone && <span className="text-green-600">✓</span>}
-                  {isFailed && <span className="text-red-500">✕</span>}
+                  {retryable && <span className="text-amber-500">↺</span>}
+                  {isFailed && !retryable && <span className="text-red-500">✕</span>}
                   {isActive && <span className="animate-spin inline-block text-indigo-400">⟳</span>}
                 </span>
-                <span className={`min-w-0 ${isFailed ? 'text-red-700' : 'text-zinc-700'}`}>
+                <span className={`min-w-0 ${retryable ? 'text-amber-700' : isFailed ? 'text-red-700' : 'text-zinc-700'}`}>
                   <span className="truncate block">{name}</span>
                   {stepLabel && (
                     <span className="text-indigo-400 animate-pulse">{stepLabel}...</span>
                   )}
                   {isFailed && s?.error && (
-                    <span className="text-red-500">{s.error}</span>
+                    <span className={retryable ? 'text-amber-500' : 'text-red-500'}>
+                      {displayError(s.error)}
+                    </span>
                   )}
                   {s?.status === 'SKIPPED' && s?.skipReason && (
                     <span className="text-zinc-400">{s.skipReason}</span>
