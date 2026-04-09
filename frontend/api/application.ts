@@ -88,6 +88,23 @@ export async function getApplication(applicationId: number): Promise<Application
 }
 
 /**
+ * GET /applications/{applicationId}/sources
+ * 연결된 소스(문서/레포) 조회.
+ */
+export async function getSources(applicationId: number): Promise<SourceBindingResponse> {
+  const res = await apiFetch(`/api/v1/applications/${applicationId}/sources`, {
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseError(res));
+  }
+
+  const body = await res.json();
+  return body.data as SourceBindingResponse;
+}
+
+/**
  * PUT /applications/{applicationId}/sources
  * 소스(문서/레포) 연결.
  */
