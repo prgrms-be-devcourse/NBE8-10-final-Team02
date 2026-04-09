@@ -51,11 +51,15 @@ export default function DocumentsPage() {
     loadDocuments();
   }, [loadDocuments]);
 
-  // 추출 상태 폴링
+  // 추출 상태 폴링 (back-off: 500ms → 1s → 2s → 3s → 5s)
   useEffect(() => {
     if (pendingIds.size === 0) return;
 
-    const interval = setInterval(async () => {
+    const INTERVALS = [500, 1000, 2000, 3000, 5000];
+    let step = 0;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const poll = async () => {
       for (const id of pendingIds) {
         try {
           const updated = await getDocument(id);
@@ -71,9 +75,12 @@ export default function DocumentsPage() {
           // 폴링 실패는 무시하고 다음 주기에 재시도
         }
       }
-    }, 3000);
+      step = Math.min(step + 1, INTERVALS.length - 1);
+      timer = setTimeout(poll, INTERVALS[step]);
+    };
 
-    return () => clearInterval(interval);
+    timer = setTimeout(poll, INTERVALS[0]);
+    return () => clearTimeout(timer);
   }, [pendingIds]);
 
   async function handleUpload(file: File, documentType: DocumentType) {

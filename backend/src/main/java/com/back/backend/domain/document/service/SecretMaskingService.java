@@ -51,10 +51,13 @@ public class SecretMaskingService {
             return text;
         }
 
-        log.warn("Masking {} secret value(s) in document text.", secretValues.size());
+        // 동일 값이 중복 보고된 경우 불필요한 replace 반복을 방지한다.
+        // Gitleaks는 같은 토큰이 여러 위치에서 매칭되면 동일 값을 여러 번 반환할 수 있다.
+        List<String> distinct = secretValues.stream().distinct().toList();
+        log.warn("Masking {} distinct secret value(s) in document text.", distinct.size());
 
         String result = text;
-        for (String secret : secretValues) {
+        for (String secret : distinct) {
             result = result.replace(secret, REDACTED);
         }
         return result;
