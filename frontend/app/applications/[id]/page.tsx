@@ -22,9 +22,9 @@ const TONE_OPTIONS = [
 ];
 
 const LENGTH_OPTIONS = [
-  { value: 'short', label: '짧게' },
-  { value: 'medium', label: '보통' },
-  { value: 'long', label: '길게' },
+  { value: 'short', label: '짧게 (500자 내외)' },
+  { value: 'medium', label: '보통 (900자 내외)' },
+  { value: 'long', label: '길게 (1400자 내외)' },
 ];
 
 export default function ApplicationDetailPage() {
@@ -80,7 +80,7 @@ export default function ApplicationDetailPage() {
           })),
         );
       } else {
-        setEditQuestions([{ questionOrder: 1, questionText: '', toneOption: null, lengthOption: null, emphasisPoint: null }]);
+        setEditQuestions([{ questionOrder: 1, questionText: '', toneOption: 'balanced', lengthOption: 'medium', emphasisPoint: null }]);
       }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : '데이터를 불러올 수 없습니다.');
@@ -123,8 +123,8 @@ export default function ApplicationDetailPage() {
       {
         questionOrder: prev.length + 1,
         questionText: '',
-        toneOption: null,
-        lengthOption: null,
+        toneOption: 'balanced',
+        lengthOption: 'medium',
         emphasisPoint: null,
       },
     ]);

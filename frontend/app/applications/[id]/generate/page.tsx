@@ -15,9 +15,9 @@ const TONE_LABEL: Record<string, string> = {
 };
 
 const LENGTH_LABEL: Record<string, string> = {
-  short: '짧게',
-  medium: '보통',
-  long: '길게',
+  short: '짧게 (500자 내외)',
+  medium: '보통 (900자 내외)',
+  long: '길게 (1400자 내외)',
 };
 
 export default function GeneratePage() {
