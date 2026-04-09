@@ -135,10 +135,7 @@ public class InterviewSessionService {
     }
 
     public InterviewSessionDetailResponse getSessionDetail(long userId, long sessionId) {
-        // 꼬리 질문 생성을 비동기로 실행 — 현재 요청은 즉시 세션 데이터 반환
-        // 다음 getSessionDetail 호출 시 생성된 꼬리 질문이 포함됨
-        // resolvePendingFollowupIfNeeded 내부에서 예외를 모두 처리하므로 fire-and-forget 안전
-        Thread.startVirtualThread(() -> resolvePendingFollowupIfNeeded(userId, sessionId));
+        resolvePendingFollowupIfNeeded(userId, sessionId);
         return executeInTransaction(() -> loadSessionDetailResponse(userId, sessionId));
     }
 
