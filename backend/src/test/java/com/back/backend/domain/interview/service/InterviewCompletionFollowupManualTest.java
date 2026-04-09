@@ -6,6 +6,7 @@ import com.back.backend.domain.ai.client.AiClientRouter;
 import com.back.backend.domain.ai.client.AiProvider;
 import com.back.backend.domain.ai.client.gemini.GeminiClient;
 import com.back.backend.domain.ai.client.gemini.GeminiClientProperties;
+import com.back.backend.domain.ai.pipeline.AiConcurrencyLimiter;
 import com.back.backend.domain.ai.pipeline.AiPipeline;
 import com.back.backend.domain.ai.template.PromptLoader;
 import com.back.backend.domain.ai.template.PromptTemplateRegistry;
@@ -263,13 +264,16 @@ class InterviewCompletionFollowupManualTest {
         ValidationRegistry validationRegistry = ValidationRegistry.createDefault(jsonSchemaValidator);
         AiUsageRecorder usageRecorder = mock(AiUsageRecorder.class);
 
+        AiConcurrencyLimiter concurrencyLimiter = new AiConcurrencyLimiter(100, 60);
+
         return new AiPipeline(
                 router,
                 templateRegistry,
                 validationRegistry,
                 promptLoader,
                 jsonSchemaValidator,
-                usageRecorder
+                usageRecorder,
+                concurrencyLimiter
         );
     }
 }

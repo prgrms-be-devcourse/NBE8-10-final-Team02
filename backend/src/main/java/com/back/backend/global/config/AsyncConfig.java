@@ -34,6 +34,26 @@ public class AsyncConfig {
         return Executors.newVirtualThreadPerTaskExecutor();
     }
 
+    /**
+     * AI 면접 결과 생성 전용 Executor.
+     *
+     * <p>completeSession()에서 AI 평가 작업을 비동기로 실행할 때 사용.
+     * core=2(vCPU 수), max=4(버스트), queue=50(VU 수)으로 설정하여
+     * AI 작업이 일반 요청 스레드를 점유하지 않도록 격리한다.
+     * CallerRunsPolicy로 큐 포화 시 호출 스레드에서 동기 실행(graceful degradation).</p>
+     */
+    @Bean("aiTaskExecutor")
+    public Executor aiTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(50);
+        executor.setThreadNamePrefix("ai-task-");
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+        executor.initialize();
+        return executor;
+    }
+
     @Bean("activityTaskExecutor")
     public Executor activityTaskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
