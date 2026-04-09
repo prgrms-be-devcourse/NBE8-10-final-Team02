@@ -179,7 +179,7 @@ public class BatchRepoSummaryGeneratorService {
                     strategy.getGlobalBudgetChars(), chunk.size());
 
             // XML 페이로드 조립 (Gemini free이면 "Only English" 지시 삽입)
-            String batchPayload = promptBuilder.build(chunk, budget, strategy.isEnglishOnly());
+            String batchPayload = promptBuilder.build(chunk, budget);
             log.info("Chunk {}/{} payload built: chars={}", chunkIdx + 1, chunks.size(), batchPayload.length());
 
             // provider별 maxTokens로 AI 호출
