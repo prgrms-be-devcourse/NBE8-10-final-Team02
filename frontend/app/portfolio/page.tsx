@@ -6,14 +6,17 @@ import { getPortfolioReadiness, UnauthenticatedError } from '@/api/portfolio';
 
 export default function PortfolioPage() {
   const [githubConnected, setGithubConnected] = useState(false);
+  const [repoSelected, setRepoSelected] = useState(false);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
     getPortfolioReadiness()
-      .then((data) => setGithubConnected(data.github.connectionStatus === 'connected'))
+      .then((data) => {
+        setGithubConnected(data.github.connectionStatus === 'connected');
+        setRepoSelected(data.github.selectedRepositoryCount > 0);
+      })
       .catch((err) => {
         if (err instanceof UnauthenticatedError) return;
-        // 다른 오류는 미연결로 처리
       })
       .finally(() => setChecked(true));
   }, []);
@@ -73,7 +76,11 @@ export default function PortfolioPage() {
             </div>
             <Link
               href="/portfolio/repositories"
-              className="shrink-0 rounded border border-zinc-300 px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              className={`shrink-0 rounded px-4 py-1.5 text-sm font-medium ${
+                checked && githubConnected && !repoSelected
+                  ? 'bg-zinc-900 text-white'
+                  : 'border border-zinc-300 text-zinc-700 hover:bg-zinc-50'
+              }`}
             >
               선택하기
             </Link>
@@ -92,7 +99,11 @@ export default function PortfolioPage() {
             </div>
             <Link
               href="/portfolio/documents"
-              className="shrink-0 rounded border border-zinc-300 px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              className={`shrink-0 rounded px-4 py-1.5 text-sm font-medium ${
+                checked && githubConnected && repoSelected
+                  ? 'bg-zinc-900 text-white'
+                  : 'border border-zinc-300 text-zinc-700 hover:bg-zinc-50'
+              }`}
             >
               업로드하기
             </Link>
