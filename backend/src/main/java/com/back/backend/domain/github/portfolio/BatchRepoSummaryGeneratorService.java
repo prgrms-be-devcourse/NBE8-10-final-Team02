@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * 여러 repo 데이터를 단 1회의 AI 호출로 처리하는 배치 요약 생성 서비스.
@@ -118,6 +119,15 @@ public class BatchRepoSummaryGeneratorService {
      */
     public List<RepoSummary> generateAll(User user, List<GithubRepository> repos,
                                           String authorEmail, String triggerReason) {
+        return generateAll(user, repos, authorEmail, triggerReason, null);
+    }
+
+    /**
+     * @param onChunkStart 각 청크 AI 호출 직전 호출되는 콜백 (해당 chunk의 repo 목록 전달). null 허용.
+     */
+    public List<RepoSummary> generateAll(User user, List<GithubRepository> repos,
+                                          String authorEmail, String triggerReason,
+                                          Consumer<List<GithubRepository>> onChunkStart) {
         if (repos.isEmpty()) {
             log.warn("generateAll called with empty repo list for userId={}", user.getId());
             return List.of();
@@ -149,6 +159,14 @@ public class BatchRepoSummaryGeneratorService {
         for (int chunkIdx = 0; chunkIdx < chunks.size(); chunkIdx++) {
             List<BatchPortfolioPromptBuilder.RepoBatchData> chunk = chunks.get(chunkIdx);
             log.info("Processing chunk {}/{}: repoCount={}", chunkIdx + 1, chunks.size(), chunk.size());
+
+            // 청크 시작 전 콜백 — 해당 chunk repos만 "summary" 상태로 전환
+            if (onChunkStart != null) {
+                List<GithubRepository> chunkRepos = chunk.stream()
+                        .map(BatchPortfolioPromptBuilder.RepoBatchData::repo)
+                        .toList();
+                onChunkStart.accept(chunkRepos);
+            }
 
             // 2D Rollover 예산: provider별 입력 예산 사용 (strategy가 컨텍스트 윈도우에 맞게 설정)
             BatchTokenBudget budget = new BatchTokenBudget(
