@@ -1,4 +1,6 @@
 spring:
+  main:
+    allow-bean-definition-overriding: true   # @TestConfiguration에서 aiTaskExecutor 동기 오버라이드용
   config:
     import:
       - optional:file:.env.test[.properties]      # working dir = 프로젝트 루트일 때
