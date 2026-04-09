@@ -60,8 +60,13 @@ public class AnalysisPipelineService {
 
     private static final Logger log = LoggerFactory.getLogger(AnalysisPipelineService.class);
 
-    // 예상 소요 시간 (임시 추정치)
-    private static final int ESTIMATED_MINUTES = 5;
+    // 예상 소요 시간 구성 요소
+    // 정적 분석은 병렬 실행이라 repo 수와 무관하게 고정
+    private static final int ESTIMATED_STATIC_MINUTES = 3;
+    // AI 배치 호출 1청크당 예상 소요 시간 (Vertex AI 기준)
+    private static final int ESTIMATED_AI_MINUTES_PER_CHUNK = 2;
+    // Vertex AI 기본 청크 크기 (BatchProviderStrategy.getMaxReposPerCall()과 맞춰야 함)
+    private static final int DEFAULT_CHUNK_SIZE = 3;
 
     // 실행 중인 파이프라인 스레드 추적 (userId:repoId → Thread)
     private final ConcurrentHashMap<String, Thread> activeThreads = new ConcurrentHashMap<>();
@@ -176,8 +181,9 @@ public class AnalysisPipelineService {
             }
         });
 
-        // PENDING 상태 등록 (estimatedEndAt = 현재 + ESTIMATED_MINUTES)
-        Instant estimatedEnd = Instant.now().plusSeconds(ESTIMATED_MINUTES * 60L);
+        // PENDING 상태 등록 (단일 repo: 정적 분석 + AI 1청크)
+        Instant estimatedEnd = Instant.now().plusSeconds(
+                (ESTIMATED_STATIC_MINUTES + ESTIMATED_AI_MINUTES_PER_CHUNK) * 60L);
         syncStatusService.setPending(userId, repositoryId, estimatedEnd);
 
         log.info("Analysis pipeline triggered: userId={}, repoId={}", userId, repositoryId);
@@ -291,13 +297,12 @@ public class AnalysisPipelineService {
         String triggerReason = "significant_commits"; // 배치 분석은 항상 갱신 트리거
 
         try {
-            // 배치 AI 호출 중임을 status에 반영
-            analyzedRepos.forEach(repo ->
-                    syncStatusService.setInProgress(userId, repo.getId(), "summary"));
-
             // generateAll: 청크 단위 AI 호출로 처리 (partial recovery 포함)
+            // 청크 시작 시점에 해당 chunk repos만 "summary"로 전환 (나머지는 ai_pending 유지)
             List<com.back.backend.domain.github.entity.RepoSummary> savedSummaries =
-                    batchRepoSummaryGeneratorService.generateAll(user, analyzedRepos, authorEmail, triggerReason);
+                    batchRepoSummaryGeneratorService.generateAll(user, analyzedRepos, authorEmail, triggerReason,
+                            chunkRepos -> chunkRepos.forEach(repo ->
+                                    syncStatusService.setInProgress(userId, repo.getId(), "summary")));
             mergedSummaryService.rebuild(user);
 
             // 실제로 저장된 repo ID 집합
@@ -421,8 +426,10 @@ public class AnalysisPipelineService {
             });
 
             // 각 repo를 PENDING으로 등록
-            Instant estimatedEnd = Instant.now().plusSeconds(ESTIMATED_MINUTES * 60L
-                    * repositoryIds.size()); // 전체 소요 시간 = repo 수 × 단일 추정치
+            // 정적 분석(병렬, 고정) + AI 청크 호출(청크 수 × 청크당 시간)
+            int chunkCount = (int) Math.ceil(repositoryIds.size() / (double) DEFAULT_CHUNK_SIZE);
+            long estimatedSeconds = (ESTIMATED_STATIC_MINUTES + chunkCount * ESTIMATED_AI_MINUTES_PER_CHUNK) * 60L;
+            Instant estimatedEnd = Instant.now().plusSeconds(estimatedSeconds);
             syncStatusService.setPending(userId, repositoryId, estimatedEnd);
         }
 

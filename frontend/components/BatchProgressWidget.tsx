@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useBatchAnalysis } from '@/context/BatchAnalysisContext';
 import type { RepoSyncStatus } from '@/types/github';
 
@@ -30,12 +30,70 @@ const STEP_LABEL: Record<string, string> = {
   summary: 'AI 요약 생성 중',
 };
 
+/** 배치 내 진행 중인 repo들의 estimatedEndAt 중 가장 늦은 값을 반환 */
+function resolveEstimatedEndAt(
+  repoIds: number[],
+  statuses: Record<number, RepoSyncStatus | null>
+): Date | null {
+  let latest: Date | null = null;
+  for (const id of repoIds) {
+    const s = statuses[id];
+    if (!s || s.status === 'COMPLETED' || s.status === 'FAILED' || s.status === 'SKIPPED') continue;
+    if (!s.estimatedEndAt) continue;
+    const d = new Date(s.estimatedEndAt);
+    if (!latest || d > latest) latest = d;
+  }
+  return latest;
+}
+
+/** 남은 초를 "N분 N초" 형태로 포맷 */
+function formatRemaining(seconds: number): string {
+  if (seconds <= 0) return '곧 완료';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m === 0) return `${s}초 남음`;
+  return `${m}분 ${s}초 남음`;
+}
+
+// ── 카운트다운 훅 ──────────────────────────────────────────────────────
+
+function useCountdown(estimatedEndAt: Date | null): string | null {
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!estimatedEndAt) {
+      setRemaining(null);
+      return;
+    }
+
+    const tick = () => {
+      const diff = Math.round((estimatedEndAt.getTime() - Date.now()) / 1000);
+      setRemaining(Math.max(0, diff));
+    };
+
+    tick();
+    timerRef.current = setInterval(tick, 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [estimatedEndAt?.getTime()]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (remaining === null) return null;
+  return formatRemaining(remaining);
+}
+
 // ── 컴포넌트 ─────────────────────────────────────────────────────────
 
 export default function BatchProgressWidget() {
   const { activeBatch, handleCancelBatch, handleRetryFailed, dismissWidget } = useBatchAnalysis();
   const [cancelling, setCancelling] = useState(false);
   const [expanded, setExpanded] = useState(false);
+
+  const estimatedEndAt = activeBatch
+    ? resolveEstimatedEndAt(activeBatch.repoIds, activeBatch.statuses)
+    : null;
+  const countdownLabel = useCountdown(estimatedEndAt);
 
   if (!activeBatch) return null;
 
@@ -98,19 +156,22 @@ export default function BatchProgressWidget() {
         </div>
       </div>
 
-      {/* 진행 바 */}
-      <div className="px-4 pb-1">
+      {/* 진행 바 + 카운트다운 */}
+      <div className="px-4 pb-2">
         <div className="h-1 w-full rounded-full bg-zinc-100">
           <div
             className="h-1 rounded-full bg-indigo-500 transition-all duration-500"
             style={{ width: `${(counts.completed / counts.total) * 100}%` }}
           />
         </div>
+        {countdownLabel && (
+          <p className="mt-1 text-right text-xs text-zinc-400">{countdownLabel}</p>
+        )}
       </div>
 
       {/* 확장 패널 — repo 목록 */}
       {expanded && (
-        <ul className="mx-4 mb-2 mt-2 flex flex-col gap-1.5 max-h-48 overflow-y-auto">
+        <ul className="mx-4 mb-2 mt-1 flex flex-col gap-1.5 max-h-48 overflow-y-auto">
           {repoIds.map((id) => {
             const s = statuses[id];
             const isDone = s?.status === 'COMPLETED' || s?.status === 'SKIPPED';
