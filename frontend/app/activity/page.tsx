@@ -79,7 +79,20 @@ export default function ActivityPage() {
       {/* Weak Areas */}
       <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-5">
         <h2 className="mb-4 text-sm font-medium text-zinc-700">취약 영역 분석</h2>
-        <WeakTagsChart entries={stats?.weakAreas ?? []} />
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              질문 유형
+            </p>
+            <WeakTagsChart entries={stats?.weakAreas ?? []} />
+          </div>
+          <div>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              답변 역량
+            </p>
+            <WeakTagsChart entries={stats?.feedbackWeakAreas ?? []} />
+          </div>
+        </div>
       </div>
     </main>
   );

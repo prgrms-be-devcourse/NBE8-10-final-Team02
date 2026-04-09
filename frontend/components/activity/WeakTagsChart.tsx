@@ -4,6 +4,20 @@ import type { WeakAreaEntry } from '@/types/activity';
 
 interface Props {
   entries: WeakAreaEntry[];
+  limit?: number;
+}
+
+const FEEDBACK_CATEGORY_LABELS: Record<string, string> = {
+  content: '내용',
+  structure: '구조',
+  evidence: '근거',
+  communication: '커뮤니케이션',
+  technical: '기술',
+  other: '기타',
+};
+
+function categoryLabel(category: string): string {
+  return FEEDBACK_CATEGORY_LABELS[category] ?? category;
 }
 
 function scoreColor(avg: number): string {
@@ -12,24 +26,26 @@ function scoreColor(avg: number): string {
   return 'bg-red-400';
 }
 
-export default function WeakTagsChart({ entries }: Props) {
+export default function WeakTagsChart({ entries, limit = 5 }: Props) {
   if (entries.length === 0) {
     return (
-      <p className="py-8 text-center text-sm text-zinc-400">
+      <p className="py-6 text-center text-sm text-zinc-400">
         분석할 답변 데이터가 없습니다.
       </p>
     );
   }
 
+  const visible = entries.slice(0, limit);
+
   return (
     <ul className="space-y-3">
-      {entries.map((e) => (
+      {visible.map((e) => (
         <li key={e.tagName}>
           <div className="mb-1 flex items-center justify-between text-sm">
             <span className="font-medium text-zinc-800">
               {e.tagName}
               <span className="ml-1.5 text-xs font-normal text-zinc-400">
-                ({e.category})
+                ({categoryLabel(e.category)})
               </span>
             </span>
             <span className="text-xs text-zinc-500">

@@ -1,10 +1,12 @@
 package com.back.backend.domain.portfolio.controller;
 
 import com.back.backend.domain.portfolio.dto.response.PortfolioReadinessResponse;
+import com.back.backend.domain.portfolio.service.FailedJobRedisStore;
 import com.back.backend.domain.portfolio.service.PortfolioReadinessService;
 import com.back.backend.global.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,12 +17,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class PortfolioReadinessController {
 
     private final PortfolioReadinessService portfolioReadinessService;
+    private final FailedJobRedisStore failedJobRedisStore;
 
     @GetMapping("/me/readiness")
     public ApiResponse<PortfolioReadinessResponse> getReadiness(
             @AuthenticationPrincipal Long userId
     ) {
         return ApiResponse.success(portfolioReadinessService.getReadiness(userId));
+    }
+
+    @DeleteMapping("/me/readiness/alerts/failed-jobs")
+    public ApiResponse<Void> dismissAllFailedJobs(
+            @AuthenticationPrincipal Long userId
+    ) {
+        failedJobRedisStore.clearAll(userId);
+        return ApiResponse.success(null);
     }
 }
 

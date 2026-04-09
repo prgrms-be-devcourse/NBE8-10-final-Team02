@@ -24,4 +24,5 @@ export interface WeakAreaEntry {
 export interface ActivityStats {
   scoreTrend: ScoreTrendEntry[];
   weakAreas: WeakAreaEntry[];
+  feedbackWeakAreas: WeakAreaEntry[];
 }

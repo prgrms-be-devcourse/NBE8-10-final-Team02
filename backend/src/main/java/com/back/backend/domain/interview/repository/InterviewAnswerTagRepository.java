@@ -18,4 +18,15 @@ public interface InterviewAnswerTagRepository extends JpaRepository<InterviewAns
             order by answer.answerOrder asc, answerTag.id asc
             """)
     List<InterviewAnswerTag> findAllWithTagBySessionIdOrderByAnswerOrderAsc(@Param("sessionId") Long sessionId);
+
+    @Query("""
+            select iat.tag.tagName, iat.tag.tagCategory, avg(iat.answer.score), count(iat)
+            from InterviewAnswerTag iat
+            where iat.answer.session.user.id = :userId
+              and iat.answer.score is not null
+              and iat.answer.skipped = false
+            group by iat.tag.tagName, iat.tag.tagCategory
+            order by avg(iat.answer.score) asc
+            """)
+    List<Object[]> findWeakFeedbackAreasByUserId(@Param("userId") Long userId);
 }

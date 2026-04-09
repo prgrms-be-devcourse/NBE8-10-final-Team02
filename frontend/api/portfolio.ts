@@ -14,6 +14,13 @@ export class UnauthenticatedError extends Error {
   constructor() { super('UNAUTHENTICATED'); }
 }
 
+export async function dismissAllFailedJobs(): Promise<void> {
+  const res = await apiFetch('/api/v1/portfolios/me/readiness/alerts/failed-jobs', {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+}
+
 export async function getPortfolioReadiness(): Promise<PortfolioReadinessDashboard> {
   const res = await apiFetch('/api/v1/portfolios/me/readiness', {
     cache: 'no-store',
