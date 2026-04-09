@@ -27,7 +27,7 @@ export default function Navbar() {
   async function handleLogout() {
     await logout();
     setUser(null);
-    window.location.href = '/login';
+    window.location.href = '/';
   }
 
   return (
