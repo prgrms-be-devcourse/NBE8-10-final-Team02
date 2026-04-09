@@ -95,6 +95,8 @@ public class BatchPortfolioPromptBuilder {
         StringBuilder xml = new StringBuilder();
         xml.append("<batch_data>\n");
 
+        xml.append("    <!-- 아래 GitHub 데이터를 한국어로 분석하되, 레포명과 IT 기술명(Java 등)은 무조건 영어 원문을 유지해. -->\n");
+
         for (RepoBatchData data : repoDataList) {
             // ── 1차원: 이 repo의 전체 가용 예산 확보 ─────────────
             int repoBudget = budget.allocateForRepo();
