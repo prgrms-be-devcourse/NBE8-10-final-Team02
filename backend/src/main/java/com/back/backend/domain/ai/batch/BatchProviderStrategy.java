@@ -20,6 +20,13 @@ public interface BatchProviderStrategy {
     int getMaxOutputTokens();
 
     /**
+     * 1회 청크 호출에 허용되는 전체 입력 char 예산.
+     * BatchTokenBudget이 이 값을 repoCount로 나눠 repo별 예산을 계산한다.
+     * provider별 컨텍스트 윈도우와 청크 크기에 맞게 설정해야 한다.
+     */
+    int getGlobalBudgetChars();
+
+    /**
      * true이면 프롬프트에 "Only English" 지시를 추가한다.
      * Gemini free tier는 영어 출력이 토큰 효율이 2~3배 높다.
      */

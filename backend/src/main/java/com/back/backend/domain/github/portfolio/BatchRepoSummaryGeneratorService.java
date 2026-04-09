@@ -156,9 +156,9 @@ public class BatchRepoSummaryGeneratorService {
             List<BatchPortfolioPromptBuilder.RepoBatchData> chunk = chunks.get(chunkIdx);
             log.info("Processing chunk {}/{}: repoCount={}", chunkIdx + 1, chunks.size(), chunk.size());
 
-            // 2D Rollover 예산 (청크 단위로 독립 계산)
+            // 2D Rollover 예산: provider별 입력 예산 사용 (strategy가 컨텍스트 윈도우에 맞게 설정)
             BatchTokenBudget budget = new BatchTokenBudget(
-                    budgetProperties.getGlobalBudgetChars(), chunk.size());
+                    strategy.getGlobalBudgetChars(), chunk.size());
 
             // XML 페이로드 조립 (Gemini free이면 "Only English" 지시 삽입)
             String batchPayload = promptBuilder.build(chunk, budget, strategy.isEnglishOnly());

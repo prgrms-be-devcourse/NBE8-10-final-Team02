@@ -4,8 +4,9 @@ package com.back.backend.domain.ai.batch;
  * Gemini 무료 티어 배치 전략.
  *
  * <ul>
- *   <li>최대 출력: 8,192 토큰 (Gemini free tier 고정 한도)</li>
- *   <li>최대 repo: 2개 (한국어 2개 repo JSON ≈ 6,000~7,000 토큰 예상)</li>
+ *   <li>최대 출력: 8,000 토큰 (Gemini free tier 한도)</li>
+ *   <li>최대 repo: 2개</li>
+ *   <li>입력 예산: 480,000 chars (2 repos × 240,000 chars/repo ≈ 60K tokens/repo)</li>
  *   <li>언어: 영어 강제 — 한국어 대비 2~3배 토큰 절약</li>
  * </ul>
  */
@@ -18,7 +19,14 @@ public class GeminiFreeStrategy implements BatchProviderStrategy {
 
     @Override
     public int getMaxOutputTokens() {
-        return 8_192;
+        return 8_000;
+    }
+
+    @Override
+    public int getGlobalBudgetChars() {
+        // 2 repos × 240,000 chars/repo = 480,000 총 입력 예산
+        // overview(8K) + code_structure(40K) + diffs(192K) ≈ 240K/repo — 여유 있음
+        return 480_000;
     }
 
     @Override

@@ -115,7 +115,7 @@ public class PromptTemplateRegistry {
         ));
 
         // Batch 포트폴리오 요약 템플릿 (여러 repo → 청크 단위 AI 호출)
-        // maxTokens: runtime에 BatchProviderStrategy로 override됨 (Gemini=8192, Vertex=32000)
+        // maxTokens: runtime에 BatchProviderStrategy로 override됨 (Gemini=8000, Vertex=64000)
         // schemaFile: null — 배열 응답이라 기존 schema 재사용 불가, BatchPortfolioSummaryValidator가 직접 검증
         // allowPartialRecovery: true — JSON 절단 시 완성된 원소만 저장
         map.put("ai.portfolio.summary.batch.v1", new PromptTemplate(
