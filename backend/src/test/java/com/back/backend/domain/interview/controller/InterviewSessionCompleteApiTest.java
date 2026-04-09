@@ -25,6 +25,7 @@ import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -34,6 +35,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.concurrent.Executor;
 
 import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.findSessionQuestion;
 import static com.back.backend.domain.interview.support.InterviewSessionQuestionTestHelper.persistSessionQuestionSnapshot;
@@ -89,9 +91,22 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
     @MockitoBean
     private AiPipeline aiPipeline;
 
+    /**
+     * aiTaskExecutor를 동기 실행으로 mock — @Transactional 테스트에서
+     * 비동기 AI 결과 생성이 같은 스레드/트랜잭션에서 실행되어야 데이터 일관성과 롤백이 동작함
+     */
+    @MockitoBean
+    @Qualifier("aiTaskExecutor")
+    private Executor aiTaskExecutor;
+
     @BeforeEach
     void setUpClock() throws Exception {
         given(clock.instant()).willReturn(FIXED_CLOCK.instant());
+        // aiTaskExecutor를 동기 실행으로 설정 — Runnable을 즉시 실행
+        org.mockito.Mockito.doAnswer(invocation -> {
+            invocation.getArgument(0, Runnable.class).run();
+            return null;
+        }).when(aiTaskExecutor).execute(org.mockito.ArgumentMatchers.any(Runnable.class));
         given(aiPipeline.execute(eq(FOLLOWUP_TEMPLATE_ID), anyString()))
                 .willReturn(OBJECT_MAPPER.readTree("""
                         {
