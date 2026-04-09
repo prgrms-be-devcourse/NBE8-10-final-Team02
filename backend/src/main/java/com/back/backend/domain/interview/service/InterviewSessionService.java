@@ -85,6 +85,7 @@ public class InterviewSessionService {
     private final InterviewCompletionFollowupGenerationService interviewCompletionFollowupGenerationService;
     private final InterviewResultGenerationService interviewResultGenerationService;
     private final InterviewResponseMapper interviewResponseMapper;
+    private final AsyncInterviewResultGenerator asyncInterviewResultGenerator;
     private final Clock clock;
     private final PlatformTransactionManager transactionManager;
     private final ApplicationEventPublisher eventPublisher;
@@ -134,7 +135,10 @@ public class InterviewSessionService {
     }
 
     public InterviewSessionDetailResponse getSessionDetail(long userId, long sessionId) {
-        resolvePendingFollowupIfNeeded(userId, sessionId);
+        // 꼬리 질문 생성을 비동기로 실행 — 현재 요청은 즉시 세션 데이터 반환
+        // 다음 getSessionDetail 호출 시 생성된 꼬리 질문이 포함됨
+        // resolvePendingFollowupIfNeeded 내부에서 예외를 모두 처리하므로 fire-and-forget 안전
+        Thread.startVirtualThread(() -> resolvePendingFollowupIfNeeded(userId, sessionId));
         return executeInTransaction(() -> loadSessionDetailResponse(userId, sessionId));
     }
 
@@ -203,29 +207,42 @@ public class InterviewSessionService {
         );
         beginResultGenerationAttempt(preparation.sessionId());
 
-        try {
-            InterviewResultGenerationService.GeneratedInterviewResult generatedResult =
-                    interviewResultGenerationService.generate(
-                            userId,
-                            preparation.sessionId(),
-                            preparation.questionSetId(),
-                            preparation.answers(),
-                            preparation.jobRole()
+        // AI 결과 생성을 비동기로 제출 — HTTP 응답을 즉시 반환
+        // 결과는 GET /result 폴링 시 retryPendingResultGenerationIfNeeded()로 확인/재시도
+        asyncInterviewResultGenerator.submitAsync(
+                userId,
+                preparation.sessionId(),
+                preparation.questionSetId(),
+                preparation.answers(),
+                preparation.jobRole(),
+                generatedResult -> {
+                    executeInTransaction(
+                            () -> finalizeSessionCompletion(userId, preparation, generatedResult)
                     );
+                    clearResultGenerationRetryState(preparation.sessionId());
+                },
+                new AsyncInterviewResultGenerator.ResultGenerationFailureHandler() {
+                    @Override
+                    public void onFailure(long sid, ServiceException exception) {
+                        handleResultGenerationFailure(sid, exception);
+                    }
 
-            InterviewSessionCompletionResponse response = executeInTransaction(
-                    () -> finalizeSessionCompletion(userId, preparation, generatedResult)
-            );
-            clearResultGenerationRetryState(preparation.sessionId());
-            return response;
-        } catch (ServiceException exception) {
-            handleResultGenerationFailure(preparation.sessionId(), exception);
-            throw exception;
-        } catch (RuntimeException exception) {
-            ServiceException generationFailure = unexpectedResultGenerationFailure();
-            handleResultGenerationFailure(preparation.sessionId(), generationFailure);
-            throw generationFailure;
-        }
+                    @Override
+                    public void onUnexpectedFailure(long sid) {
+                        handleResultGenerationFailure(sid, unexpectedResultGenerationFailure());
+                    }
+                }
+        );
+
+        // 세션 상태(COMPLETED)와 endedAt만 포함된 응답을 즉시 반환
+        // totalScore, summaryFeedback은 null (AI 결과 생성 완료 전)
+        return new InterviewSessionCompletionResponse(
+                preparation.sessionId(),
+                InterviewSessionStatus.COMPLETED.getValue(),
+                null,
+                null,
+                preparation.endedAt()
+        );
     }
 
     @Transactional
