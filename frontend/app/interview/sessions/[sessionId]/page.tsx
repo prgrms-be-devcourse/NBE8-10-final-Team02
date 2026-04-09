@@ -912,7 +912,7 @@ export default function InterviewSessionPage() {
         setNeedsManualCompleteAfterCompletionAnswer(true);
         setMessages((previousMessages) => [
           ...previousMessages,
-          createSystemMessage('보완 질문 답변이 저장되었습니다. 결과 보기를 다시 눌러 결과를 생성하세요.', 'warning'),
+          createSystemMessage('보완 질문 답변이 저장되었습니다. 세션 종료를 다시 눌러 결과를 생성하세요.', 'warning'),
         ]);
         return;
       }
@@ -1571,7 +1571,7 @@ export default function InterviewSessionPage() {
 
                 {needsManualCompleteAfterCompletionAnswer && (
                   <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                    결과 보기를 다시 눌러 결과를 생성하세요.
+                    세션 종료를 다시 눌러 결과를 생성하세요.
                   </div>
                 )}
 
@@ -1637,7 +1637,7 @@ export default function InterviewSessionPage() {
                     disabled={!canComplete}
                     className="rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {completingSession ? '결과 보기 중...' : '결과 보기'}
+                    {completingSession ? '세션 종료 중...' : '세션 종료(면접 결과 보기)'}
                   </button>
                 </div>
 
