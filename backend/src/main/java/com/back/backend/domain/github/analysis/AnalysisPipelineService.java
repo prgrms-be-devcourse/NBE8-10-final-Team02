@@ -6,6 +6,7 @@ import com.back.backend.domain.github.portfolio.MergedSummaryService;
 import com.back.backend.domain.github.portfolio.RepoSummaryGeneratorService;
 import com.back.backend.domain.github.repository.GithubCommitRepository;
 import com.back.backend.domain.github.repository.GithubRepositoryRepository;
+import com.back.backend.domain.github.service.GithubSyncService;
 import com.back.backend.domain.portfolio.service.FailedJobRedisStore;
 import com.back.backend.domain.user.entity.User;
 import com.back.backend.domain.user.repository.UserRepository;
@@ -93,6 +94,7 @@ public class AnalysisPipelineService {
     private final GitleaksService gitleaksService;
     private final ObjectMapper objectMapper;
     private final FailedJobRedisStore failedJobRedisStore;
+    private final GithubSyncService githubSyncService;
 
     // Self-injection: @Async 프록시를 통해 executeAsync를 호출하기 위함
     private AnalysisPipelineService self;
@@ -116,7 +118,8 @@ public class AnalysisPipelineService {
             RepoFileFilterService repoFileFilterService,
             GitleaksService gitleaksService,
             ObjectMapper objectMapper,
-            FailedJobRedisStore failedJobRedisStore
+            FailedJobRedisStore failedJobRedisStore,
+            GithubSyncService githubSyncService
     ) {
         this.userRepository = userRepository;
         this.repositoryRepository = repositoryRepository;
@@ -136,6 +139,7 @@ public class AnalysisPipelineService {
         this.gitleaksService = gitleaksService;
         this.objectMapper = objectMapper;
         this.failedJobRedisStore = failedJobRedisStore;
+        this.githubSyncService = githubSyncService;
     }
 
     // Spring이 주입한 자기 자신 (프록시) — @Lazy로 순환 참조 방지
@@ -296,42 +300,46 @@ public class AnalysisPipelineService {
         String authorEmail = resolveAuthorEmail(analyzedRepos.get(0), user);
         String triggerReason = "significant_commits"; // 배치 분석은 항상 갱신 트리거
 
+        // COMPLETED 처리된 repo ID 추적 (onRepoSaved 콜백에서 채워짐)
+        java.util.Set<Long> completedRepoIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
         try {
             // generateAll: 청크 단위 AI 호출로 처리 (partial recovery 포함)
-            // 청크 시작 시점에 해당 chunk repos만 "summary"로 전환 (나머지는 ai_pending 유지)
-            List<com.back.backend.domain.github.entity.RepoSummary> savedSummaries =
-                    batchRepoSummaryGeneratorService.generateAll(user, analyzedRepos, authorEmail, triggerReason,
-                            chunkRepos -> chunkRepos.forEach(repo ->
-                                    syncStatusService.setInProgress(userId, repo.getId(), "summary")));
+            // - onRepoDataCollected: 각 repo diff 수집 완료 즉시 ai_pending 전환
+            // - onChunkStart:        청크 AI 호출 직전 해당 chunk repos만 summary 상태로 전환
+            // - onRepoSaved:         각 repo summary 저장 즉시 COMPLETED 전환 + markAnalyzed
+            batchRepoSummaryGeneratorService.generateAll(user, analyzedRepos, authorEmail, triggerReason,
+                    repo -> syncStatusService.setInProgress(userId, repo.getId(), "ai_pending"),
+                    chunkRepos -> chunkRepos.forEach(repo ->
+                            syncStatusService.setInProgress(userId, repo.getId(), "summary")),
+                    repo -> {
+                        syncStatusService.setCompleted(userId, repo.getId());
+                        significanceCheckService.markAnalyzed(userId, repo.getId());
+                        completedRepoIds.add(repo.getId());
+                    });
             mergedSummaryService.rebuild(user);
 
-            // 실제로 저장된 repo ID 집합
-            java.util.Set<Long> savedRepoIds = savedSummaries.stream()
-                    .map(s -> s.getGithubRepository().getId())
-                    .collect(java.util.stream.Collectors.toSet());
-
-            // 저장된 repo만 COMPLETED, 저장 안 된 repo(partial recovery 탈락)는 FAILED
+            // 저장 안 된 repo(partial recovery 탈락 등)는 FAILED
             analyzedRepos.forEach(repo -> {
-                if (savedRepoIds.contains(repo.getId())) {
-                    syncStatusService.setCompleted(userId, repo.getId());
-                    significanceCheckService.markAnalyzed(userId, repo.getId());
-                } else {
+                if (!completedRepoIds.contains(repo.getId())) {
                     log.warn("Batch: repo summary not saved (partial recovery excluded): repoId={}", repo.getId());
                     syncStatusService.setFailed(userId, repo.getId(), "AI 분석 부분 실패: 토큰 초과로 요약을 생성하지 못했습니다.");
                 }
             });
 
-            log.info("Batch pipeline completed: userId={}, saved={}/{}", userId, savedRepoIds.size(), analyzedRepos.size());
-            // 성공 시에만 clone 삭제 (용량 확보)
-            analyzedRepos.forEach(repo ->
-                    repoCloneService.deleteRepo(userId, repo.getId()));
+            log.info("Batch pipeline completed: userId={}, completed={}/{}", userId, completedRepoIds.size(), analyzedRepos.size());
+            // AI 성공 시 clone 삭제 (AI 실패 시에는 유지 → 재시도 시 git fetch로 재활용)
+            analyzedRepos.forEach(repo -> repoCloneService.deleteRepo(userId, repo.getId()));
 
         } catch (Exception e) {
             log.error("Batch: AI call failed for userId={}: {}", userId, e.getMessage(), e);
-            // AI 호출 실패: 분석된 모든 repo를 FAILED 처리
+            // AI 호출 실패: 이미 COMPLETED 처리된 repo는 건드리지 않고 나머지만 FAILED
             String errorMsg = "배치 AI 호출 실패: " + summarizeError(e);
-            analyzedRepos.forEach(repo ->
-                    syncStatusService.setFailed(userId, repo.getId(), errorMsg));
+            analyzedRepos.forEach(repo -> {
+                if (!completedRepoIds.contains(repo.getId())) {
+                    syncStatusService.setFailed(userId, repo.getId(), errorMsg);
+                }
+            });
             // 배치 AI 호출 실패를 실패 로그에 기록 (repo 수에 관계없이 1건)
             failedJobRedisStore.push(userId, FailedJobRedisStore.JobType.GITHUB_ANALYSIS,
                     ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE.name(), errorMsg);
@@ -510,6 +518,17 @@ public class AnalysisPipelineService {
         // ① Significance Check
         syncStatusService.setInProgress(userId, repositoryId, "significance_check");
         Optional<String> skipReason = significanceCheckService.isSignificant(repo, userId);
+        if (skipReason.isPresent() && skipReason.get().contains("커밋이 없습니다")) {
+            // 커밋이 없으면 자동으로 커밋 동기화 후 재확인
+            log.info("Batch: no commits found, auto-syncing commits: userId={}, repoId={}", userId, repositoryId);
+            try {
+                githubSyncService.syncCommits(userId, repositoryId);
+                skipReason = significanceCheckService.isSignificant(repo, userId);
+            } catch (Exception syncEx) {
+                log.warn("Batch: commit sync failed for repoId={}: {}", repositoryId, syncEx.getMessage());
+                // 동기화 실패 시 원래 skip 이유 유지
+            }
+        }
         if (skipReason.isPresent()) {
             log.info("Batch: repo not significant, skipping: userId={}, repoId={}, reason={}",
                     userId, repositoryId, skipReason.get());
@@ -552,7 +571,6 @@ public class AnalysisPipelineService {
         codeIndexService.buildIndex(repo, userId, nodes, authoredFiles, pagerankMap);
 
         log.info("Batch: static analysis completed for repoId={}", repositoryId);
-        syncStatusService.setInProgress(userId, repositoryId, "ai_pending");
         return true; // 이 repo를 배치 AI 호출 대상에 포함
     }
 
@@ -561,6 +579,16 @@ public class AnalysisPipelineService {
         // ① Significance Check
         syncStatusService.setInProgress(userId, repositoryId, "significance_check");
         Optional<String> skipReason = significanceCheckService.isSignificant(repo, userId);
+        if (skipReason.isPresent() && skipReason.get().contains("커밋이 없습니다")) {
+            // 커밋이 없으면 자동으로 커밋 동기화 후 재확인
+            log.info("Pipeline: no commits found, auto-syncing commits: userId={}, repoId={}", userId, repositoryId);
+            try {
+                githubSyncService.syncCommits(userId, repositoryId);
+                skipReason = significanceCheckService.isSignificant(repo, userId);
+            } catch (Exception syncEx) {
+                log.warn("Pipeline: commit sync failed for repoId={}: {}", repositoryId, syncEx.getMessage());
+            }
+        }
         if (skipReason.isPresent()) {
             log.info("Pipeline skipped: userId={}, repoId={}, reason={}", userId, repositoryId, skipReason.get());
             syncStatusService.setSkipped(userId, repositoryId, skipReason.get());

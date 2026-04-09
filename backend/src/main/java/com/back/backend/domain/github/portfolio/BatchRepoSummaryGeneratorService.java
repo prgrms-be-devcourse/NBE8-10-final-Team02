@@ -119,15 +119,21 @@ public class BatchRepoSummaryGeneratorService {
      */
     public List<RepoSummary> generateAll(User user, List<GithubRepository> repos,
                                           String authorEmail, String triggerReason) {
-        return generateAll(user, repos, authorEmail, triggerReason, null);
+        return generateAll(user, repos, authorEmail, triggerReason, null, null, null);
     }
 
     /**
-     * @param onChunkStart 각 청크 AI 호출 직전 호출되는 콜백 (해당 chunk의 repo 목록 전달). null 허용.
+     * @param onRepoDataCollected 각 repo의 diff 수집 완료 직후 호출되는 콜백 (단일 repo 전달). null 허용.
+     *                            즉시 ai_pending 상태 전환에 사용.
+     * @param onChunkStart        각 청크 AI 호출 직전 호출되는 콜백 (해당 chunk의 repo 목록 전달). null 허용.
+     * @param onRepoSaved         각 repo summary 저장 직후 호출되는 콜백 (단일 repo 전달). null 허용.
+     *                            즉시 COMPLETED 상태 전환에 사용.
      */
     public List<RepoSummary> generateAll(User user, List<GithubRepository> repos,
                                           String authorEmail, String triggerReason,
-                                          Consumer<List<GithubRepository>> onChunkStart) {
+                                          Consumer<GithubRepository> onRepoDataCollected,
+                                          Consumer<List<GithubRepository>> onChunkStart,
+                                          Consumer<GithubRepository> onRepoSaved) {
         if (repos.isEmpty()) {
             log.warn("generateAll called with empty repo list for userId={}", user.getId());
             return List.of();
@@ -136,9 +142,9 @@ public class BatchRepoSummaryGeneratorService {
         log.info("Batch summary generation started: userId={}, repoCount={}, trigger={}",
                 user.getId(), repos.size(), triggerReason);
 
-        // ── Step 1: 각 repo 데이터 수집 ────────────────────────────────
+        // ── Step 1: 각 repo 데이터 수집 (수집 완료 즉시 onRepoDataCollected 호출) ──
         List<BatchPortfolioPromptBuilder.RepoBatchData> repoBatchDataList =
-                collectAllRepoData(user, repos, authorEmail);
+                collectAllRepoData(user, repos, authorEmail, onRepoDataCollected);
 
         if (repoBatchDataList.isEmpty()) {
             log.warn("No repo data could be collected for batch. userId={}", user.getId());
@@ -193,8 +199,9 @@ public class BatchRepoSummaryGeneratorService {
                     chunkIdx + 1, chunks.size(), responseArray.size());
 
             // repoKey → GithubRepository 역매핑
+            // 저장 즉시 onRepoSaved 호출 → COMPLETED 상태 즉시 전환
             Map<String, GithubRepository> repoByKey = buildRepoKeyMap(chunk);
-            allSaved.addAll(saveAllSummaries(user, responseArray, repoByKey, triggerReason));
+            allSaved.addAll(saveAllSummaries(user, responseArray, repoByKey, triggerReason, onRepoSaved));
         }
 
         log.info("All chunks processed: userId={}, totalSaved={}", user.getId(), allSaved.size());
@@ -209,10 +216,12 @@ public class BatchRepoSummaryGeneratorService {
      * 각 repo에 대해 CodeIndex, diff(3구간 분할), README를 수집하여
      * {@link BatchPortfolioPromptBuilder.RepoBatchData} 목록을 반환한다.
      *
+     * <p>단일 repo 수집 완료 즉시 {@code onRepoDataCollected}를 호출한다 (null 허용).
      * <p>단일 repo 수집 실패 시 해당 repo를 skip하고 경고 로그를 남긴다.
      */
     private List<BatchPortfolioPromptBuilder.RepoBatchData> collectAllRepoData(
-            User user, List<GithubRepository> repos, String authorEmail) {
+            User user, List<GithubRepository> repos, String authorEmail,
+            Consumer<GithubRepository> onRepoDataCollected) {
 
         List<BatchPortfolioPromptBuilder.RepoBatchData> result = new ArrayList<>();
 
@@ -221,6 +230,10 @@ public class BatchRepoSummaryGeneratorService {
                 BatchPortfolioPromptBuilder.RepoBatchData data =
                         collectSingleRepoData(user, repo, authorEmail);
                 result.add(data);
+                // 수집 완료 즉시 콜백 (ai_pending 전환 등)
+                if (onRepoDataCollected != null) {
+                    onRepoDataCollected.accept(repo);
+                }
             } catch (Exception e) {
                 log.warn("Failed to collect data for repoId={}, skipping. reason={}",
                         repo.getId(), e.getMessage());
@@ -307,7 +320,8 @@ public class BatchRepoSummaryGeneratorService {
             User user,
             JsonNode responseArray,
             Map<String, GithubRepository> repoByKey,
-            String triggerReason) {
+            String triggerReason,
+            Consumer<GithubRepository> onRepoSaved) {
 
         List<RepoSummary> saved = new ArrayList<>();
 
@@ -348,6 +362,10 @@ public class BatchRepoSummaryGeneratorService {
                     saved.add(repoSummary);
                     log.info("RepoSummary saved: repoId={}, version={}",
                             repo.getId(), repoSummary.getSummaryVersion());
+                    // 저장 즉시 콜백 — COMPLETED 상태 즉시 전환
+                    if (onRepoSaved != null) {
+                        onRepoSaved.accept(repo);
+                    }
                 }
             } catch (JsonProcessingException e) {
                 log.warn("Failed to serialize project JSON for repoId='{}': {}", repoId, e.getMessage());
