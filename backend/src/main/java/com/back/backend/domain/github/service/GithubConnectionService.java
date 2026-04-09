@@ -190,7 +190,7 @@ public class GithubConnectionService {
     }
 
     private List<GithubApiClient.GithubRepoInfo> fetchRepos(
-            GithubConnectRequest request) {
+            GithubConnectRequest request, String login) {
         // OAuth token으로 인증된 사용자의 repo 조회 (private 포함 가능)
         return githubApiClient.getAuthenticatedUserRepos(request.accessToken());
     }
