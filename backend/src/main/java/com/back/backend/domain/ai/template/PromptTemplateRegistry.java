@@ -124,7 +124,7 @@ public class PromptTemplateRegistry {
             "developer/ai.portfolio.summary.batch.v1.txt",
             null,   // JSON Schema 파일 없음 (배열 검증은 BatchPortfolioSummaryValidator에서 수행)
             0.2, 8000, // 기본값 — executeWithMaxTokens()로 runtime override
-            new PromptTemplate.RetryPolicy(0, false), // retry=0: partial recovery가 대신 처리
+            new PromptTemplate.RetryPolicy(1, false), // retry=1: 절단된 JSON 등 일시적 오류 시 1회 재시도
             AiProvider.VERTEX_AI, // 대용량 배치, 토큰 무제한 필요
             true  // 절단된 JSON에서 완성된 repo만 추출하여 부분 저장
         ));
