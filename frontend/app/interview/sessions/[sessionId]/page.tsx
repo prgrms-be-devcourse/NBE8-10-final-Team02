@@ -1161,26 +1161,30 @@ export default function InterviewSessionPage() {
       </div>
 
       <section className="rounded-3xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs font-medium ${SESSION_STATUS_BADGE_META[session.status].tone}`}
-          >
-            상태 {SESSION_STATUS_BADGE_META[session.status].label}
-          </span>
-          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-            진행 {session.answeredQuestionCount}/{session.totalQuestionCount}
-          </span>
-          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-            남은 질문 {session.remainingQuestionCount}개
-          </span>
-        </div>
+        {/*<div className="flex flex-wrap items-center gap-2">*/}
+        {/*  <span*/}
+        {/*    className={`rounded-full px-2 py-0.5 text-xs font-medium ${SESSION_STATUS_BADGE_META[session.status].tone}`}*/}
+        {/*  >*/}
+        {/*    상태 {SESSION_STATUS_BADGE_META[session.status].label}*/}
+        {/*  </span>*/}
+        {/*  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">*/}
+        {/*    진행 {session.answeredQuestionCount}/{session.totalQuestionCount}*/}
+        {/*  </span>*/}
+        {/*  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">*/}
+        {/*    남은 질문 {session.remainingQuestionCount}개*/}
+        {/*  </span>*/}
+        {/*</div>*/}
 
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-2xl bg-zinc-50 px-4 py-4">
-            <p className="text-xs text-zinc-500">세션 복원 가능</p>
-            <p className="mt-1 text-sm font-medium text-zinc-900">
-              {session.resumeAvailable ? '가능' : '불가'}
-            </p>
+            <p className="text-xs text-zinc-500">상태
+            <span className={`ml-3 mt-1.5 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${SESSION_STATUS_BADGE_META[session.status].tone}`}>
+              {SESSION_STATUS_BADGE_META[session.status].label}
+            </span></p>
+            <div className="mt-3 flex gap-4 border-t border-zinc-200 pt-3 text-xs text-zinc-500">
+              <span>진행 <span className="font-semibold text-zinc-800">{session.answeredQuestionCount}/{session.totalQuestionCount}</span></span>
+              <span>남은 질문 <span className="font-semibold text-zinc-800">{session.remainingQuestionCount}개</span></span>
+            </div>
           </div>
           <div className="rounded-2xl bg-zinc-50 px-4 py-4">
             <p className="text-xs text-zinc-500">마지막 활동 시각</p>
