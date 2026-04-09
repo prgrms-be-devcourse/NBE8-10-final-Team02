@@ -215,7 +215,7 @@ export default function Home() {
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-4">
             <Link
-              href="/portfolio"
+              href={loggedIn ? "/portfolio" : "/login"}
               className="rounded-lg bg-white px-8 py-3 font-semibold text-zinc-900 shadow-lg transition hover:bg-zinc-100 hover:shadow-xl"
             >
               지금 시작하기 →
