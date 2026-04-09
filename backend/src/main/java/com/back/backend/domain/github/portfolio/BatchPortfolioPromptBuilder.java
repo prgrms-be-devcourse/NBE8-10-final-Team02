@@ -91,9 +91,27 @@ public class BatchPortfolioPromptBuilder {
      * @param budget       2D Rollover 예산 관리자
      * @return AI user message로 전달할 XML 페이로드 문자열
      */
+    /**
+     * 여러 repo 데이터를 하나의 XML {@code <batch_data>} 페이로드로 조립한다.
+     * isEnglishOnly=true이면 배치 데이터 헤더에 "Only English" 지시를 추가한다.
+     */
+    public String build(List<RepoBatchData> repoDataList, BatchTokenBudget budget, boolean isEnglishOnly) {
+        StringBuilder xml = new StringBuilder();
+        xml.append("<batch_data>\n");
+        if (isEnglishOnly) {
+            xml.append("  <!-- OUTPUT LANGUAGE: English only. Do NOT output any Korean. ");
+//                     + "Repo names and tech names (Java, Spring, etc.) stay in their original language. -->\n");
+        }
+        return buildInternal(repoDataList, budget, xml);
+    }
+
     public String build(List<RepoBatchData> repoDataList, BatchTokenBudget budget) {
         StringBuilder xml = new StringBuilder();
         xml.append("<batch_data>\n");
+        return buildInternal(repoDataList, budget, xml);
+    }
+
+    private String buildInternal(List<RepoBatchData> repoDataList, BatchTokenBudget budget, StringBuilder xml) {
 
         for (RepoBatchData data : repoDataList) {
             // ── 1차원: 이 repo의 전체 가용 예산 확보 ─────────────
