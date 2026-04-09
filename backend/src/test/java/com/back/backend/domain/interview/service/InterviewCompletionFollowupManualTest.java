@@ -273,7 +273,8 @@ class InterviewCompletionFollowupManualTest {
                 promptLoader,
                 jsonSchemaValidator,
                 usageRecorder,
-                concurrencyLimiter
+                concurrencyLimiter,
+                new com.back.backend.domain.ai.recovery.TruncatedJsonArrayRecovery(OBJECT_MAPPER)
         );
     }
 }

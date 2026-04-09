@@ -437,9 +437,13 @@ function OwnedTab() {
                     <p className="mt-0.5 text-xs text-zinc-400">{formatPushedAt(repo.pushedAt)} 업데이트</p>
                   )}
 
-                  {/* 분석 상태 배지 — 배치 진행 중이면 live status 우선 */}
+                  {/* 분석 상태 배지
+                      hasSummary=true(완료)이면 서버 analysisStatus 우선 — activeBatch가 아직 폴링 전이면
+                      stale IN_PROGRESS 상태를 보여줄 수 있으므로 서버 값을 신뢰 */}
                   {(() => {
-                    const liveStatus = activeBatch?.statuses[repo.id] ?? repo.analysisStatus;
+                    const liveStatus = isCompleted
+                      ? repo.analysisStatus
+                      : (activeBatch?.statuses[repo.id] ?? repo.analysisStatus);
                     return liveStatus ? <AnalysisStatusBadge status={liveStatus} /> : null;
                   })()}
                 </div>
@@ -743,6 +747,7 @@ const STEP_LABEL: Record<string, string> = {
   significance_check: '변경 감지 중',
   clone: '저장소 복제 중',
   analysis: '코드 분석 중',
+  ai_pending: 'AI 분석 대기 중',
   summary: 'AI 요약 생성 중',
 };
 

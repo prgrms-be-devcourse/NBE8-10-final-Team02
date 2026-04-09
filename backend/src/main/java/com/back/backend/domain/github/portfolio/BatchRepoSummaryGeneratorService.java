@@ -1,5 +1,8 @@
 package com.back.backend.domain.github.portfolio;
 
+import com.back.backend.domain.ai.batch.BatchProviderStrategy;
+import com.back.backend.domain.ai.batch.BatchProviderStrategyFactory;
+import com.back.backend.domain.ai.client.AiProvider;
 import com.back.backend.domain.ai.pipeline.AiPipeline;
 import com.back.backend.domain.github.analysis.CodeIndexService;
 import com.back.backend.domain.github.analysis.ContributionExtractorService;
@@ -29,6 +32,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * 여러 repo 데이터를 단 1회의 AI 호출로 처리하는 배치 요약 생성 서비스.
@@ -66,38 +70,35 @@ public class BatchRepoSummaryGeneratorService {
 
     private final AiPipeline aiPipeline;
     private final BatchPortfolioPromptBuilder promptBuilder;
+    private final BatchProviderStrategyFactory strategyFactory;
     private final CodeIndexService codeIndexService;
     private final ContributionExtractorService contributionExtractorService;
     private final RepoCloneService repoCloneService;
     private final RepoSummaryRepository repoSummaryRepository;
-    private final BatchTokenBudgetProperties budgetProperties;
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper;
     /** GitHub 메타데이터 수집 서비스 — null이면 수집 비활성 (옵셔널 의존성) */
     private final GitHubMetadataService githubMetadataService;
 
-    /** GitHub Activity 섹션 skip 기준: perRepoBudget chars < 4,000 tokens × 4 chars */
-    private static final int GITHUB_ACTIVITY_MIN_BUDGET_CHARS = 4_000 * 4;
-
     public BatchRepoSummaryGeneratorService(
             AiPipeline aiPipeline,
             BatchPortfolioPromptBuilder promptBuilder,
+            BatchProviderStrategyFactory strategyFactory,
             CodeIndexService codeIndexService,
             ContributionExtractorService contributionExtractorService,
             RepoCloneService repoCloneService,
             RepoSummaryRepository repoSummaryRepository,
-            BatchTokenBudgetProperties budgetProperties,
             PlatformTransactionManager transactionManager,
             ObjectMapper objectMapper,
             GitHubMetadataService githubMetadataService
     ) {
         this.aiPipeline = aiPipeline;
         this.promptBuilder = promptBuilder;
+        this.strategyFactory = strategyFactory;
         this.codeIndexService = codeIndexService;
         this.contributionExtractorService = contributionExtractorService;
         this.repoCloneService = repoCloneService;
         this.repoSummaryRepository = repoSummaryRepository;
-        this.budgetProperties = budgetProperties;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.objectMapper = objectMapper;
         this.githubMetadataService = githubMetadataService;
@@ -118,6 +119,21 @@ public class BatchRepoSummaryGeneratorService {
      */
     public List<RepoSummary> generateAll(User user, List<GithubRepository> repos,
                                           String authorEmail, String triggerReason) {
+        return generateAll(user, repos, authorEmail, triggerReason, null, null, null);
+    }
+
+    /**
+     * @param onRepoDataCollected 각 repo의 diff 수집 완료 직후 호출되는 콜백 (단일 repo 전달). null 허용.
+     *                            즉시 ai_pending 상태 전환에 사용.
+     * @param onChunkStart        각 청크 AI 호출 직전 호출되는 콜백 (해당 chunk의 repo 목록 전달). null 허용.
+     * @param onRepoSaved         각 repo summary 저장 직후 호출되는 콜백 (단일 repo 전달). null 허용.
+     *                            즉시 COMPLETED 상태 전환에 사용.
+     */
+    public List<RepoSummary> generateAll(User user, List<GithubRepository> repos,
+                                          String authorEmail, String triggerReason,
+                                          Consumer<GithubRepository> onRepoDataCollected,
+                                          Consumer<List<GithubRepository>> onChunkStart,
+                                          Consumer<GithubRepository> onRepoSaved) {
         if (repos.isEmpty()) {
             log.warn("generateAll called with empty repo list for userId={}", user.getId());
             return List.of();
@@ -126,45 +142,70 @@ public class BatchRepoSummaryGeneratorService {
         log.info("Batch summary generation started: userId={}, repoCount={}, trigger={}",
                 user.getId(), repos.size(), triggerReason);
 
-        // ── Step 1: 각 repo 데이터 수집 ────────────────────────────────
+        // ── Step 1: 각 repo 데이터 수집 (수집 완료 즉시 onRepoDataCollected 호출) ──
         List<BatchPortfolioPromptBuilder.RepoBatchData> repoBatchDataList =
-                collectAllRepoData(user, repos, authorEmail);
+                collectAllRepoData(user, repos, authorEmail, onRepoDataCollected);
 
         if (repoBatchDataList.isEmpty()) {
             log.warn("No repo data could be collected for batch. userId={}", user.getId());
             return List.of();
         }
 
-        // ── Step 2: 2D Rollover 예산 생성 ──────────────────────────────
-        // 배치 호출 1회에 대한 전체 예산을 repo 수로 나눠 관리
-        BatchTokenBudget budget = new BatchTokenBudget(
-                budgetProperties.getGlobalBudgetChars(), repoBatchDataList.size());
+        // ── Step 2: provider 전략 결정 (Gemini free vs Vertex AI) ─────────
+        BatchProviderStrategy strategy = strategyFactory.resolve(AiProvider.VERTEX_AI);
+        int chunkSize = strategy.getMaxReposPerCall();
+        log.info("BatchProviderStrategy resolved: maxReposPerCall={}, maxOutputTokens={}, englishOnly={}",
+                chunkSize, strategy.getMaxOutputTokens(), strategy.isEnglishOnly());
 
-        // ── Step 3: XML 배치 페이로드 조립 ────────────────────────────
-        String batchPayload = promptBuilder.build(repoBatchDataList, budget);
-        log.info("Batch payload built: chars={}, repoCount={}",
-                batchPayload.length(), repoBatchDataList.size());
+        // ── Step 3~6: 청크별 AI 호출 + 저장 ──────────────────────────────
+        List<RepoSummary> allSaved = new ArrayList<>();
+        List<List<BatchPortfolioPromptBuilder.RepoBatchData>> chunks =
+                partitionList(repoBatchDataList, chunkSize);
 
-        // ── Step 4: 단 1회 AI 호출 ────────────────────────────────────
-        // ai.portfolio.summary.batch.v1 템플릿 → JSON 배열 응답
-        JsonNode rawResponse = aiPipeline.execute(BATCH_TEMPLATE_ID, batchPayload);
+        for (int chunkIdx = 0; chunkIdx < chunks.size(); chunkIdx++) {
+            List<BatchPortfolioPromptBuilder.RepoBatchData> chunk = chunks.get(chunkIdx);
+            log.info("Processing chunk {}/{}: repoCount={}", chunkIdx + 1, chunks.size(), chunk.size());
 
-        // 일부 모델이 1개 repo일 때 배열 대신 단일 객체로 반환하는 경우 정규화
-        JsonNode responseArray;
-        if (rawResponse.isObject()) {
-            log.warn("Batch AI response was a single object, not an array. Wrapping in array.");
-            responseArray = objectMapper.createArrayNode().add(rawResponse);
-        } else {
-            responseArray = rawResponse;
+            // 청크 시작 전 콜백 — 해당 chunk repos만 "summary" 상태로 전환
+            if (onChunkStart != null) {
+                List<GithubRepository> chunkRepos = chunk.stream()
+                        .map(BatchPortfolioPromptBuilder.RepoBatchData::repo)
+                        .toList();
+                onChunkStart.accept(chunkRepos);
+            }
+
+            // 2D Rollover 예산: provider별 입력 예산 사용 (strategy가 컨텍스트 윈도우에 맞게 설정)
+            BatchTokenBudget budget = new BatchTokenBudget(
+                    strategy.getGlobalBudgetChars(), chunk.size());
+
+            // XML 페이로드 조립 (Gemini free이면 "Only English" 지시 삽입)
+            String batchPayload = promptBuilder.build(chunk, budget);
+            log.info("Chunk {}/{} payload built: chars={}", chunkIdx + 1, chunks.size(), batchPayload.length());
+
+            // provider별 maxTokens로 AI 호출
+            JsonNode rawResponse = aiPipeline.executeWithMaxTokens(
+                    BATCH_TEMPLATE_ID, batchPayload, strategy.getMaxOutputTokens());
+
+            // 일부 모델이 1개 repo일 때 배열 대신 단일 객체로 반환하는 경우 정규화
+            JsonNode responseArray;
+            if (rawResponse.isObject()) {
+                log.warn("Chunk {}/{}: AI response was a single object, wrapping in array.",
+                        chunkIdx + 1, chunks.size());
+                responseArray = objectMapper.createArrayNode().add(rawResponse);
+            } else {
+                responseArray = rawResponse;
+            }
+            log.info("Chunk {}/{} AI call completed. responseSize={}",
+                    chunkIdx + 1, chunks.size(), responseArray.size());
+
+            // repoKey → GithubRepository 역매핑
+            // 저장 즉시 onRepoSaved 호출 → COMPLETED 상태 즉시 전환
+            Map<String, GithubRepository> repoByKey = buildRepoKeyMap(chunk);
+            allSaved.addAll(saveAllSummaries(user, responseArray, repoByKey, triggerReason, onRepoSaved));
         }
-        log.info("Batch AI call completed. responseSize={}", responseArray.size());
 
-        // ── Step 5: 응답 배열 파싱 → repoId 기준으로 repo 매핑 ─────────
-        // repoKey → GithubRepository 역매핑 테이블 구성
-        Map<String, GithubRepository> repoByKey = buildRepoKeyMap(repoBatchDataList);
-
-        // ── Step 6: 각 repo의 RepoSummary 저장 ─────────────────────────
-        return saveAllSummaries(user, responseArray, repoByKey, triggerReason);
+        log.info("All chunks processed: userId={}, totalSaved={}", user.getId(), allSaved.size());
+        return allSaved;
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -175,10 +216,12 @@ public class BatchRepoSummaryGeneratorService {
      * 각 repo에 대해 CodeIndex, diff(3구간 분할), README를 수집하여
      * {@link BatchPortfolioPromptBuilder.RepoBatchData} 목록을 반환한다.
      *
+     * <p>단일 repo 수집 완료 즉시 {@code onRepoDataCollected}를 호출한다 (null 허용).
      * <p>단일 repo 수집 실패 시 해당 repo를 skip하고 경고 로그를 남긴다.
      */
     private List<BatchPortfolioPromptBuilder.RepoBatchData> collectAllRepoData(
-            User user, List<GithubRepository> repos, String authorEmail) {
+            User user, List<GithubRepository> repos, String authorEmail,
+            Consumer<GithubRepository> onRepoDataCollected) {
 
         List<BatchPortfolioPromptBuilder.RepoBatchData> result = new ArrayList<>();
 
@@ -187,6 +230,10 @@ public class BatchRepoSummaryGeneratorService {
                 BatchPortfolioPromptBuilder.RepoBatchData data =
                         collectSingleRepoData(user, repo, authorEmail);
                 result.add(data);
+                // 수집 완료 즉시 콜백 (ai_pending 전환 등)
+                if (onRepoDataCollected != null) {
+                    onRepoDataCollected.accept(repo);
+                }
             } catch (Exception e) {
                 log.warn("Failed to collect data for repoId={}, skipping. reason={}",
                         repo.getId(), e.getMessage());
@@ -235,11 +282,9 @@ public class BatchRepoSummaryGeneratorService {
                 repo.getId(), codeEntries.size(), total,
                 earlyDiffs.size(), midDiffs.size(), lateDiffs.size());
 
-        // 6. GitHub Activity 수집 (perRepoBudget < 4,000 tokens이면 skip)
-        //    Groq dev 환경처럼 다수 repo에서 예산이 빡빡한 경우 skip하여 diff에 예산 보존.
+        // 6. GitHub Activity 수집 (githubMetadataService가 등록된 경우에만)
         GitHubActivitySummary githubActivity = null;
-        int perRepoBudgetChars = budgetProperties.getGlobalBudgetChars() / 1; // 단일 repo 기준 임시값
-        if (githubMetadataService != null && perRepoBudgetChars >= GITHUB_ACTIVITY_MIN_BUDGET_CHARS) {
+        if (githubMetadataService != null) {
             String accessToken = repo.getGithubConnection().getAccessToken();
             String githubLogin = repo.getGithubConnection().getGithubLogin();
             List<String> commitTitles = allDiffs.stream()
@@ -275,7 +320,8 @@ public class BatchRepoSummaryGeneratorService {
             User user,
             JsonNode responseArray,
             Map<String, GithubRepository> repoByKey,
-            String triggerReason) {
+            String triggerReason,
+            Consumer<GithubRepository> onRepoSaved) {
 
         List<RepoSummary> saved = new ArrayList<>();
 
@@ -316,6 +362,10 @@ public class BatchRepoSummaryGeneratorService {
                     saved.add(repoSummary);
                     log.info("RepoSummary saved: repoId={}, version={}",
                             repo.getId(), repoSummary.getSummaryVersion());
+                    // 저장 즉시 콜백 — COMPLETED 상태 즉시 전환
+                    if (onRepoSaved != null) {
+                        onRepoSaved.accept(repo);
+                    }
                 }
             } catch (JsonProcessingException e) {
                 log.warn("Failed to serialize project JSON for repoId='{}': {}", repoId, e.getMessage());
@@ -355,6 +405,17 @@ public class BatchRepoSummaryGeneratorService {
     // ─────────────────────────────────────────────────────────────────────
     // 헬퍼
     // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * 리스트를 size 크기의 청크로 분할한다.
+     */
+    private static <T> List<List<T>> partitionList(List<T> list, int size) {
+        List<List<T>> result = new ArrayList<>();
+        for (int i = 0; i < list.size(); i += size) {
+            result.add(list.subList(i, Math.min(i + size, list.size())));
+        }
+        return result;
+    }
 
     /**
      * repoBatchDataList에서 repoKey → GithubRepository 역매핑 테이블을 구성한다.

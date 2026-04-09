@@ -15,7 +15,8 @@ import com.back.backend.domain.ai.client.AiProvider;
  * @param temperature         생성 다양성
  * @param maxTokens           최대 출력 토큰 수
  * @param retryPolicy         재시도 정책
- * @param preferredProvider   이 템플릿이 우선 사용할 AI provider (null이면 글로벌 기본 provider 사용)
+ * @param preferredProvider    이 템플릿이 우선 사용할 AI provider (null이면 글로벌 기본 provider 사용)
+ * @param allowPartialRecovery true이면 JSON 절단 시 완성된 원소만 추출해 부분 저장 시도
  */
 public record PromptTemplate(
     String templateId,
@@ -27,7 +28,8 @@ public record PromptTemplate(
     double temperature,
     int maxTokens,
     RetryPolicy retryPolicy,
-    AiProvider preferredProvider
+    AiProvider preferredProvider,
+    boolean allowPartialRecovery
 ) {
     public PromptTemplate {
         if (templateId == null || templateId.isBlank()) {
@@ -45,6 +47,13 @@ public record PromptTemplate(
         if (retryPolicy == null) {
             throw new IllegalArgumentException("retryPolicy는 필수입니다");
         }
+    }
+
+    /** maxTokens만 교체한 새 PromptTemplate 반환 (runtime override용) */
+    public PromptTemplate withMaxTokens(int newMaxTokens) {
+        return new PromptTemplate(templateId, version, taskType, systemPromptFile,
+            developerPromptFile, schemaFile, temperature, newMaxTokens,
+            retryPolicy, preferredProvider, allowPartialRecovery);
     }
 
     public record RetryPolicy(
