@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { Application, ApplicationQuestion, QuestionItem } from '@/types/application';
 import type { Document } from '@/types/document';
@@ -12,6 +12,7 @@ import {
   getSources,
   saveSources,
   saveQuestions,
+  generateAnswers,
 } from '@/api/application';
 import { getDocuments } from '@/api/document';
 import { getRepositories } from '@/api/github';
@@ -31,7 +32,10 @@ const LENGTH_OPTIONS = [
 export default function ApplicationDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const applicationId = Number(params.id);
+
+  const MAX_SOURCES = 5;
 
   // 기본 정보
   const [application, setApplication] = useState<Application | null>(null);
@@ -52,6 +56,10 @@ export default function ApplicationDetailPage() {
   const [savingQuestions, setSavingQuestions] = useState(false);
   const [questionMessage, setQuestionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // 변경 감지 & 이동 상태
+  const changedSinceLoad = useRef(false);
+  const [navigating, setNavigating] = useState(false);
+
   // ── 데이터 로딩 ──────────────────────────────
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -64,6 +72,12 @@ export default function ApplicationDetailPage() {
         getQuestions(applicationId),
         getSources(applicationId),
       ]);
+
+      // ready 상태이고 edit 파라미터가 없으면 /generate로 리다이렉트
+      if (app.status === 'ready' && !searchParams.get('edit')) {
+        router.replace(`/applications/${applicationId}/generate`);
+        return;
+      }
 
       setApplication(app);
       setDocuments(docs.filter((d) => d.extractStatus === 'success'));
@@ -106,6 +120,7 @@ export default function ApplicationDetailPage() {
         repositoryIds: Array.from(repoIds),
         documentIds: Array.from(docIds),
       });
+      changedSinceLoad.current = true;
       setSourceMessage({ type: 'success', text: `소스 ${result.sourceCount}개가 연결되었습니다.` });
     } catch (err) {
       setSourceMessage({ type: 'error', text: err instanceof Error ? err.message : '소스 저장 실패' });
@@ -114,8 +129,14 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  // ── 체크박스 토글 (자동 저장) ──────────────
+  // ── 체크박스 토글 (자동 저장, 최대 5개 제한) ──────────────
+  const totalSelected = selectedDocIds.size + selectedRepoIds.size;
+
   function toggleDoc(id: number) {
+    if (!selectedDocIds.has(id) && totalSelected >= MAX_SOURCES) {
+      setSourceMessage({ type: 'error', text: `소스는 최대 ${MAX_SOURCES}개까지 선택할 수 있습니다.` });
+      return;
+    }
     const next = new Set(selectedDocIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -124,6 +145,10 @@ export default function ApplicationDetailPage() {
   }
 
   function toggleRepo(id: number) {
+    if (!selectedRepoIds.has(id) && totalSelected >= MAX_SOURCES) {
+      setSourceMessage({ type: 'error', text: `소스는 최대 ${MAX_SOURCES}개까지 선택할 수 있습니다.` });
+      return;
+    }
     const next = new Set(selectedRepoIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -138,6 +163,7 @@ export default function ApplicationDetailPage() {
     setQuestionMessage(null);
     try {
       const saved = await saveQuestions(applicationId, { questions: qs });
+      changedSinceLoad.current = true;
       setQuestions(saved);
       setQuestionMessage({ type: 'success', text: `${saved.length}개 문항이 저장되었습니다.` });
     } catch (err) {
@@ -165,6 +191,21 @@ export default function ApplicationDetailPage() {
         emphasisPoint: null,
       },
     ]);
+  }
+
+  // ── 자소서 작성 화면 이동 (변경 감지 시 자동 생성) ──────────────
+  async function handleGoToGenerate() {
+    if (changedSinceLoad.current) {
+      setNavigating(true);
+      try {
+        await generateAnswers(applicationId, { useTemplate: true, regenerate: true });
+      } catch {
+        // 생성 실패해도 이동은 진행
+      } finally {
+        setNavigating(false);
+      }
+    }
+    router.push(`/applications/${applicationId}/generate`);
   }
 
   function removeQuestion(index: number) {
@@ -228,7 +269,10 @@ export default function ApplicationDetailPage() {
           )}
         </div>
         <p className="mb-3 text-xs text-zinc-500">
-          AI가 참고할 문서와 레포지토리를 선택하세요. 선택 즉시 자동 저장됩니다.
+          AI가 참고할 문서와 레포지토리를 선택하세요. 최대 {MAX_SOURCES}개까지 선택할 수 있으며, 선택 즉시 자동 저장됩니다.{' '}
+          <span className={totalSelected >= MAX_SOURCES ? 'text-red-500 font-medium' : 'text-zinc-400'}>
+            ({totalSelected}/{MAX_SOURCES})
+          </span>
         </p>
 
         {/* 문서 목록 */}
@@ -422,10 +466,11 @@ export default function ApplicationDetailPage() {
               등록된 {questions.length}개 문항을 기준으로 자소서 작성 전용 화면에서 생성과 재생성을 진행합니다.
             </p>
             <button
-              onClick={() => router.push(`/applications/${applicationId}/generate`)}
-              className="w-full rounded bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white"
+              onClick={handleGoToGenerate}
+              disabled={navigating}
+              className="w-full rounded bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
             >
-              자소서 작성 화면으로 이동
+              {navigating ? 'AI 답변 생성 중...' : '자소서 작성 화면으로 이동'}
             </button>
           </>
         )}
