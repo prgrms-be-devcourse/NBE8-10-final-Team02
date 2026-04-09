@@ -8,7 +8,9 @@ import com.back.backend.domain.activity.dto.WeakAreaEntry;
 import com.back.backend.domain.activity.repository.UserActivityLogRepository;
 import com.back.backend.domain.activity.repository.UserStreakRepository;
 import com.back.backend.domain.interview.entity.InterviewSessionStatus;
+import com.back.backend.domain.interview.entity.FeedbackTagCategory;
 import com.back.backend.domain.interview.repository.InterviewAnswerRepository;
+import com.back.backend.domain.interview.repository.InterviewAnswerTagRepository;
 import com.back.backend.domain.interview.repository.InterviewSessionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,7 @@ public class ActivityQueryService {
     private final UserActivityLogRepository userActivityLogRepository;
     private final InterviewSessionRepository interviewSessionRepository;
     private final InterviewAnswerRepository interviewAnswerRepository;
+    private final InterviewAnswerTagRepository interviewAnswerTagRepository;
 
     public StreakResponse getStreak(Long userId) {
         LocalDate todayKst = LocalDate.now(KST);
@@ -69,6 +72,17 @@ public class ActivityQueryService {
                 ))
                 .toList();
 
-        return new ActivityStatsResponse(scoreTrend, weakAreas);
+        List<WeakAreaEntry> feedbackWeakAreas = interviewAnswerTagRepository
+                .findWeakFeedbackAreasByUserId(userId)
+                .stream()
+                .map(row -> new WeakAreaEntry(
+                        (String) row[0],
+                        ((FeedbackTagCategory) row[1]).getValue(),
+                        ((Number) row[2]).doubleValue(),
+                        ((Number) row[3]).intValue()
+                ))
+                .toList();
+
+        return new ActivityStatsResponse(scoreTrend, weakAreas, feedbackWeakAreas);
     }
 }

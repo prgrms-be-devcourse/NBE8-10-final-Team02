@@ -36,10 +36,10 @@ export async function getStats(): Promise<ActivityStats> {
       credentials: 'include',
       cache: 'no-store',
     });
-    if (!res.ok) return { scoreTrend: [], weakAreas: [] };
+    if (!res.ok) return { scoreTrend: [], weakAreas: [], feedbackWeakAreas: [] };
     const body = await res.json();
     return body.data as ActivityStats;
   } catch {
-    return { scoreTrend: [], weakAreas: [] };
+    return { scoreTrend: [], weakAreas: [], feedbackWeakAreas: [] };
   }
 }

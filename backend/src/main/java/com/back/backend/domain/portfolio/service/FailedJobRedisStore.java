@@ -137,6 +137,23 @@ public class FailedJobRedisStore {
     }
 
     // ─────────────────────────────────────────────────
+    // 삭제
+    // ─────────────────────────────────────────────────
+
+    /**
+     * 사용자의 모든 실패 항목을 삭제한다. (명시적 dismiss)
+     *
+     * @param userId 삭제할 사용자 ID
+     */
+    public void clearAll(Long userId) {
+        try {
+            redisTemplate.delete(buildKey(userId));
+        } catch (Exception e) {
+            log.error("Failed to clear failed jobs from Redis for userId={}: {}", userId, e.getMessage());
+        }
+    }
+
+    // ─────────────────────────────────────────────────
     // 내부 유틸
     // ─────────────────────────────────────────────────
 
