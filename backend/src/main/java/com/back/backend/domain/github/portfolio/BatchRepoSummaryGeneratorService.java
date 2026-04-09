@@ -74,14 +74,10 @@ public class BatchRepoSummaryGeneratorService {
     private final ContributionExtractorService contributionExtractorService;
     private final RepoCloneService repoCloneService;
     private final RepoSummaryRepository repoSummaryRepository;
-    private final BatchTokenBudgetProperties budgetProperties;
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper;
     /** GitHub 메타데이터 수집 서비스 — null이면 수집 비활성 (옵셔널 의존성) */
     private final GitHubMetadataService githubMetadataService;
-
-    /** GitHub Activity 섹션 skip 기준: perRepoBudget chars < 4,000 tokens × 4 chars */
-    private static final int GITHUB_ACTIVITY_MIN_BUDGET_CHARS = 4_000 * 4;
 
     public BatchRepoSummaryGeneratorService(
             AiPipeline aiPipeline,
@@ -91,7 +87,6 @@ public class BatchRepoSummaryGeneratorService {
             ContributionExtractorService contributionExtractorService,
             RepoCloneService repoCloneService,
             RepoSummaryRepository repoSummaryRepository,
-            BatchTokenBudgetProperties budgetProperties,
             PlatformTransactionManager transactionManager,
             ObjectMapper objectMapper,
             GitHubMetadataService githubMetadataService
@@ -103,7 +98,6 @@ public class BatchRepoSummaryGeneratorService {
         this.contributionExtractorService = contributionExtractorService;
         this.repoCloneService = repoCloneService;
         this.repoSummaryRepository = repoSummaryRepository;
-        this.budgetProperties = budgetProperties;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.objectMapper = objectMapper;
         this.githubMetadataService = githubMetadataService;
@@ -257,11 +251,9 @@ public class BatchRepoSummaryGeneratorService {
                 repo.getId(), codeEntries.size(), total,
                 earlyDiffs.size(), midDiffs.size(), lateDiffs.size());
 
-        // 6. GitHub Activity 수집 (perRepoBudget < 4,000 tokens이면 skip)
-        //    Groq dev 환경처럼 다수 repo에서 예산이 빡빡한 경우 skip하여 diff에 예산 보존.
+        // 6. GitHub Activity 수집 (githubMetadataService가 등록된 경우에만)
         GitHubActivitySummary githubActivity = null;
-        int perRepoBudgetChars = budgetProperties.getGlobalBudgetChars() / 1; // 단일 repo 기준 임시값
-        if (githubMetadataService != null && perRepoBudgetChars >= GITHUB_ACTIVITY_MIN_BUDGET_CHARS) {
+        if (githubMetadataService != null) {
             String accessToken = repo.getGithubConnection().getAccessToken();
             String githubLogin = repo.getGithubConnection().getGithubLogin();
             List<String> commitTitles = allDiffs.stream()
