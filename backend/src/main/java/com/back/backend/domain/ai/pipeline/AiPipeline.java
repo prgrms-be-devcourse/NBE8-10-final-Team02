@@ -41,6 +41,8 @@ public class AiPipeline {
     private final JsonSchemaValidator jsonSchemaValidator;
     /** AI 호출 성공/실패 사용량 기록기 */
     private final AiUsageRecorder usageRecorder;
+    /** 시스템 전체 AI 동시 호출 수 제한 */
+    private final AiConcurrencyLimiter concurrencyLimiter;
 
     /**
      * @param router              AI provider 라우터 — getClient(provider)로 템플릿별 provider, getDefault()로 기본 provider 반환
@@ -49,6 +51,7 @@ public class AiPipeline {
      * @param promptLoader        classpath .txt 프롬프트 파일 로딩 (캐싱)
      * @param jsonSchemaValidator AI 응답 JSON 파싱 및 schema 검증
      * @param usageRecorder       AI 호출 결과를 인메모리+DB에 기록
+     * @param concurrencyLimiter  시스템 전체 AI 동시 호출 수 제한 (Semaphore 기반 Bulkhead)
      */
     public AiPipeline(
         AiClientRouter router,
@@ -56,7 +59,8 @@ public class AiPipeline {
         ValidationRegistry validationRegistry,
         PromptLoader promptLoader,
         JsonSchemaValidator jsonSchemaValidator,
-        AiUsageRecorder usageRecorder
+        AiUsageRecorder usageRecorder,
+        AiConcurrencyLimiter concurrencyLimiter
     ) {
         this.router = router;
         this.templateRegistry = templateRegistry;
@@ -64,6 +68,7 @@ public class AiPipeline {
         this.promptLoader = promptLoader;
         this.jsonSchemaValidator = jsonSchemaValidator;
         this.usageRecorder = usageRecorder;
+        this.concurrencyLimiter = concurrencyLimiter;
     }
 
     /**
@@ -89,17 +94,19 @@ public class AiPipeline {
             template.temperature(), template.maxTokens()
         );
 
-        try {
-            return executeWithClient(resolveClient(template), request, template, validator, templateId);
-        } catch (AiClientException e) {
-            return router.getFallback()
-                .map(fallbackClient -> {
-                    log.warn("[Fallback] provider({}) 실패 → fallback provider({})로 전환. 원인: {}",
-                        e.getProvider(), fallbackClient.getProvider(), e.getMessage());
-                    return executeWithClient(fallbackClient, request, template, validator, templateId);
-                })
-                .orElseThrow(() -> e);
-        }
+        return concurrencyLimiter.executeWithLimit(() -> {
+            try {
+                return executeWithClient(resolveClient(template), request, template, validator, templateId);
+            } catch (AiClientException e) {
+                return router.getFallback()
+                    .map(fallbackClient -> {
+                        log.warn("[Fallback] provider({}) 실패 → fallback provider({})로 전환. 원인: {}",
+                            e.getProvider(), fallbackClient.getProvider(), e.getMessage());
+                        return executeWithClient(fallbackClient, request, template, validator, templateId);
+                    })
+                    .orElseThrow(() -> e);
+            }
+        });
     }
 
     /**
@@ -127,23 +134,26 @@ public class AiPipeline {
             template.maxTokens()
         );
 
-        // 템플릿의 preferredProvider 또는 기본 provider로 시도
-        try {
-            return executeWithClient(resolveClient(template), request, template, validator, templateId);
-        } catch (AiClientException e) {
-            // rate limit(429)일 때만 fallback provider로 전환
-            // 그 외(빈 응답, 타임아웃, API 오류 등)는 즉시 전파
-            if (e.getRateLimitType() == null) {
-                throw e;
+        // 동시성 제한 하에서 AI 호출 실행
+        return concurrencyLimiter.executeWithLimit(() -> {
+            // 템플릿의 preferredProvider 또는 기본 provider로 시도
+            try {
+                return executeWithClient(resolveClient(template), request, template, validator, templateId);
+            } catch (AiClientException e) {
+                // rate limit(429)일 때만 fallback provider로 전환
+                // 그 외(빈 응답, 타임아웃, API 오류 등)는 즉시 전파
+                if (e.getRateLimitType() == null) {
+                    throw e;
+                }
+                return router.getFallback()
+                    .map(fallbackClient -> {
+                        log.warn("[Fallback] provider({}) rate limit → fallback provider({})로 전환. 원인: {}",
+                            e.getProvider(), fallbackClient.getProvider(), e.getMessage());
+                        return executeWithClient(fallbackClient, request, template, validator, templateId);
+                    })
+                    .orElseThrow(() -> e); // fallback 미설정 시 원래 예외 그대로 전파
             }
-            return router.getFallback()
-                .map(fallbackClient -> {
-                    log.warn("[Fallback] provider({}) rate limit → fallback provider({})로 전환. 원인: {}",
-                        e.getProvider(), fallbackClient.getProvider(), e.getMessage());
-                    return executeWithClient(fallbackClient, request, template, validator, templateId);
-                })
-                .orElseThrow(() -> e); // fallback 미설정 시 원래 예외 그대로 전파
-        }
+        });
     }
 
     /**

@@ -26,6 +26,9 @@ server:
 # Stub이 AiUsageRecorder를 통해 DB에 TokenUsage를 기록하므로,
 # 실제 한도값이 남아 있으면 AiStatusService가 DAILY_EXHAUSTED를 반환해 테스트가 막힘
 ai:
+  concurrency:
+    max-concurrent-calls: 2      # 부하 테스트에서 병목을 더 타이트하게 시뮬레이션
+    queue-timeout-seconds: 90
   rate-limit:
     gemini:
       rpm: 2147483647

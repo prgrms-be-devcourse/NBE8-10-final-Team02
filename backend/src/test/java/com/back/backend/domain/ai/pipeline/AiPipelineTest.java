@@ -52,13 +52,17 @@ class AiPipelineTest {
         when(router.getClient(any())).thenReturn(mockAiClient); // resolveClient()에서 preferredProvider로 조회 시
         when(validationRegistry.get(anyString())).thenReturn(mockValidator);
 
+        // 테스트에서는 동시성 제한 없이 즉시 실행되는 Limiter 사용
+        AiConcurrencyLimiter concurrencyLimiter = new AiConcurrencyLimiter(100, 60);
+
         pipeline = new AiPipeline(
             router,
             PromptTemplateRegistry.createDefault(),
             validationRegistry,
             new PromptLoader(),
             new JsonSchemaValidator(new ObjectMapper()),
-            usageRecorder
+            usageRecorder,
+            concurrencyLimiter
         );
     }
 
