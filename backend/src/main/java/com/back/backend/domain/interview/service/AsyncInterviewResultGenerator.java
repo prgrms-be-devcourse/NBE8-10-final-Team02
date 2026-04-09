@@ -1,22 +1,20 @@
 package com.back.backend.domain.interview.service;
 
-import com.back.backend.global.exception.ServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 /**
  * AI 면접 결과 생성을 비동기로 실행하는 서비스
  *
- * completeSession() 호출 시 세션 상태를 COMPLETED로 즉시 전환한 뒤,
- * 무거운 AI 평가 작업은 aiTaskExecutor에서 비동기로 실행하여
- * HTTP 응답을 즉시 반환할 수 있게 함.
- *
- * 실패 시 retryPendingResultGenerationIfNeeded()가
- * GET /result 폴링 시 자동 재시도함
+ * CompletableFuture를 반환하여 호출자가 동기/비동기 완료를 구분할 수 있음:
+ * - 동기 완료 (테스트, CallerRunsPolicy): future.isDone() == true → 원래 응답 반환
+ * - 비동기 완료 (프로덕션): future.isDone() == false → 즉시 반환 + 폴링
  */
 @Service
 public class AsyncInterviewResultGenerator {
@@ -35,50 +33,34 @@ public class AsyncInterviewResultGenerator {
     }
 
     /**
-     * AI 결과 생성을 비동기로 제출
-     * 결과 생성 + DB 저장은 callback을 통해 호출자가 제어함
+     * AI 결과 생성을 비동기로 제출하고 CompletableFuture를 반환
      *
-     * @param userId      사용자 ID
-     * @param sessionId   세션 ID
-     * @param questionSetId 질문 세트 ID
-     * @param answers     답변 목록
-     * @param jobRole     직무
-     * @param callback    AI 생성 결과를 받아 DB에 저장하는 콜백
-     * @param onFailure   실패 시 호출되는 콜백
+     * 호출자는 future.isDone()으로 동기 완료 여부를 확인하여
+     * 동기 시 원래 응답을, 비동기 시 즉시 반환을 선택할 수 있음
      */
-    public void submitAsync(
+    public CompletableFuture<InterviewResultGenerationService.GeneratedInterviewResult> submitAsync(
             long userId,
             long sessionId,
             long questionSetId,
-            java.util.List<com.back.backend.domain.interview.entity.InterviewAnswer> answers,
-            String jobRole,
-            ResultGenerationCallback callback,
-            ResultGenerationFailureHandler onFailure
+            List<com.back.backend.domain.interview.entity.InterviewAnswer> answers,
+            String jobRole
     ) {
+        CompletableFuture<InterviewResultGenerationService.GeneratedInterviewResult> future =
+                new CompletableFuture<>();
+
         aiTaskExecutor.execute(() -> {
             try {
                 InterviewResultGenerationService.GeneratedInterviewResult generatedResult =
                         interviewResultGenerationService.generate(
                                 userId, sessionId, questionSetId, answers, jobRole
                         );
-                callback.onSuccess(generatedResult);
-            } catch (ServiceException exception) {
+                future.complete(generatedResult);
+            } catch (Exception exception) {
                 log.warn("[AsyncResultGenerator] 세션({}) AI 결과 생성 실패: {}", sessionId, exception.getMessage());
-                onFailure.onFailure(sessionId, exception);
-            } catch (RuntimeException exception) {
-                log.error("[AsyncResultGenerator] 세션({}) AI 결과 생성 중 예상치 못한 오류", sessionId, exception);
-                onFailure.onUnexpectedFailure(sessionId);
+                future.completeExceptionally(exception);
             }
         });
-    }
 
-    @FunctionalInterface
-    public interface ResultGenerationCallback {
-        void onSuccess(InterviewResultGenerationService.GeneratedInterviewResult generatedResult);
-    }
-
-    public interface ResultGenerationFailureHandler {
-        void onFailure(long sessionId, ServiceException exception);
-        void onUnexpectedFailure(long sessionId);
+        return future;
     }
 }
