@@ -1,6 +1,7 @@
 package com.back.backend.domain.ai.pipeline;
 
 import com.back.backend.domain.ai.client.*;
+import com.back.backend.domain.ai.recovery.TruncatedJsonArrayRecovery;
 import com.back.backend.domain.ai.template.PromptLoader;
 import com.back.backend.domain.ai.template.PromptTemplate;
 import com.back.backend.domain.ai.template.PromptTemplateRegistry;
@@ -43,6 +44,8 @@ public class AiPipeline {
     private final AiUsageRecorder usageRecorder;
     /** 시스템 전체 AI 동시 호출 수 제한 */
     private final AiConcurrencyLimiter concurrencyLimiter;
+    /** 절단된 JSON 배열에서 완성 원소를 복구 */
+    private final TruncatedJsonArrayRecovery partialRecovery;
 
     /**
      * @param router              AI provider 라우터 — getClient(provider)로 템플릿별 provider, getDefault()로 기본 provider 반환
@@ -52,6 +55,7 @@ public class AiPipeline {
      * @param jsonSchemaValidator AI 응답 JSON 파싱 및 schema 검증
      * @param usageRecorder       AI 호출 결과를 인메모리+DB에 기록
      * @param concurrencyLimiter  시스템 전체 AI 동시 호출 수 제한 (Semaphore 기반 Bulkhead)
+     * @param partialRecovery     절단된 JSON 배열에서 완성 원소를 복구
      */
     public AiPipeline(
         AiClientRouter router,
@@ -60,7 +64,8 @@ public class AiPipeline {
         PromptLoader promptLoader,
         JsonSchemaValidator jsonSchemaValidator,
         AiUsageRecorder usageRecorder,
-        AiConcurrencyLimiter concurrencyLimiter
+        AiConcurrencyLimiter concurrencyLimiter,
+        TruncatedJsonArrayRecovery partialRecovery
     ) {
         this.router = router;
         this.templateRegistry = templateRegistry;
@@ -69,6 +74,47 @@ public class AiPipeline {
         this.jsonSchemaValidator = jsonSchemaValidator;
         this.usageRecorder = usageRecorder;
         this.concurrencyLimiter = concurrencyLimiter;
+        this.partialRecovery = partialRecovery;
+    }
+
+    /**
+     * AI 파이프라인 실행 — maxTokens를 runtime에 override
+     *
+     * <p>배치 템플릿처럼 provider별로 출력 토큰을 동적으로 설정해야 할 때 사용.
+     * 템플릿의 나머지 설정(temperature, retryPolicy 등)은 그대로 유지된다.
+     *
+     * @param templateId       사용할 프롬프트 템플릿 ID
+     * @param payload          AI에 전달할 입력 데이터
+     * @param maxTokensOverride 이 호출에만 적용할 출력 토큰 상한
+     * @return 파싱 및 검증을 통과한 AI 응답 JsonNode
+     */
+    public JsonNode executeWithMaxTokens(String templateId, String payload, int maxTokensOverride) {
+        PromptTemplate base = templateRegistry.get(templateId);
+        PromptTemplate overrideTemplate = base.withMaxTokens(maxTokensOverride);
+        AiResponseValidator validator = validationRegistry.get(templateId);
+
+        String systemPrompt = promptLoader.load(overrideTemplate.systemPromptFile());
+        String developerPrompt = promptLoader.load(overrideTemplate.developerPromptFile());
+
+        AiRequest request = new AiRequest(
+            systemPrompt, developerPrompt, payload,
+            overrideTemplate.temperature(), overrideTemplate.maxTokens()
+        );
+
+        try {
+            return executeWithClient(resolveClient(overrideTemplate), request, overrideTemplate, validator, templateId);
+        } catch (AiClientException e) {
+            if (e.getRateLimitType() == null) {
+                throw e;
+            }
+            return router.getFallback()
+                .map(fallbackClient -> {
+                    log.warn("[Fallback] provider({}) rate limit → fallback provider({})로 전환. 원인: {}",
+                        e.getProvider(), fallbackClient.getProvider(), e.getMessage());
+                    return executeWithClient(fallbackClient, request, overrideTemplate, validator, templateId);
+                })
+                .orElseThrow(() -> e);
+        }
     }
 
     /**
@@ -188,6 +234,7 @@ public class AiPipeline {
     ) {
         int maxRetries = template.retryPolicy().maxRetries();
         List<String> lastErrors = List.of();
+        String lastRawContent = null; // partial recovery를 위한 원본 응답 보존
 
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
             AiResponse response;
@@ -206,6 +253,7 @@ public class AiPipeline {
             // JSON 파싱
             JsonSchemaValidator.ParseResult parseResult = jsonSchemaValidator.parse(response.content());
             if (parseResult instanceof JsonSchemaValidator.ParseResult.Failure f) {
+                lastRawContent = response.content(); // 절단된 원본 보존
                 lastErrors = List.of(f.error());
                 log.warn("[{}] AI 응답 파싱 실패 (attempt={}/{}): templateId={}, error={}",
                     client.getProvider(), attempt + 1, maxRetries + 1, templateId, f.error());
@@ -229,6 +277,26 @@ public class AiPipeline {
             }
 
             return responseNode;
+        }
+
+        // ── Partial Recovery: JSON 절단 시 완성된 원소만 복구 ──────────────
+        if (lastRawContent != null && template.allowPartialRecovery()) {
+            final List<String> capturedErrors = lastErrors; // lambda capture용 effectively final 복사
+            return partialRecovery.tryRecover(lastRawContent)
+                .map(partial -> {
+                    log.warn("[{}] Partial recovery 성공: {}개 원소 복구. templateId={}",
+                        client.getProvider(), partial.size(), templateId);
+                    return partial;
+                })
+                .orElseThrow(() -> {
+                    log.warn("[{}] Partial recovery 실패: 복구 가능한 원소 없음. templateId={}",
+                        client.getProvider(), templateId);
+                    return new ServiceException(
+                        ErrorCode.INTERNAL_SERVER_ERROR,
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        String.format("AI 응답 검증 실패 - maxRetries 초과: provider=%s, templateId=%s, errors=%s",
+                            client.getProvider(), templateId, capturedErrors));
+                });
         }
 
         throw new ServiceException(
