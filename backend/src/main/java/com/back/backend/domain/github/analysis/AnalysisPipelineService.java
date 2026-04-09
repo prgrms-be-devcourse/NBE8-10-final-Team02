@@ -295,17 +295,28 @@ public class AnalysisPipelineService {
             analyzedRepos.forEach(repo ->
                     syncStatusService.setInProgress(userId, repo.getId(), "summary"));
 
-            // generateAll: 모든 repo 데이터를 1회 AI 호출로 처리
-            batchRepoSummaryGeneratorService.generateAll(user, analyzedRepos, authorEmail, triggerReason);
+            // generateAll: 청크 단위 AI 호출로 처리 (partial recovery 포함)
+            List<com.back.backend.domain.github.entity.RepoSummary> savedSummaries =
+                    batchRepoSummaryGeneratorService.generateAll(user, analyzedRepos, authorEmail, triggerReason);
             mergedSummaryService.rebuild(user);
 
-            // 성공: 모든 분석된 repo COMPLETED
-            analyzedRepos.forEach(repo ->
-                    syncStatusService.setCompleted(userId, repo.getId()));
-            analyzedRepos.forEach(repo ->
-                    significanceCheckService.markAnalyzed(userId, repo.getId()));
+            // 실제로 저장된 repo ID 집합
+            java.util.Set<Long> savedRepoIds = savedSummaries.stream()
+                    .map(s -> s.getGithubRepository().getId())
+                    .collect(java.util.stream.Collectors.toSet());
 
-            log.info("Batch pipeline completed: userId={}, analyzedRepos={}", userId, analyzedRepos.size());
+            // 저장된 repo만 COMPLETED, 저장 안 된 repo(partial recovery 탈락)는 FAILED
+            analyzedRepos.forEach(repo -> {
+                if (savedRepoIds.contains(repo.getId())) {
+                    syncStatusService.setCompleted(userId, repo.getId());
+                    significanceCheckService.markAnalyzed(userId, repo.getId());
+                } else {
+                    log.warn("Batch: repo summary not saved (partial recovery excluded): repoId={}", repo.getId());
+                    syncStatusService.setFailed(userId, repo.getId(), "AI 분석 부분 실패: 토큰 초과로 요약을 생성하지 못했습니다.");
+                }
+            });
+
+            log.info("Batch pipeline completed: userId={}, saved={}/{}", userId, savedRepoIds.size(), analyzedRepos.size());
             // 성공 시에만 clone 삭제 (용량 확보)
             analyzedRepos.forEach(repo ->
                     repoCloneService.deleteRepo(userId, repo.getId()));
