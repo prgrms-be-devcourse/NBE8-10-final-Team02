@@ -6,6 +6,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 /**
  * 비동기 처리를 위한 설정 클래스.
@@ -14,35 +15,23 @@ import java.util.concurrent.Executor;
  * 문서 텍스트 추출 전용 Executor를 별도 빈으로 등록한다.</p>
  *
  * <p>문서 추출 작업은 시간이 걸릴 수 있으므로 일반 요청 스레드와 분리된
- * {@code documentTaskExecutor} 풀에서 실행한다.</p>
+ * {@code documentTaskExecutor}에서 실행한다.</p>
  */
 @Configuration
 @EnableAsync
 public class AsyncConfig {
 
     /**
-     * 문서 텍스트 추출 전용 스레드 풀.
+     * 문서 텍스트 추출 전용 가상 스레드 Executor.
      *
-     * <ul>
-     *   <li>corePoolSize=4: 평시 스레드 수 — Gitleaks subprocess 대기 중에도 다른 문서 처리 가능</li>
-     *   <li>maxPoolSize=8: 동시 업로드 급증 시 최대 스레드 수</li>
-     *   <li>queueCapacity=100: 스레드 풀이 가득 찰 경우 대기 큐 크기</li>
-     * </ul>
-     *
-     * <p><b>조정 배경</b>: 2/4/50 → 4/8/100으로 확장.
-     * 주요 병목인 Gitleaks subprocess(500ms~2s)가 스레드를 블로킹하므로
-     * core를 늘려 다른 추출 작업이 대기 없이 실행되도록 한다.
-     * 소형 문서는 SecretMaskingService의 threshold fast-path로 Gitleaks를 건너뛴다.</p>
+     * <p>추출 파이프라인은 PDFBox(CPU) + Gitleaks subprocess(I/O 대기)가 혼합된 워크로드다.
+     * 가상 스레드는 Gitleaks 대기 중 캐리어 스레드를 반납해 다른 문서의 CPU 작업이
+     * 그 시간을 활용할 수 있도록 한다. 플랫폼 스레드 풀 크기 튜닝 없이
+     * CPU 코어 수가 자연스러운 동시 처리 상한 역할을 한다.</p>
      */
     @Bean("documentTaskExecutor")
     public Executor documentTaskExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(4);
-        executor.setMaxPoolSize(8);
-        executor.setQueueCapacity(100);
-        executor.setThreadNamePrefix("doc-extract-");
-        executor.initialize();
-        return executor;
+        return Executors.newVirtualThreadPerTaskExecutor();
     }
 
     @Bean("activityTaskExecutor")
