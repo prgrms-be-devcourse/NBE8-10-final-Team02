@@ -7,7 +7,7 @@ package com.back.backend.domain.ai.batch;
  *   <li>최대 출력: 32,000 토큰 (Long Output 모델 활용)</li>
  *   <li>최대 repo: 8개</li>
  *   <li>입력 예산: 800,000 chars (8 repos × 100,000 chars/repo ≈ 25K tokens/repo)</li>
- *   <li>언어: 한국어 허용 — 기본 프롬프트 지시를 그대로 따름</li>
+ *   <li>언어: 영어 강제 — 프롬프트에서 English-only 지시</li>
  * </ul>
  *
  * <p>입력 예산 근거:
@@ -38,8 +38,4 @@ public class VertexAiStrategy implements BatchProviderStrategy {
         return 800_000;
     }
 
-    @Override
-    public boolean isEnglishOnly() {
-        return false;
-    }
 }
