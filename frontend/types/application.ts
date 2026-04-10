@@ -78,3 +78,14 @@ export interface GenerateAnswersRequest {
   useTemplate: boolean;
   regenerate: boolean;
 }
+
+// 자소서 AI 생성 작업 상태
+export type AiGenerationStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+
+// POST /applications/{id}/questions/generate-answers 응답 (202 Accepted)
+// GET  /applications/{id}/questions/generate-answers/status 응답
+export interface GenerateAnswersJobResponse {
+  applicationId: number;
+  status: AiGenerationStatus;
+  error: string | null;
+}
