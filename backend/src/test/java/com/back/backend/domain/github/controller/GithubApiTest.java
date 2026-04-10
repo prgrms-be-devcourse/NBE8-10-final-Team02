@@ -4,10 +4,13 @@ import com.back.backend.domain.github.analysis.AnalysisPipelineService;
 import com.back.backend.domain.github.dto.request.BatchAnalyzeRequest;
 import com.back.backend.domain.github.dto.request.GithubConnectRequest;
 import com.back.backend.domain.github.dto.request.RepositorySelectionRequest;
+import com.back.backend.domain.github.analysis.SyncStatus;
+import com.back.backend.domain.github.analysis.SyncStatusService;
 import com.back.backend.domain.github.dto.response.GithubConnectionResponse;
 import com.back.backend.domain.github.dto.response.GithubRepositoryResponse;
 import com.back.backend.domain.github.dto.response.RepositorySelectionResponse;
 import com.back.backend.domain.github.service.GithubConnectionService;
+import com.back.backend.domain.github.service.GithubDiscoveryService;
 import com.back.backend.domain.github.service.GithubRepositoryService;
 import com.back.backend.global.exception.ErrorCode;
 import com.back.backend.global.exception.ServiceException;
@@ -25,6 +28,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
@@ -57,6 +61,12 @@ class GithubApiTest extends ApiTestBase {
 
     @MockitoBean
     private AnalysisPipelineService analysisPipelineService;
+
+    @MockitoBean
+    private GithubDiscoveryService discoveryService;
+
+    @MockitoBean
+    private SyncStatusService syncStatusService;
 
     // ─────────────────────────────────────────────────
     // GET /connections
@@ -327,5 +337,75 @@ class GithubApiTest extends ApiTestBase {
                         .content(OBJECT_MAPPER.writeValueAsString(request)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value(ErrorCode.REQUEST_VALIDATION_FAILED.name()));
+    }
+
+    @Test
+    void analyzeRepository_returns401WhenUnauthenticated() throws Exception {
+        mockMvc.perform(post("/api/v1/github/repositories/1/analyze"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void analyzeRepository_returns403WhenRepositoryDoesNotBelongToUser() throws Exception {
+        willThrow(new ServiceException(
+                ErrorCode.GITHUB_REPOSITORY_FORBIDDEN,
+                HttpStatus.FORBIDDEN,
+                "접근 권한이 없는 저장소입니다."
+        )).given(analysisPipelineService).triggerAnalysis(10L, 1L);
+
+        mockMvc.perform(post("/api/v1/github/repositories/1/analyze")
+                        .with(authenticated(10L)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.GITHUB_REPOSITORY_FORBIDDEN.name()));
+    }
+
+    @Test
+    void analyzeRepository_returns409WhenAnalysisAlreadyInProgress() throws Exception {
+        willThrow(new ServiceException(
+                ErrorCode.REQUEST_VALIDATION_FAILED,
+                HttpStatus.CONFLICT,
+                "이미 분석이 진행 중입니다."
+        )).given(analysisPipelineService).triggerAnalysis(10L, 1L);
+
+        mockMvc.perform(post("/api/v1/github/repositories/1/analyze")
+                        .with(authenticated(10L)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.REQUEST_VALIDATION_FAILED.name()));
+    }
+
+    @Test
+    void analyzeRepository_returnsAcceptedWithSyncStatusWhenQueued() throws Exception {
+        given(syncStatusService.getStatus(10L, 1L)).willReturn(Optional.of(
+                new SyncStatusService.SyncStatusData(
+                        1L,
+                        SyncStatus.PENDING,
+                        null,
+                        null,
+                        Instant.parse("2026-01-01T00:05:00Z"),
+                        null,
+                        null,
+                        null
+                )));
+
+        mockMvc.perform(post("/api/v1/github/repositories/1/analyze")
+                        .with(authenticated(10L)))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.repositoryId").value(1))
+                .andExpect(jsonPath("$.data.status").value("PENDING"));
+    }
+
+    @Test
+    void getDiscoveredContributions_returns403WhenScopeIsInsufficient() throws Exception {
+        willThrow(new ServiceException(
+                ErrorCode.GITHUB_SCOPE_INSUFFICIENT,
+                HttpStatus.FORBIDDEN,
+                "private repository 조회 권한이 부족합니다."
+        )).given(discoveryService).findContributedRepos(10L, 0);
+
+        mockMvc.perform(get("/api/v1/github/contributions/discovered")
+                        .with(authenticated(10L)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value(ErrorCode.GITHUB_SCOPE_INSUFFICIENT.name()));
     }
 }
