@@ -7,7 +7,7 @@ package com.back.backend.domain.ai.batch;
  *   <li>최대 출력: 8,000 토큰 (Gemini free tier 한도)</li>
  *   <li>최대 repo: 2개</li>
  *   <li>입력 예산: 480,000 chars (2 repos × 240,000 chars/repo ≈ 60K tokens/repo)</li>
- *   <li>언어: 영어 강제 — 한국어 대비 2~3배 토큰 절약</li>
+ *   <li>언어: 영어 강제 — 프롬프트에서 English-only 지시</li>
  * </ul>
  */
 public class GeminiFreeStrategy implements BatchProviderStrategy {
@@ -29,8 +29,4 @@ public class GeminiFreeStrategy implements BatchProviderStrategy {
         return 480_000;
     }
 
-    @Override
-    public boolean isEnglishOnly() {
-        return true;
-    }
 }

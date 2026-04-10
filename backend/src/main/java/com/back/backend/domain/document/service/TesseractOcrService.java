@@ -10,6 +10,7 @@ import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -65,6 +66,7 @@ public class TesseractOcrService implements OcrService {
     /**
      * 프로덕션 환경에서 Spring이 주입하는 생성자.
      */
+    @Autowired
     public TesseractOcrService(
             @Value("${app.ocr.tesseract-data-path:}") String tessdataPath,
             @Value("${app.ocr.language:eng+kor}") String language) {

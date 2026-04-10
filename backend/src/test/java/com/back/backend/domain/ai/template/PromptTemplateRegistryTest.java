@@ -45,7 +45,7 @@ class PromptTemplateRegistryTest {
 
         PromptTemplate template = registry.get("ai.portfolio.summary.v1");
 
-        assertThat(template.systemPromptFile()).isEqualTo("system/common-system.txt");
+        assertThat(template.systemPromptFile()).isEqualTo("system/portfolio-system.txt");
         assertThat(template.developerPromptFile()).isEqualTo("developer/ai.portfolio.summary.v1.txt");
         assertThat(template.schemaFile()).isEqualTo("schema/portfolio-summary.schema.json");
     }

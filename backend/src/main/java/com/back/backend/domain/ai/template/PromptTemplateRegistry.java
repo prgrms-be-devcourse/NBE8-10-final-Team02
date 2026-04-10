@@ -39,7 +39,7 @@ public class PromptTemplateRegistry {
 
         map.put("ai.portfolio.summary.v1", new PromptTemplate(
             "ai.portfolio.summary.v1", "v1", "portfolio_summary",
-            "system/common-system.txt",
+            "system/portfolio-system.txt",
             "developer/ai.portfolio.summary.v1.txt",
             "schema/portfolio-summary.schema.json",
             0.2, 4000, // 레포지토리 분석 요약이 잘리지 않도록 토큰 여유 확보
@@ -120,7 +120,7 @@ public class PromptTemplateRegistry {
         // allowPartialRecovery: true — JSON 절단 시 완성된 원소만 저장
         map.put("ai.portfolio.summary.batch.v1", new PromptTemplate(
             "ai.portfolio.summary.batch.v1", "v1", "portfolio_summary_batch",
-            "system/common-system.txt",
+            "system/portfolio-system.txt",
             "developer/ai.portfolio.summary.batch.v1.txt",
             null,   // JSON Schema 파일 없음 (배열 검증은 BatchPortfolioSummaryValidator에서 수행)
             0.2, 8000, // 기본값 — executeWithMaxTokens()로 runtime override
