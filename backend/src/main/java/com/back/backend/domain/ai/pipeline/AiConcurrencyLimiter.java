@@ -27,7 +27,7 @@ public class AiConcurrencyLimiter {
     private final Duration queueTimeout;
 
     public AiConcurrencyLimiter(
-        @Value("${ai.concurrency.max-concurrent-calls:4}") int maxConcurrentCalls,
+        @Value("${ai.concurrency.max-concurrent-calls:20}") int maxConcurrentCalls,
         @Value("${ai.concurrency.queue-timeout-seconds:90}") long queueTimeoutSeconds
     ) {
         this.semaphore = new Semaphore(maxConcurrentCalls, true);
