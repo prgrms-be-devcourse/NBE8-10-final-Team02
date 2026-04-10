@@ -159,7 +159,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
                         .with(authenticated(fixture.user().getId())))
-                .andExpect(status().isOk())
+                .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.sessionId").value(session.getId()))
                 .andExpect(jsonPath("$.data.status").value("feedback_completed"))
@@ -203,7 +203,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
                         .with(authenticated(fixture.user().getId())))
-                .andExpect(status().isOk())
+                .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.status").value("feedback_completed"))
                 .andExpect(jsonPath("$.data.totalScore").value(86))
                 .andExpect(jsonPath("$.data.summaryFeedback").value("동적 꼬리질문 답변까지 포함해 평가했습니다."));
@@ -461,7 +461,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
                         .with(authenticated(fixture.user().getId())))
-                .andExpect(status().isOk())
+                .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.status").value("feedback_completed"))
                 .andExpect(jsonPath("$.data.totalScore").value(83));
 
@@ -543,7 +543,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
                         .with(authenticated(fixture.user().getId())))
-                .andExpect(status().isOk())
+                .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.status").value("feedback_completed"))
                 .andExpect(jsonPath("$.data.totalScore").value(85));
 
@@ -584,7 +584,7 @@ class InterviewSessionCompleteApiTest extends ApiTestBase {
 
         mockMvc.perform(post("/api/v1/interview/sessions/{sessionId}/complete", session.getId())
                         .with(authenticated(fixture.user().getId())))
-                .andExpect(status().isOk())
+                .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.status").value("feedback_completed"))
                 .andExpect(jsonPath("$.data.totalScore").value(82));
 

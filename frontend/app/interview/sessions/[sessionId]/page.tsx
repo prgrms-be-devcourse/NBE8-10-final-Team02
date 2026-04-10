@@ -755,6 +755,7 @@ export default function InterviewSessionPage() {
     stopVoiceCaptureForBoundary({ clearMessages: true });
 
     const moveToResultPage = () => {
+      sessionStatusRef.current = 'completed';
       pendingQuestionFocusRef.current = null;
       router.push(`/interview/sessions/${session.id}/result`);
     };

@@ -2,8 +2,8 @@ import type {
   Application,
   ApplicationQuestion,
   CreateApplicationRequest,
+  GenerateAnswersJobResponse,
   GenerateAnswersRequest,
-  GenerateAnswersResponse,
   SaveQuestionsRequest,
   SaveSourcesRequest,
   SourceBindingResponse,
@@ -165,12 +165,14 @@ export async function getQuestions(applicationId: number): Promise<ApplicationQu
 
 /**
  * POST /applications/{applicationId}/questions/generate-answers
- * AI 자기소개서 답변 생성.
+ * AI 자기소개서 답변 생성 작업을 비동기로 시작한다.
+ * 서버는 즉시 202 Accepted + { status: "PENDING" }을 반환한다.
+ * 완료 여부는 getGenerateAnswersStatus()로 폴링한다.
  */
 export async function generateAnswers(
   applicationId: number,
   request: GenerateAnswersRequest,
-): Promise<GenerateAnswersResponse> {
+): Promise<GenerateAnswersJobResponse> {
   const res = await apiFetch(`/api/v1/applications/${applicationId}/questions/generate-answers`, {
     method: 'POST',
     body: JSON.stringify(request),
@@ -181,5 +183,26 @@ export async function generateAnswers(
   }
 
   const body = await res.json();
-  return body.data as GenerateAnswersResponse;
+  return body.data as GenerateAnswersJobResponse;
+}
+
+/**
+ * GET /applications/{applicationId}/questions/generate-answers/status
+ * AI 자기소개서 답변 생성 진행 상태를 폴링한다.
+ * 작업이 없거나 TTL 만료이면 null 반환.
+ */
+export async function getGenerateAnswersStatus(
+  applicationId: number,
+): Promise<GenerateAnswersJobResponse | null> {
+  const res = await apiFetch(
+    `/api/v1/applications/${applicationId}/questions/generate-answers/status`,
+    { cache: 'no-store' },
+  );
+
+  if (!res.ok) {
+    throw new Error(await parseError(res));
+  }
+
+  const body = await res.json();
+  return body.data as GenerateAnswersJobResponse | null;
 }
