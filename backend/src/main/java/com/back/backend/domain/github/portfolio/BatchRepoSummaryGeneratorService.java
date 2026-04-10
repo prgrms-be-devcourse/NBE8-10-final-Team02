@@ -154,8 +154,8 @@ public class BatchRepoSummaryGeneratorService {
         // ── Step 2: provider 전략 결정 (Gemini free vs Vertex AI) ─────────
         BatchProviderStrategy strategy = strategyFactory.resolve(AiProvider.VERTEX_AI);
         int chunkSize = strategy.getMaxReposPerCall();
-        log.info("BatchProviderStrategy resolved: maxReposPerCall={}, maxOutputTokens={}, englishOnly={}",
-                chunkSize, strategy.getMaxOutputTokens(), strategy.isEnglishOnly());
+        log.info("BatchProviderStrategy resolved: maxReposPerCall={}, maxOutputTokens={}",
+                chunkSize, strategy.getMaxOutputTokens());
 
         // ── Step 3~6: 청크별 AI 호출 + 저장 ──────────────────────────────
         List<RepoSummary> allSaved = new ArrayList<>();
@@ -178,7 +178,7 @@ public class BatchRepoSummaryGeneratorService {
             BatchTokenBudget budget = new BatchTokenBudget(
                     strategy.getGlobalBudgetChars(), chunk.size());
 
-            // XML 페이로드 조립 (Gemini free이면 "Only English" 지시 삽입)
+            // XML 페이로드 조립
             String batchPayload = promptBuilder.build(chunk, budget);
             log.info("Chunk {}/{} payload built: chars={}", chunkIdx + 1, chunks.size(), batchPayload.length());
 
