@@ -65,23 +65,4 @@ public class AsyncConfig {
         return executor;
     }
 
-    /**
-     * 자소서 AI 답변 생성 전용 Executor.
-     *
-     * <p>aiTaskExecutor(면접 결과)와 분리하여 자소서 생성 요청이 몰려도
-     * 면접 결과 생성 처리에 영향을 주지 않도록 격리한다.
-     * core=2, max=4, queue=100 — K6 VU 수 기준.
-     * CallerRunsPolicy로 큐 포화 시 호출 스레드에서 동기 실행(graceful degradation).</p>
-     */
-    @Bean("applicationAiTaskExecutor")
-    public Executor applicationAiTaskExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(4);
-        executor.setQueueCapacity(100);
-        executor.setThreadNamePrefix("app-ai-");
-        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
-        executor.initialize();
-        return executor;
-    }
 }

@@ -33,7 +33,7 @@ public class AsyncSelfIntroGenerateService {
             SelfIntroGenerateService selfIntroGenerateService,
             ApplicationAiGenerationJobStore jobStore,
             ApplicationRepository applicationRepository,
-            @Qualifier("applicationAiTaskExecutor") Executor applicationAiTaskExecutor
+            @Qualifier("aiTaskExecutor") Executor applicationAiTaskExecutor
     ) {
         this.selfIntroGenerateService = selfIntroGenerateService;
         this.jobStore = jobStore;
