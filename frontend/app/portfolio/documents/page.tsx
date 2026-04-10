@@ -13,6 +13,7 @@ import DocumentUploadZone from '@/components/documents/DocumentUploadZone';
 import DocumentList from '@/components/documents/DocumentList';
 import ConfirmModal from '@/components/documents/ConfirmModal';
 import DocumentDetailModal from '@/components/documents/DocumentDetailModal';
+import AiGenerationStatusCard from '@/components/AiGenerationStatusCard';
 
 interface ConfirmState {
   type: 'delete' | 'overwrite';
@@ -235,6 +236,27 @@ export default function DocumentsPage() {
           />
         )}
       </div>
+
+      {!loading && documents.length > 0 && (
+        <div className="mt-8">
+          <AiGenerationStatusCard
+            ariaLabel="문서 업로드 완료 상태"
+            tone="success"
+            eyebrow="준비 완료"
+            title="문서 업로드가 완료되었습니다"
+            message="포트폴리오 정보가 준비되었습니다."
+            detail="지금 바로 자기소개서 작성과 면접 준비를 시작할 수 있습니다."
+            actions={
+              <Link
+                href="/applications"
+                className="rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white"
+              >
+                지원 준비로 이동
+              </Link>
+            }
+          />
+        </div>
+      )}
 
       <div className="mt-10 flex justify-between text-sm">
         <Link href="/portfolio" className="text-zinc-500 hover:text-zinc-700">

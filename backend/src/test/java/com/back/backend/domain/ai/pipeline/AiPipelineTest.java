@@ -62,7 +62,8 @@ class AiPipelineTest {
             new PromptLoader(),
             new JsonSchemaValidator(new ObjectMapper()),
             usageRecorder,
-            concurrencyLimiter
+            concurrencyLimiter,
+            new com.back.backend.domain.ai.recovery.TruncatedJsonArrayRecovery(new ObjectMapper())
         );
     }
 

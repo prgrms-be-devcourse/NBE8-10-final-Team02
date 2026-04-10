@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 // --- API & Types Imports ---
-import { getPortfolioReadiness, UnauthenticatedError } from '@/api/portfolio';
+import { getPortfolioReadiness, dismissAllFailedJobs, UnauthenticatedError } from '@/api/portfolio';
 import { getSessions } from '@/api/interview';
 import { useAiStatus } from '@/hooks/useAiStatus';
 import { resolveReadinessCta } from '@/lib/readiness-cta';
@@ -196,9 +196,18 @@ export default function PortfolioReadinessWidget() {
       {dashboard.alerts.recentFailedJobs.status === 'ready' &&
         !!dashboard.alerts.recentFailedJobs.items?.length && (
           <div className="mt-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm">
-            <p className="font-medium text-red-800">
-              최근 실패 {dashboard.alerts.recentFailedJobs.items.length}건
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-medium text-red-800">
+                최근 실패 {dashboard.alerts.recentFailedJobs.items.length}건
+              </p>
+              <button
+                type="button"
+                onClick={() => dismissAllFailedJobs().then(() => setReloadToken((v) => v + 1)).catch(() => {})}
+                className="shrink-0 text-xs text-red-400 underline hover:text-red-600"
+              >
+                모두 확인
+              </button>
+            </div>
             <p className="mt-0.5 text-xs text-red-500 truncate">
               {dashboard.alerts.recentFailedJobs.items[0].message}
             </p>

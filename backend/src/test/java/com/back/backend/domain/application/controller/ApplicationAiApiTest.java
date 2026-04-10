@@ -21,11 +21,15 @@ import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
+import java.util.concurrent.Executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -37,7 +41,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Transactional
+@Import(ApplicationAiApiTest.SyncExecutorConfig.class)
 class ApplicationAiApiTest extends ApiTestBase {
+
+    /**
+     * aiTaskExecutor를 동기 실행으로 오버라이드 — @Transactional 테스트에서
+     * 비동기 AI 생성이 같은 스레드/트랜잭션에서 실행되어야 테스트 데이터가 보임
+     */
+    @TestConfiguration
+    static class SyncExecutorConfig {
+        @Bean("aiTaskExecutor")
+        public Executor aiTaskExecutor() {
+            return Runnable::run;
+        }
+    }
 
     private static final Instant NOW = Instant.parse("2026-03-25T09:00:00Z");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -72,17 +89,10 @@ class ApplicationAiApiTest extends ApiTestBase {
                 .contentType("application/json")
                 .content(OBJECT_MAPPER.writeValueAsString(
                     new GenerateAnswersRequest(true, false))))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.applicationId").value(application.getId()))
-            .andExpect(jsonPath("$.data.generatedCount").value(1))
-            .andExpect(jsonPath("$.data.regenerate").value(false))
-            .andExpect(jsonPath("$.data.answers.length()").value(1))
-            .andExpect(jsonPath("$.data.answers[0].questionText").value("지원 동기를 작성해주세요"))
-            .andExpect(jsonPath("$.data.answers[0].generatedAnswer")
-                .value("카카오의 기술 문화에 깊은 관심을 가지고 있습니다."))
-            .andExpect(jsonPath("$.data.answers[0].toneOption").value("formal"))
-            .andExpect(jsonPath("$.data.answers[0].lengthOption").value("medium"));
+            .andExpect(jsonPath("$.data.status").value("COMPLETED"));
 
         entityManager.flush();
         entityManager.clear();
@@ -113,11 +123,9 @@ class ApplicationAiApiTest extends ApiTestBase {
                 .contentType("application/json")
                 .content(OBJECT_MAPPER.writeValueAsString(
                     new GenerateAnswersRequest(true, false))))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.generatedCount").value(1))
-            .andExpect(jsonPath("$.data.answers.length()").value(2))
-            .andExpect(jsonPath("$.data.answers[0].generatedAnswer").value("기존 답변"))
-            .andExpect(jsonPath("$.data.answers[1].generatedAnswer").value("새로 생성된 답변"));
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.applicationId").value(application.getId()))
+            .andExpect(jsonPath("$.data.status").value("COMPLETED"));
     }
 
     @Test
@@ -157,8 +165,9 @@ class ApplicationAiApiTest extends ApiTestBase {
                 .contentType("application/json")
                 .content(OBJECT_MAPPER.writeValueAsString(
                     new GenerateAnswersRequest(true, false))))
-            .andExpect(status().isUnprocessableEntity())
-            .andExpect(jsonPath("$.error.code").value(ErrorCode.APPLICATION_QUESTION_REQUIRED.name()));
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.data.applicationId").value(application.getId()))
+            .andExpect(jsonPath("$.data.status").value("FAILED"));
     }
 
     // --- 헬퍼 ---

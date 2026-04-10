@@ -25,6 +25,7 @@ export const ENDPOINTS = {
   application:            (id) => `${BASE_URL}/api/v1/applications/${id}`,
   applicationQuestions:   (id) => `${BASE_URL}/api/v1/applications/${id}/questions`,
   generateAnswers:        (id) => `${BASE_URL}/api/v1/applications/${id}/questions/generate-answers`,
+  generateAnswersStatus:  (id) => `${BASE_URL}/api/v1/applications/${id}/questions/generate-answers/status`,
 
   // ── CS / 면접 질문 목록 ───────────────────────────────────────────────
   csQuestions: `${BASE_URL}/api/v1/practice/questions`,

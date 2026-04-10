@@ -72,7 +72,7 @@ export interface SaveContributionRequest {
 export interface RepoSyncStatus {
   repositoryId: number;
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED' | 'FAILED';
-  step: 'significance_check' | 'clone' | 'analysis' | 'summary' | null;
+  step: 'significance_check' | 'clone' | 'analysis' | 'ai_pending' | 'summary' | null;
   startedAt: string | null;
   estimatedEndAt: string | null;
   completedAt: string | null;

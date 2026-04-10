@@ -12,6 +12,7 @@ import {
   addContributionByUrl,
   removeRepository,
   refreshGithubConnection,
+  getGithubConnection,
 } from '@/api/github';
 import { useBatchAnalysis } from '@/context/BatchAnalysisContext';
 import ResyncConfirmModal from '@/components/ResyncConfirmModal';
@@ -53,12 +54,22 @@ type Tab = 'owned' | 'contributed';
 
 export default function RepositoriesPage() {
   const [activeTab, setActiveTab] = useState<Tab>('owned');
+  const [githubLogin, setGithubLogin] = useState<string | null>(null);
+
+  useEffect(() => {
+    getGithubConnection().then((c) => setGithubLogin(c?.githubLogin ?? null)).catch(() => {});
+  }, []);
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
       <h1 className="mb-1 text-xl font-semibold">Repository 관리</h1>
       <p className="mb-5 text-sm text-zinc-500">
         포트폴리오에 활용할 repository를 선택하고 분석을 시작하세요.
+        {githubLogin && (
+          <span className="ml-1 text-zinc-400">
+            (현재 브라우저에 <span className="font-medium text-zinc-600">{githubLogin}</span> 계정으로 로그인되어 있어야 합니다.)
+          </span>
+        )}
       </p>
 
       <div className="mb-6 flex rounded border border-zinc-200">
@@ -437,9 +448,13 @@ function OwnedTab() {
                     <p className="mt-0.5 text-xs text-zinc-400">{formatPushedAt(repo.pushedAt)} 업데이트</p>
                   )}
 
-                  {/* 분석 상태 배지 — 배치 진행 중이면 live status 우선 */}
+                  {/* 분석 상태 배지
+                      hasSummary=true(완료)이면 서버 analysisStatus 우선 — activeBatch가 아직 폴링 전이면
+                      stale IN_PROGRESS 상태를 보여줄 수 있으므로 서버 값을 신뢰 */}
                   {(() => {
-                    const liveStatus = activeBatch?.statuses[repo.id] ?? repo.analysisStatus;
+                    const liveStatus = isCompleted
+                      ? repo.analysisStatus
+                      : (activeBatch?.statuses[repo.id] ?? repo.analysisStatus);
                     return liveStatus ? <AnalysisStatusBadge status={liveStatus} /> : null;
                   })()}
                 </div>
@@ -743,6 +758,7 @@ const STEP_LABEL: Record<string, string> = {
   significance_check: '변경 감지 중',
   clone: '저장소 복제 중',
   analysis: '코드 분석 중',
+  ai_pending: 'AI 분석 대기 중',
   summary: 'AI 요약 생성 중',
 };
 

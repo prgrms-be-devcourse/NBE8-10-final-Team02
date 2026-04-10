@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { getPortfolioReadiness } from '@/api/portfolio';
+import { getPortfolioReadiness, dismissAllFailedJobs } from '@/api/portfolio';
 import { getRepositories } from '@/api/github';
 import { getSessions } from '@/api/interview';
 import { useBatchAnalysis } from '@/context/BatchAnalysisContext';
@@ -49,6 +49,7 @@ export default function PortfolioReadinessPage() {
   const [sessions, setSessions] = useState<InterviewSession[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   // 분석 완료 repo 목록
   const [completedRepos, setCompletedRepos] = useState<GithubRepository[]>([]);
@@ -80,7 +81,7 @@ export default function PortfolioReadinessPage() {
     }
 
     void load();
-  }, [cacheInvalidateKey]); // cacheInvalidateKey 변화 시 리페치
+  }, [cacheInvalidateKey, reloadKey]);
 
   if (loading) {
     return (
@@ -283,7 +284,19 @@ export default function PortfolioReadinessPage() {
         </section>
 
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-zinc-900">최근 실패 작업 알림</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-zinc-900">최근 실패 작업 알림</h2>
+            {dashboard.alerts.recentFailedJobs.status === 'ready' &&
+              !!dashboard.alerts.recentFailedJobs.items?.length && (
+                <button
+                  type="button"
+                  onClick={() => dismissAllFailedJobs().then(() => setReloadKey((k) => k + 1)).catch(() => {})}
+                  className="text-sm text-zinc-500 underline hover:text-zinc-700"
+                >
+                  모두 확인
+                </button>
+              )}
+          </div>
           {dashboard.alerts.recentFailedJobs.status === 'not_ready' ? (
             <div className="mt-4 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-4 py-6 text-center">
               <p className="text-sm text-zinc-400">준비 중</p>

@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { Application, ApplicationQuestion, QuestionItem } from '@/types/application';
 import type { Document } from '@/types/document';
@@ -9,8 +9,10 @@ import type { GithubRepository } from '@/types/github';
 import {
   getApplication,
   getQuestions,
+  getSources,
   saveSources,
   saveQuestions,
+  generateAnswers,
 } from '@/api/application';
 import { getDocuments } from '@/api/document';
 import { getRepositories } from '@/api/github';
@@ -22,15 +24,18 @@ const TONE_OPTIONS = [
 ];
 
 const LENGTH_OPTIONS = [
-  { value: 'short', label: '짧게' },
-  { value: 'medium', label: '보통' },
-  { value: 'long', label: '길게' },
+  { value: 'short', label: '짧게 (500자 내외)' },
+  { value: 'medium', label: '보통 (900자 내외)' },
+  { value: 'long', label: '길게 (1400자 내외)' },
 ];
 
 export default function ApplicationDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const applicationId = Number(params.id);
+
+  const MAX_SOURCES = 5;
 
   // 기본 정보
   const [application, setApplication] = useState<Application | null>(null);
@@ -51,22 +56,35 @@ export default function ApplicationDetailPage() {
   const [savingQuestions, setSavingQuestions] = useState(false);
   const [questionMessage, setQuestionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // 변경 감지 & 이동 상태
+  const changedSinceLoad = useRef(false);
+  const [navigating, setNavigating] = useState(false);
+
   // ── 데이터 로딩 ──────────────────────────────
   const loadAll = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const [app, docs, repoResult, qs] = await Promise.all([
+      const [app, docs, repoResult, qs, sources] = await Promise.all([
         getApplication(applicationId),
         getDocuments(),
         getRepositories({ selected: true, size: 1000 }),
         getQuestions(applicationId),
+        getSources(applicationId),
       ]);
+
+      // ready 상태이고 edit 파라미터가 없으면 /generate로 리다이렉트
+      if (app.status === 'ready' && !searchParams.get('edit')) {
+        router.replace(`/applications/${applicationId}/generate`);
+        return;
+      }
 
       setApplication(app);
       setDocuments(docs.filter((d) => d.extractStatus === 'success'));
       setRepos(repoResult.data.filter((r) => r.isSelected));
       setQuestions(qs);
+      setSelectedDocIds(new Set(sources.documentIds));
+      setSelectedRepoIds(new Set(sources.repositoryIds));
 
       // 기존 문항 → 편집용으로 변환
       if (qs.length > 0) {
@@ -80,7 +98,7 @@ export default function ApplicationDetailPage() {
           })),
         );
       } else {
-        setEditQuestions([{ questionOrder: 1, questionText: '', toneOption: null, lengthOption: null, emphasisPoint: null }]);
+        setEditQuestions([{ questionOrder: 1, questionText: '', toneOption: 'balanced', lengthOption: 'medium', emphasisPoint: null }]);
       }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : '데이터를 불러올 수 없습니다.');
@@ -93,20 +111,65 @@ export default function ApplicationDetailPage() {
     loadAll();
   }, [loadAll]);
 
-  // ── 소스 저장 ──────────────────────────────
-  async function handleSaveSources() {
+  // ── 소스 자동 저장 ──────────────────────────
+  async function autoSaveSources(docIds: Set<number>, repoIds: Set<number>) {
     setSavingSource(true);
     setSourceMessage(null);
     try {
       const result = await saveSources(applicationId, {
-        repositoryIds: Array.from(selectedRepoIds),
-        documentIds: Array.from(selectedDocIds),
+        repositoryIds: Array.from(repoIds),
+        documentIds: Array.from(docIds),
       });
+      changedSinceLoad.current = true;
       setSourceMessage({ type: 'success', text: `소스 ${result.sourceCount}개가 연결되었습니다.` });
     } catch (err) {
       setSourceMessage({ type: 'error', text: err instanceof Error ? err.message : '소스 저장 실패' });
     } finally {
       setSavingSource(false);
+    }
+  }
+
+  // ── 체크박스 토글 (자동 저장, 최대 5개 제한) ──────────────
+  const totalSelected = selectedDocIds.size + selectedRepoIds.size;
+
+  function toggleDoc(id: number) {
+    if (!selectedDocIds.has(id) && totalSelected >= MAX_SOURCES) {
+      setSourceMessage({ type: 'error', text: `소스는 최대 ${MAX_SOURCES}개까지 선택할 수 있습니다.` });
+      return;
+    }
+    const next = new Set(selectedDocIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedDocIds(next);
+    void autoSaveSources(next, selectedRepoIds);
+  }
+
+  function toggleRepo(id: number) {
+    if (!selectedRepoIds.has(id) && totalSelected >= MAX_SOURCES) {
+      setSourceMessage({ type: 'error', text: `소스는 최대 ${MAX_SOURCES}개까지 선택할 수 있습니다.` });
+      return;
+    }
+    const next = new Set(selectedRepoIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedRepoIds(next);
+    void autoSaveSources(selectedDocIds, next);
+  }
+
+  // ── 문항 자동 저장 ──────────────────────────
+  async function autoSaveQuestions(qs: QuestionItem[]) {
+    if (!qs.every((q) => q.questionText.trim())) return; // 빈 문항 있으면 스킵
+    setSavingQuestions(true);
+    setQuestionMessage(null);
+    try {
+      const saved = await saveQuestions(applicationId, { questions: qs });
+      changedSinceLoad.current = true;
+      setQuestions(saved);
+      setQuestionMessage({ type: 'success', text: `${saved.length}개 문항이 저장되었습니다.` });
+    } catch (err) {
+      setQuestionMessage({ type: 'error', text: err instanceof Error ? err.message : '문항 저장 실패' });
+    } finally {
+      setSavingQuestions(false);
     }
   }
 
@@ -123,59 +186,34 @@ export default function ApplicationDetailPage() {
       {
         questionOrder: prev.length + 1,
         questionText: '',
-        toneOption: null,
-        lengthOption: null,
+        toneOption: 'balanced',
+        lengthOption: 'medium',
         emphasisPoint: null,
       },
     ]);
   }
 
+  // ── 자소서 작성 화면 이동 (변경 감지 시 자동 생성) ──────────────
+  async function handleGoToGenerate() {
+    if (changedSinceLoad.current) {
+      setNavigating(true);
+      try {
+        await generateAnswers(applicationId, { useTemplate: true, regenerate: true });
+      } catch {
+        // 생성 실패해도 이동은 진행
+      } finally {
+        setNavigating(false);
+      }
+    }
+    router.push(`/applications/${applicationId}/generate`);
+  }
+
   function removeQuestion(index: number) {
-    setEditQuestions((prev) =>
-      prev
-        .filter((_, i) => i !== index)
-        .map((q, i) => ({ ...q, questionOrder: i + 1 })),
-    );
-  }
-
-  // ── 문항 저장 ──────────────────────────────
-  async function handleSaveQuestions() {
-    const valid = editQuestions.every((q) => q.questionText.trim());
-    if (!valid) {
-      setQuestionMessage({ type: 'error', text: '모든 문항에 질문 텍스트를 입력해주세요.' });
-      return;
-    }
-
-    setSavingQuestions(true);
-    setQuestionMessage(null);
-    try {
-      const saved = await saveQuestions(applicationId, { questions: editQuestions });
-      setQuestions(saved);
-      setQuestionMessage({ type: 'success', text: `${saved.length}개 문항이 저장되었습니다.` });
-    } catch (err) {
-      setQuestionMessage({ type: 'error', text: err instanceof Error ? err.message : '문항 저장 실패' });
-    } finally {
-      setSavingQuestions(false);
-    }
-  }
-
-  // ── 체크박스 토글 ──────────────────────────
-  function toggleDoc(id: number) {
-    setSelectedDocIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleRepo(id: number) {
-    setSelectedRepoIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    const next = editQuestions
+      .filter((_, i) => i !== index)
+      .map((q, i) => ({ ...q, questionOrder: i + 1 }));
+    setEditQuestions(next);
+    void autoSaveQuestions(next);
   }
 
   // ── 렌더링 ──────────────────────────────────
@@ -201,7 +239,6 @@ export default function ApplicationDetailPage() {
   }
 
   const hasQuestions = questions.length > 0;
-  const hasSources = selectedDocIds.size > 0 || selectedRepoIds.size > 0;
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
@@ -227,9 +264,15 @@ export default function ApplicationDetailPage() {
         <div className="mb-3 flex items-center gap-2">
           <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">Step 1</span>
           <h2 className="text-sm font-semibold">소스 연결</h2>
+          {savingSource && (
+            <span className="text-xs text-zinc-400">저장 중...</span>
+          )}
         </div>
         <p className="mb-3 text-xs text-zinc-500">
-          AI가 참고할 문서와 레포지토리를 선택하세요.
+          AI가 참고할 문서와 레포지토리를 선택하세요. 최대 {MAX_SOURCES}개까지 선택할 수 있으며, 선택 즉시 자동 저장됩니다.{' '}
+          <span className={totalSelected >= MAX_SOURCES ? 'text-red-500 font-medium' : 'text-zinc-400'}>
+            ({totalSelected}/{MAX_SOURCES})
+          </span>
         </p>
 
         {/* 문서 목록 */}
@@ -243,6 +286,7 @@ export default function ApplicationDetailPage() {
                     type="checkbox"
                     checked={selectedDocIds.has(doc.id)}
                     onChange={() => toggleDoc(doc.id)}
+                    disabled={savingSource}
                     className="h-4 w-4 accent-zinc-800"
                   />
                   <span className="text-sm text-zinc-700 truncate">{doc.originalFileName}</span>
@@ -264,6 +308,7 @@ export default function ApplicationDetailPage() {
                     type="checkbox"
                     checked={selectedRepoIds.has(repo.id)}
                     onChange={() => toggleRepo(repo.id)}
+                    disabled={savingSource}
                     className="h-4 w-4 accent-zinc-800"
                   />
                   <span className="text-sm text-zinc-700 truncate">{repo.fullName}</span>
@@ -283,14 +328,6 @@ export default function ApplicationDetailPage() {
           </p>
         )}
 
-        <button
-          onClick={handleSaveSources}
-          disabled={savingSource || !hasSources}
-          className="mt-2 w-full rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {savingSource ? '저장 중...' : '소스 저장'}
-        </button>
-
         {sourceMessage && (
           <p className={`mt-2 text-sm ${sourceMessage.type === 'success' ? 'text-green-700' : 'text-red-700'}`}>
             {sourceMessage.text}
@@ -303,9 +340,12 @@ export default function ApplicationDetailPage() {
         <div className="mb-3 flex items-center gap-2">
           <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">Step 2</span>
           <h2 className="text-sm font-semibold">자소서 문항 등록</h2>
+          {savingQuestions && (
+            <span className="text-xs text-zinc-400">저장 중...</span>
+          )}
         </div>
         <p className="mb-3 text-xs text-zinc-500">
-          자소서 문항과 옵션(톤, 길이, 강조점)을 설정하세요.
+          자소서 문항과 옵션(톤, 길이, 강조점)을 설정하세요. 입력 완료 후 자동 저장됩니다.
         </p>
 
         <div className="flex flex-col gap-4">
@@ -316,7 +356,8 @@ export default function ApplicationDetailPage() {
                 {editQuestions.length > 1 && (
                   <button
                     onClick={() => removeQuestion(idx)}
-                    className="text-xs text-zinc-400 hover:text-red-500"
+                    disabled={savingQuestions}
+                    className="text-xs text-zinc-400 hover:text-red-500 disabled:opacity-50"
                   >
                     삭제
                   </button>
@@ -328,6 +369,7 @@ export default function ApplicationDetailPage() {
                 placeholder="자소서 문항을 입력하세요"
                 value={q.questionText}
                 onChange={(e) => updateQuestion(idx, 'questionText', e.target.value)}
+                onBlur={() => void autoSaveQuestions(editQuestions)}
                 rows={2}
                 className="w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none resize-none"
               />
@@ -338,7 +380,14 @@ export default function ApplicationDetailPage() {
                   <label className="block text-xs text-zinc-400 mb-0.5">톤</label>
                   <select
                     value={q.toneOption ?? ''}
-                    onChange={(e) => updateQuestion(idx, 'toneOption', e.target.value || null)}
+                    onChange={(e) => {
+                      const val = e.target.value || null;
+                      const updated = editQuestions.map((item, i) =>
+                        i === idx ? { ...item, toneOption: val } : item,
+                      );
+                      setEditQuestions(updated);
+                      void autoSaveQuestions(updated);
+                    }}
                     className="rounded border border-zinc-300 px-2 py-1 text-xs"
                   >
                     <option value="">선택 안 함</option>
@@ -351,7 +400,14 @@ export default function ApplicationDetailPage() {
                   <label className="block text-xs text-zinc-400 mb-0.5">길이</label>
                   <select
                     value={q.lengthOption ?? ''}
-                    onChange={(e) => updateQuestion(idx, 'lengthOption', e.target.value || null)}
+                    onChange={(e) => {
+                      const val = e.target.value || null;
+                      const updated = editQuestions.map((item, i) =>
+                        i === idx ? { ...item, lengthOption: val } : item,
+                      );
+                      setEditQuestions(updated);
+                      void autoSaveQuestions(updated);
+                    }}
                     className="rounded border border-zinc-300 px-2 py-1 text-xs"
                   >
                     <option value="">선택 안 함</option>
@@ -367,6 +423,7 @@ export default function ApplicationDetailPage() {
                     placeholder="예: 팀워크, 리더십"
                     value={q.emphasisPoint ?? ''}
                     onChange={(e) => updateQuestion(idx, 'emphasisPoint', e.target.value || null)}
+                    onBlur={() => void autoSaveQuestions(editQuestions)}
                     className="w-full rounded border border-zinc-300 px-2 py-1 text-xs focus:border-zinc-500 focus:outline-none"
                   />
                 </div>
@@ -378,19 +435,12 @@ export default function ApplicationDetailPage() {
         {editQuestions.length < 10 && (
           <button
             onClick={addQuestion}
-            className="mt-3 w-full rounded border border-dashed border-zinc-300 py-2 text-sm text-zinc-500 hover:border-zinc-400 hover:text-zinc-700"
+            disabled={savingQuestions}
+            className="mt-3 w-full rounded border border-dashed border-zinc-300 py-2 text-sm text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:opacity-50"
           >
             + 문항 추가
           </button>
         )}
-
-        <button
-          onClick={handleSaveQuestions}
-          disabled={savingQuestions}
-          className="mt-3 w-full rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {savingQuestions ? '저장 중...' : '문항 저장'}
-        </button>
 
         {questionMessage && (
           <p className={`mt-2 text-sm ${questionMessage.type === 'success' ? 'text-green-700' : 'text-red-700'}`}>
@@ -416,10 +466,11 @@ export default function ApplicationDetailPage() {
               등록된 {questions.length}개 문항을 기준으로 자소서 작성 전용 화면에서 생성과 재생성을 진행합니다.
             </p>
             <button
-              onClick={() => router.push(`/applications/${applicationId}/generate`)}
-              className="w-full rounded bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white"
+              onClick={handleGoToGenerate}
+              disabled={navigating}
+              className="w-full rounded bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
             >
-              자소서 작성 화면으로 이동
+              {navigating ? 'AI 답변 생성 중...' : '자소서 작성 화면으로 이동'}
             </button>
           </>
         )}

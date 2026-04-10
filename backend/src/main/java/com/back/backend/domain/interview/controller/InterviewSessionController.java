@@ -82,6 +82,7 @@ public class InterviewSessionController {
     }
 
     @PostMapping("/{sessionId}/complete")
+    @ResponseStatus(HttpStatus.ACCEPTED)
     public ApiResponse<InterviewSessionCompletionResponse> completeSession(
             Authentication authentication,
             @PathVariable long sessionId

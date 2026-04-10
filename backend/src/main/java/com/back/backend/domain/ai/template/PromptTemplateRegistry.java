@@ -44,7 +44,8 @@ public class PromptTemplateRegistry {
             "schema/portfolio-summary.schema.json",
             0.2, 4000, // 레포지토리 분석 요약이 잘리지 않도록 토큰 여유 확보
             new PromptTemplate.RetryPolicy(2, false),
-            AiProvider.VERTEX_AI // 대용량 분석, 품질 중요
+            AiProvider.VERTEX_AI, // 대용량 분석, 품질 중요
+            false
         ));
 
         map.put("ai.self_intro.generate.v1", new PromptTemplate(
@@ -54,7 +55,8 @@ public class PromptTemplateRegistry {
             "schema/self-intro-generate.schema.json",
             0.5, 4000,
             new PromptTemplate.RetryPolicy(2, false),
-            AiProvider.GROQ // 경량 작업, Llama 3.3으로 충분한 품질
+            AiProvider.GROQ, // 경량 작업, Llama 3.3으로 충분한 품질
+            false
         ));
 
         map.put("ai.interview.questions.generate.v1", new PromptTemplate(
@@ -64,7 +66,8 @@ public class PromptTemplateRegistry {
             "schema/interview-questions-generate.schema.json",
             0.6, 4000,
             new PromptTemplate.RetryPolicy(2, false),
-            AiProvider.VERTEX_AI // 포트폴리오 기반, 정확도 중요
+            AiProvider.VERTEX_AI, // 포트폴리오 기반, 정확도 중요
+            false
         ));
 
         map.put("ai.interview.followup.generate.v1", new PromptTemplate(
@@ -74,7 +77,8 @@ public class PromptTemplateRegistry {
             "schema/interview-followup-generate.schema.json",
             0.5, 1000,
             new PromptTemplate.RetryPolicy(1, false),
-            AiProvider.GROQ // 1000토큰 경량, 빈도 최다
+            AiProvider.GROQ, // 1000토큰 경량, 빈도 최다
+            false
         ));
 
         map.put("ai.interview.followup.complete.v1", new PromptTemplate(
@@ -84,7 +88,8 @@ public class PromptTemplateRegistry {
             "schema/interview-followup-complete.schema.json",
             0.0, 300, // completion follow-up은 고정된 짧은 JSON 1개만 필요하므로 최대한 결정적으로 생성
             new PromptTemplate.RetryPolicy(1, false),
-            AiProvider.GROQ // 300토큰 초경량
+            AiProvider.GROQ, // 300토큰 초경량
+            false
         ));
 
         map.put("ai.interview.evaluate.v1", new PromptTemplate(
@@ -94,7 +99,8 @@ public class PromptTemplateRegistry {
             "schema/interview-evaluate.schema.json",
             0.4, 8000, // 질문 최대 20개 × 평가 항목(score, rationale, tags) 감안하여 토큰 여유 확보. 피드백 다양성을 위해 temperature 0.2→0.4
             new PromptTemplate.RetryPolicy(2, false),
-            AiProvider.VERTEX_AI // 평가 정확도 최우선
+            AiProvider.VERTEX_AI, // 평가 정확도 최우선
+            false
         ));
 
         map.put("ai.interview.summary.v1", new PromptTemplate(
@@ -104,20 +110,23 @@ public class PromptTemplateRegistry {
             "schema/interview-summary.schema.json",
             0.3, 1500,
             new PromptTemplate.RetryPolicy(1, false),
-            AiProvider.GROQ // 1500토큰 경량
+            AiProvider.GROQ, // 1500토큰 경량
+            false
         ));
 
-        // Batch 포트폴리오 요약 템플릿 (여러 repo → 1회 AI 호출)
-        // maxTokens: 단일 repo(4000)보다 넉넉히 설정 — 배열 응답이므로 repo 수에 비례
+        // Batch 포트폴리오 요약 템플릿 (여러 repo → 청크 단위 AI 호출)
+        // maxTokens: runtime에 BatchProviderStrategy로 override됨 (Gemini=8000, Vertex=64000)
         // schemaFile: null — 배열 응답이라 기존 schema 재사용 불가, BatchPortfolioSummaryValidator가 직접 검증
+        // allowPartialRecovery: true — JSON 절단 시 완성된 원소만 저장
         map.put("ai.portfolio.summary.batch.v1", new PromptTemplate(
             "ai.portfolio.summary.batch.v1", "v1", "portfolio_summary_batch",
             "system/common-system.txt",
             "developer/ai.portfolio.summary.batch.v1.txt",
             null,   // JSON Schema 파일 없음 (배열 검증은 BatchPortfolioSummaryValidator에서 수행)
-            0.2, 8000, // 여러 repo의 배열 결과를 담으므로 단일 호출의 2배 확보
-            new PromptTemplate.RetryPolicy(0, false),
-            AiProvider.VERTEX_AI // 대용량 배치, 토큰 무제한 필요
+            0.2, 8000, // 기본값 — executeWithMaxTokens()로 runtime override
+            new PromptTemplate.RetryPolicy(1, false), // retry=1: 절단된 JSON 등 일시적 오류 시 1회 재시도
+            AiProvider.VERTEX_AI, // 대용량 배치, 토큰 무제한 필요
+            true  // 절단된 JSON에서 완성된 repo만 추출하여 부분 저장
         ));
 
         // 문제은행 연습 — CS 답변 평가
@@ -129,7 +138,8 @@ public class PromptTemplateRegistry {
             "practice-evaluate.schema.json",
             0.3, 4000,
             new PromptTemplate.RetryPolicy(2, true),
-            AiProvider.GROQ // allowFallback=true, 무료 provider 우선
+            AiProvider.GROQ, // allowFallback=true, 무료 provider 우선
+            false
         ));
 
         // 문제은행 연습 — 인성 답변 평가
@@ -140,7 +150,8 @@ public class PromptTemplateRegistry {
             "practice-evaluate.schema.json",
             0.3, 4000,
             new PromptTemplate.RetryPolicy(2, true),
-            AiProvider.GROQ // allowFallback=true, 무료 provider 우선
+            AiProvider.GROQ, // allowFallback=true, 무료 provider 우선
+            false
         ));
 
         // Map.copyOf()로 불변 맵 생성 — 이후 수정 시도 시 UnsupportedOperationException

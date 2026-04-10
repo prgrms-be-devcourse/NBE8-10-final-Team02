@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { refreshGithubConnection, getGithubConnection } from '@/api/github';
 import { getMe, getGithubLinkUrl } from '@/api/auth';
 import type { GithubConnection } from '@/types/github';
@@ -47,6 +48,19 @@ export default function GithubConnectPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  // ── 기존 연결 재확인 후 복원 (변경 취소 시) ───────────────────
+  async function handleRestoreExistingConnection() {
+    setSubmitting(true);
+    setApiError(null);
+    try {
+      const connection = await getGithubConnection().catch(() => null);
+      setExistingConnection(connection);
+      setForceReconnect(false);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   // ── GitHub OAuth 연동 (Google/Kakao 사용자) ──────────────────
   async function handleGithubOAuthLink() {
@@ -143,36 +157,56 @@ export default function GithubConnectPage() {
       <main className="mx-auto max-w-lg px-4 py-12">
         <h1 className="mb-2 text-2xl font-semibold">GitHub 연결</h1>
 
-        <div className="rounded border border-green-100 bg-green-50 px-4 py-4 mb-6">
+        <div className="rounded border border-green-100 bg-green-50 px-4 py-4 mb-4">
           <p className="text-sm font-medium text-green-800 mb-1">GitHub 계정이 연결되었습니다</p>
           <p className="text-sm text-green-700">
             <span className="font-medium">{existingConnection.githubLogin}</span> 계정이 연결되어 있습니다.
           </p>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={handleGoToRepositories}
-            className="w-full rounded bg-zinc-900 py-2.5 text-sm font-medium text-white"
-          >
-            repository 선택하기 →
-          </button>
-          {!providers.includes('github') && (
-            <button
-              onClick={() => { setExistingConnection(null); setForceReconnect(true); }}
-              className="text-sm text-zinc-500 underline"
-            >
-              다른 GitHub 계정으로 변경하기
-            </button>
-          )}
-        </div>
+        {(!providers.includes('github') || providers.some((p) => p !== 'github')) && (
+          <>
+            <div className="rounded border border-blue-100 bg-blue-50 px-4 py-3 mb-4 text-xs text-blue-700">
+              <p className="font-medium text-blue-800 mb-1">연결할 GitHub 계정을 먼저 확인하세요</p>
+              <p>
+                계정을 변경하면 현재 브라우저에 로그인된 GitHub 계정이 자동으로 연결됩니다.
+                다른 계정으로 변경하려면 먼저{' '}
+                <a
+                  href="https://github.com/login"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline text-blue-600"
+                >
+                  GitHub에서 계정을 전환
+                </a>
+                한 후 진행하세요.
+              </p>
+            </div>
+            <div className="mb-3">
+              <button
+                onClick={() => { setExistingConnection(null); setForceReconnect(true); }}
+                className="text-sm text-zinc-500 underline"
+              >
+                다른 GitHub 계정으로 변경하기
+              </button>
+            </div>
+          </>
+        )}
+
+        <Link
+          href="/portfolio"
+          className="block w-full rounded bg-zinc-900 py-2.5 text-center text-sm font-medium text-white"
+        >
+          포트폴리오로 돌아가기
+        </Link>
+
       </main>
     );
   }
 
   // ── GitHub OAuth로 로그인한 사용자 (연결 없음) ────────────
   // 로그인 시점에 token이 저장되므로 별도 입력 없이 repo를 가져올 수 있다.
-  if (providers.includes('github') && !forceReconnect) {
+  if (providers.every((p) => p === 'github') && !forceReconnect) {
     return (
       <main className="mx-auto max-w-lg px-4 py-12">
         <h1 className="mb-2 text-2xl font-semibold">GitHub 연결</h1>
@@ -239,10 +273,43 @@ export default function GithubConnectPage() {
         </ul>
       </div>
 
+      {/* 브라우저 세션 경고: 현재 GitHub 로그인 계정이 자동 연동됨을 알림 */}
+      <div className="rounded border border-blue-100 bg-blue-50 px-4 py-3 mb-4 text-xs text-blue-700">
+        <p className="font-medium text-blue-800 mb-1">연결할 GitHub 계정을 먼저 확인하세요</p>
+        <p>
+          아래 버튼을 누르면 현재 브라우저에 로그인된 GitHub 계정이 자동으로 연결됩니다.
+          다른 계정을 연결하려면 먼저{' '}
+          <a
+            href="https://github.com/login"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline text-blue-600"
+          >
+            GitHub에서 계정을 전환
+          </a>
+          한 후 진행하세요.
+        </p>
+      </div>
+
       {apiError && (
-        <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 whitespace-pre-line">
-          {apiError}
-          <button type="button" onClick={() => setApiError(null)} className="ml-2 underline text-red-500">닫기</button>
+        <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p className="whitespace-pre-line">{apiError}</p>
+          {forceReconnect && (
+            <p className="mt-2 text-xs text-red-600">
+              현재 브라우저에 로그인된 GitHub 계정이 자동으로 사용되었습니다.
+              연결하려는 계정으로 먼저{' '}
+              <a
+                href="https://github.com/login"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                GitHub에 로그인
+              </a>
+              한 후 다시 시도하거나, 아래 버튼으로 기존 연결을 유지하세요.
+            </p>
+          )}
+          <button type="button" onClick={() => setApiError(null)} className="mt-2 underline text-red-500 text-xs">닫기</button>
         </div>
       )}
 
@@ -256,6 +323,17 @@ export default function GithubConnectPage() {
       <p className="mt-3 text-xs text-zinc-400">
         • GitHub 로그인 페이지로 이동합니다. 완료 후 이 페이지로 돌아옵니다.
       </p>
+
+      {forceReconnect && (
+        <button
+          type="button"
+          onClick={handleRestoreExistingConnection}
+          disabled={submitting}
+          className="mt-3 w-full rounded border border-zinc-300 py-2.5 text-sm font-medium text-zinc-600 disabled:opacity-50 hover:bg-zinc-50"
+        >
+          {submitting ? '확인 중...' : '기존 연결 유지하기'}
+        </button>
+      )}
     </main>
   );
 }

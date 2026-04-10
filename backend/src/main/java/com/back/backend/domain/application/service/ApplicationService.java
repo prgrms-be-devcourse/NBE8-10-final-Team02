@@ -248,6 +248,25 @@ public class ApplicationService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public ApplicationSourceBindingResponse getSources(long userId, long applicationId) {
+        getOwnedApplication(userId, applicationId);
+
+        List<Long> repositoryIds = applicationSourceRepositoryBindingRepository
+                .findAllByApplicationId(applicationId)
+                .stream()
+                .map(binding -> binding.getRepository().getId())
+                .toList();
+
+        List<Long> documentIds = applicationSourceDocumentBindingRepository
+                .findAllByApplicationId(applicationId)
+                .stream()
+                .map(binding -> binding.getDocument().getId())
+                .toList();
+
+        return applicationResponseMapper.toApplicationSourceBindingResponse(applicationId, repositoryIds, documentIds);
+    }
+
     private User getUser(long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new ServiceException(

@@ -76,7 +76,7 @@ ai:
   fallback-provider: gemini  # 글로벌 fallback을 Gemini AI Studio(무료)로 변경 — GROQ 템플릿 실패 시 다른 provider로 가야 함
   concurrency:
     max-concurrent-calls: 4      # 2 vCPU × 2 — I/O-bound AI 호출의 적정 동시성
-    queue-timeout-seconds: 90    # 대기 한도 (AI 응답 60s + 큐 대기 30s)
+    queue-timeout-seconds: 180   # 대기 한도 (AI 응답 120s + 큐 대기 60s)
   rate-limit:
     gemini:
       rpm: 10
@@ -99,7 +99,7 @@ ai:
     credentials-path: ${VERTEX_AI_CREDENTIALS_PATH:}
     timeout:
       connect: 5s
-      read: 60s
+      read: 120s
     retry:
       max-attempts: 1
   gemini:
@@ -120,13 +120,6 @@ ai:
       read: 60s
     retry:
       max-attempts: 1
-  # 배치 AI 호출 토큰 예산 설정
-  # 기본값(480_000 chars = 120K tokens)은 Gemini Pro free tier 기준.
-  # Groq free (TPM 매우 제한): 120_000 (30K tokens × 4 chars)으로 낮출 것.
-  # 현재는 git repo 분석에만 적용되어있음
-  portfolio:
-    batch:
-      global-budget-chars: 480000
 
 document:
   upload:

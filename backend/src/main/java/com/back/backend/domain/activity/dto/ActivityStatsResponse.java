@@ -4,6 +4,7 @@ import java.util.List;
 
 public record ActivityStatsResponse(
         List<ScoreTrendEntry> scoreTrend,
-        List<WeakAreaEntry> weakAreas
+        List<WeakAreaEntry> weakAreas,
+        List<WeakAreaEntry> feedbackWeakAreas
 ) {
 }

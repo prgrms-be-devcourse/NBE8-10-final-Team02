@@ -69,7 +69,7 @@ export default function PracticePage() {
         <div className="flex gap-2">
           <button
             onClick={handleRandom}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
           >
             랜덤 출제
           </button>
@@ -116,7 +116,7 @@ export default function PracticePage() {
                     onClick={() => toggleTag(tag.id)}
                     className={`rounded-full px-3 py-1 text-xs transition ${
                       selectedTagIds.includes(tag.id)
-                        ? 'bg-blue-100 text-blue-700'
+                        ? 'bg-zinc-200 text-zinc-800'
                         : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200'
                     }`}
                   >
@@ -136,7 +136,7 @@ export default function PracticePage() {
                     onClick={() => toggleTag(tag.id)}
                     className={`rounded-full px-3 py-1 text-xs transition ${
                       selectedTagIds.includes(tag.id)
-                        ? 'bg-blue-100 text-blue-700'
+                        ? 'bg-zinc-200 text-zinc-800'
                         : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200'
                     }`}
                   >
@@ -164,14 +164,14 @@ export default function PracticePage() {
             <button
               key={q.knowledgeItemId}
               onClick={() => handleSelect(q)}
-              className="block w-full rounded-lg border border-zinc-200 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50/30"
+              className="block w-full rounded-lg border border-zinc-200 p-4 text-left transition hover:border-zinc-300 hover:bg-zinc-50/50"
             >
               <div className="mb-1.5 flex items-center gap-2">
                 <span
                   className={`rounded px-2 py-0.5 text-xs font-medium ${
                     q.questionType === 'behavioral'
                       ? 'bg-amber-100 text-amber-700'
-                      : 'bg-blue-100 text-blue-700'
+                      : 'bg-zinc-100 text-zinc-600'
                   }`}
                 >
                   {q.questionType === 'behavioral' ? '인성' : 'CS'}
