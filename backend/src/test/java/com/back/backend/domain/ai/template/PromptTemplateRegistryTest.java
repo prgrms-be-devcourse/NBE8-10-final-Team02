@@ -1,7 +1,10 @@
 package com.back.backend.domain.ai.template;
 
+import com.back.backend.domain.ai.client.AiProvider;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -9,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PromptTemplateRegistryTest {
 
     @Test
-    @DisplayName("createDefault()로 6개 템플릿이 모두 등록된다")
+    @DisplayName("createDefault()로 주요 템플릿이 모두 등록된다")
     void createDefault_registers6Templates() {
         PromptTemplateRegistry registry = PromptTemplateRegistry.createDefault();
 
@@ -35,7 +38,7 @@ class PromptTemplateRegistryTest {
         assertThat(portfolio.retryPolicy().maxRetries()).isEqualTo(2);
         assertThat(followup.retryPolicy().maxRetries()).isEqualTo(1);
 
-        assertThat(portfolio.retryPolicy().allowFallback()).isFalse();
+        assertThat(portfolio.retryPolicy().fallbackChain()).isEmpty();
     }
 
     @Test
@@ -80,7 +83,7 @@ class PromptTemplateRegistryTest {
             "developer/test.txt",
             "schema/test.schema.json",
             0.5, 1000,
-            new PromptTemplate.RetryPolicy(1, false),
+            new PromptTemplate.RetryPolicy(1, List.of()),
             null, false
         )).isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("templateId");
@@ -92,7 +95,7 @@ class PromptTemplateRegistryTest {
             "developer/test.txt",
             "schema/test.schema.json",
             1.5, 1000,
-            new PromptTemplate.RetryPolicy(1, false),
+            new PromptTemplate.RetryPolicy(1, List.of()),
             null, false
         )).isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("temperature");
@@ -104,7 +107,7 @@ class PromptTemplateRegistryTest {
             "developer/test.txt",
             "schema/test.schema.json",
             0.5, 0,
-            new PromptTemplate.RetryPolicy(1, false),
+            new PromptTemplate.RetryPolicy(1, List.of()),
             null, false
         )).isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("maxTokens");
