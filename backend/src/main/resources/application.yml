@@ -124,7 +124,10 @@ ai:
 document:
   upload:
     # 업로드 허용 최대 파일 크기 (MB). spring.servlet.multipart 제한과 동기화됨.
-    max-file-size-mb: 50
+    # TODO: 대용량 파일(12MB+) 업로드 시 동기 store() 처리 중 클라이언트 타임아웃 발생으로 임시 5MB 제한.
+    #       store()를 비동기화(byte[] 버퍼링 방식)한 뒤 50으로 복원 예정.
+    # max-file-size-mb: 50
+    max-file-size-mb: 5
     # 사용자 1명이 보유할 수 있는 최대 문서 수.
     max-document-count: 5
 
