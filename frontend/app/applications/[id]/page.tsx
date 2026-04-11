@@ -56,6 +56,10 @@ export default function ApplicationDetailPage() {
   const [savingQuestions, setSavingQuestions] = useState(false);
   const [questionMessage, setQuestionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // 공통 강조 메모
+  const [userMemo, setUserMemo] = useState('');
+  const [memoOpen, setMemoOpen] = useState(false);
+
   // 변경 감지 & 이동 상태
   const changedSinceLoad = useRef(false);
   const [navigating, setNavigating] = useState(false);
@@ -195,17 +199,34 @@ export default function ApplicationDetailPage() {
 
   // ── 자소서 작성 화면 이동 (변경 감지 시 자동 생성) ──────────────
   async function handleGoToGenerate() {
-    if (changedSinceLoad.current) {
-      setNavigating(true);
-      try {
-        await generateAnswers(applicationId, { useTemplate: true, regenerate: true });
-      } catch {
-        // 생성 실패해도 이동은 진행
-      } finally {
-        setNavigating(false);
+    setNavigating(true);
+    try {
+      // userMemo가 있으면 각 문항의 emphasisPoint에 merge 후 저장
+      const memo = userMemo.trim();
+      if (memo && editQuestions.every((q) => q.questionText.trim())) {
+        const merged = editQuestions.map((q) => ({
+          ...q,
+          emphasisPoint: mergeEmphasisPoint(memo, q.emphasisPoint),
+        }));
+        await saveQuestions(applicationId, { questions: merged });
+        changedSinceLoad.current = true;
       }
+
+      if (changedSinceLoad.current) {
+        await generateAnswers(applicationId, { useTemplate: true, regenerate: true });
+      }
+    } catch {
+      // 생성 실패해도 이동은 진행
+    } finally {
+      setNavigating(false);
     }
     router.push(`/applications/${applicationId}/generate`);
+  }
+
+  function mergeEmphasisPoint(memo: string, emphasisPoint: string | null): string | null {
+    const hasPoint = emphasisPoint != null && emphasisPoint.trim().length > 0;
+    if (hasPoint) return `공통: ${memo} / 문항별: ${emphasisPoint!.trim()}`;
+    return memo;
   }
 
   function removeQuestion(index: number) {
@@ -335,6 +356,42 @@ export default function ApplicationDetailPage() {
         )}
       </section>
 
+      {/* ── 공통 강조 메모 (접이식) ──────────── */}
+      <section className="mb-8">
+        <button
+          type="button"
+          onClick={() => setMemoOpen((prev) => !prev)}
+          className="flex w-full items-center justify-between rounded border border-zinc-200 px-4 py-2.5 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+        >
+          <span>
+            공통 강조 메모
+            {userMemo.trim() && (
+              <span className="ml-2 rounded bg-yellow-100 px-1.5 py-0.5 text-xs font-normal text-yellow-700">
+                입력됨
+              </span>
+            )}
+          </span>
+          <span className="text-zinc-400">{memoOpen ? '▲' : '▼'}</span>
+        </button>
+
+        {memoOpen && (
+          <div className="rounded-b border border-t-0 border-zinc-200 px-4 py-3">
+            <p className="mb-2 text-xs text-zinc-500">
+              모든 문항 생성 시 공통으로 반영할 강조 사항을 자유롭게 입력하세요. 이동 시 각 문항의 강조점에 합산됩니다.
+            </p>
+            <textarea
+              value={userMemo}
+              onChange={(e) => setUserMemo(e.target.value)}
+              placeholder="예: AWS 자격증 보유, 최근 사이드 프로젝트에서 팀 리더 경험"
+              rows={3}
+              maxLength={200}
+              className="w-full resize-none rounded border border-zinc-200 px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400"
+            />
+            <p className="mt-1 text-right text-xs text-zinc-400">{userMemo.length}/200</p>
+          </div>
+        )}
+      </section>
+
       {/* ── STEP 2: 문항 등록 ──────────────── */}
       <section className="mb-8">
         <div className="mb-3 flex items-center gap-2">
@@ -420,19 +477,21 @@ export default function ApplicationDetailPage() {
                   <label className="block text-xs text-zinc-400 mb-0.5">강조점</label>
                   <input
                     type="text"
-                    placeholder="예: 팀워크, 리더십"
+                    placeholder="예: 팀워크"
                     value={q.emphasisPoint ?? ''}
                     onChange={(e) => updateQuestion(idx, 'emphasisPoint', e.target.value || null)}
                     onBlur={() => void autoSaveQuestions(editQuestions)}
+                    maxLength={10}
                     className="w-full rounded border border-zinc-300 px-2 py-1 text-xs focus:border-zinc-500 focus:outline-none"
                   />
+                  <p className="mt-0.5 text-right text-xs text-zinc-400">{(q.emphasisPoint ?? '').length}/10</p>
                 </div>
               </div>
             </div>
           ))}
         </div>
 
-        {editQuestions.length < 10 && (
+        {editQuestions.length < 5 && (
           <button
             onClick={addQuestion}
             disabled={savingQuestions}

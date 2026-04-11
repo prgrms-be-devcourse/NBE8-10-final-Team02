@@ -4,6 +4,7 @@ import com.back.backend.domain.ai.pipeline.AiPipeline;
 import com.back.backend.domain.ai.pipeline.payload.SelfIntroPayloadBuilder;
 import com.back.backend.domain.ai.pipeline.payload.SelfIntroPayloadBuilder.QuestionInput;
 import com.back.backend.domain.application.entity.Application;
+import com.back.backend.domain.application.entity.ApplicationLengthOption;
 import com.back.backend.domain.application.entity.ApplicationQuestion;
 import com.back.backend.domain.application.entity.ApplicationSourceDocument;
 import com.back.backend.domain.application.repository.ApplicationQuestionRepository;
@@ -27,11 +28,21 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * @deprecated 직접 호출하지 말 것. {@link com.back.backend.domain.application.service.AsyncSelfIntroGenerateService}를 사용할 것.
+ */
+@Deprecated
 @Service
 @RequiredArgsConstructor
 public class SelfIntroGenerateService {
 
     private static final String TEMPLATE_ID = "ai.self_intro.generate.v1";
+    private static final int TOKEN_PER_SHORT  = 500;
+    private static final int TOKEN_PER_MEDIUM = 800;
+    private static final int TOKEN_PER_LONG   = 1200;
+    private static final int TOKEN_OVERHEAD   = 300;
+    private static final int TOKEN_MIN        = 2000;
+    private static final int TOKEN_MAX        = 8000;
 
     private final ApplicationRepository applicationRepository;
     private final ApplicationQuestionRepository applicationQuestionRepository;
@@ -118,7 +129,8 @@ public class SelfIntroGenerateService {
         }
 
         // Phase 2: AI 호출 — 트랜잭션 없음, DB 커넥션 미점유
-        JsonNode responseNode = aiPipeline.execute(TEMPLATE_ID, ctx.payload());
+        int maxTokens = calcMaxTokens(ctx.targetQuestions());
+        JsonNode responseNode = aiPipeline.executeWithMaxTokens(TEMPLATE_ID, ctx.payload(), maxTokens);
 
         // 응답 파싱 (메모리, 트랜잭션 불필요)
         Map<Integer, String> answerByOrder = new HashMap<>();
@@ -153,5 +165,26 @@ public class SelfIntroGenerateService {
         );
 
         return new GenerateResult(finalQuestions, ctx.targetQuestions().size());
+    }
+
+    /**
+     * targetQuestions의 lengthOption 합산으로 출력 토큰 상한을 동적 계산.
+     * hardMaxChars 기준 한국어 2자 ≈ 1 token, 버퍼 포함.
+     * floor: TOKEN_MIN, cap: TOKEN_MAX
+     */
+    private int calcMaxTokens(List<ApplicationQuestion> questions) {
+        int sum = questions.stream()
+            .mapToInt(q -> tokensFor(q.getLengthOption()))
+            .sum();
+        return Math.min(TOKEN_MAX, Math.max(TOKEN_MIN, sum + TOKEN_OVERHEAD));
+    }
+
+    private int tokensFor(ApplicationLengthOption option) {
+        if (option == null) return TOKEN_PER_MEDIUM;
+        return switch (option) {
+            case SHORT  -> TOKEN_PER_SHORT;
+            case MEDIUM -> TOKEN_PER_MEDIUM;
+            case LONG   -> TOKEN_PER_LONG;
+        };
     }
 }

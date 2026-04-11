@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -137,99 +136,133 @@ class AiPipelineTest {
     }
 
     // ─ fallback 전환 테스트 ─
+    // ai.self_intro.generate.v1 : VERTEX_AI → fallbackChain=[GEMINI]
+    // ai.interview.followup.generate.v1 : GROQ → fallbackChain=[GEMINI, VERTEX_AI]
 
     @Test
-    @DisplayName("기본 provider rate limit 시 fallback provider로 전환하여 성공한다")
+    @DisplayName("preferred provider 실패 시 fallbackChain 첫 번째 provider로 전환하여 성공한다")
     void execute_fallbackOnAiClientException() {
-        // 기본 provider(Gemini) rate limit 실패, fallback provider(Groq) 성공
-        AiClient fallbackClient = mock(AiClient.class);
-        when(fallbackClient.getProvider()).thenReturn(AiProvider.GROQ);
-        when(fallbackClient.call(any())).thenReturn(response("{}"));
+        AiClient geminiClient = mock(AiClient.class);
+        when(geminiClient.getProvider()).thenReturn(AiProvider.GEMINI);
+        when(geminiClient.call(any())).thenReturn(response("{}"));
 
-        when(router.getFallback()).thenReturn(Optional.of(fallbackClient));
+        // self_intro: VERTEX_AI 실패 → GEMINI fallback
+        when(router.getClient(AiProvider.VERTEX_AI)).thenReturn(mockAiClient);
+        when(router.getClient(AiProvider.GEMINI)).thenReturn(geminiClient);
         when(mockAiClient.call(any())).thenThrow(
-            new AiClientException(AiProvider.GEMINI,
+            new AiClientException(AiProvider.VERTEX_AI,
                 ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
-                HttpStatus.BAD_GATEWAY, "Gemini 429 할당량 초과",
+                HttpStatus.BAD_GATEWAY, "VertexAI 429",
                 RateLimitType.MINUTE, 60, null)
         );
         when(mockValidator.validate(any())).thenReturn(ValidationResult.success());
 
-        JsonNode result = pipeline.execute("ai.portfolio.summary.v1", "{}");
+        JsonNode result = pipeline.execute("ai.self_intro.generate.v1", "{}");
 
         assertThat(result).isNotNull();
         verify(mockAiClient, times(1)).call(any());
-        verify(fallbackClient, times(1)).call(any());
+        verify(geminiClient, times(1)).call(any());
     }
 
     @Test
-    @DisplayName("rate limit이 아닌 오류는 fallback 없이 즉시 전파된다")
-    void execute_nonRateLimitError_noFallback() {
-        AiClient fallbackClient = mock(AiClient.class);
-        when(router.getFallback()).thenReturn(Optional.of(fallbackClient));
+    @DisplayName("fallbackChain이 비어있으면 오류 종류에 관계없이 즉시 전파된다")
+    void execute_noFallbackChain_throwsImmediately() {
+        // portfolio.summary.v1 : fallbackChain=[]
         when(mockAiClient.call(any())).thenThrow(
-            new AiClientException(AiProvider.GEMINI,
-                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "Gemini 네트워크 오류")
+            new AiClientException(AiProvider.VERTEX_AI,
+                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "VertexAI 네트워크 오류")
         );
 
         assertThatThrownBy(() -> pipeline.execute("ai.portfolio.summary.v1", "{}"))
             .isInstanceOf(AiClientException.class);
 
         verify(mockAiClient, times(1)).call(any());
-        verify(fallbackClient, never()).call(any());
     }
 
     @Test
-    @DisplayName("기본 provider rate limit 후 fallback provider도 실패하면 예외를 전파한다")
-    void execute_fallbackAlsoFails() {
-        AiClient fallbackClient = mock(AiClient.class);
-        when(fallbackClient.getProvider()).thenReturn(AiProvider.GROQ);
-        when(fallbackClient.call(any())).thenThrow(
+    @DisplayName("preferred 실패 후 fallbackChain 모두 실패하면 마지막 예외를 전파한다")
+    void execute_fallbackChainExhausted() {
+        AiClient geminiClient = mock(AiClient.class);
+        when(geminiClient.getProvider()).thenReturn(AiProvider.GEMINI);
+        AiClient vertexClient = mock(AiClient.class);
+        when(vertexClient.getProvider()).thenReturn(AiProvider.VERTEX_AI);
+
+        // followup.generate: GROQ → GEMINI → VERTEX_AI 모두 실패
+        when(router.getClient(AiProvider.GROQ)).thenReturn(mockAiClient);
+        when(router.getClient(AiProvider.GEMINI)).thenReturn(geminiClient);
+        when(router.getClient(AiProvider.VERTEX_AI)).thenReturn(vertexClient);
+
+        when(mockAiClient.call(any())).thenThrow(
             new AiClientException(AiProvider.GROQ,
                 ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
-                HttpStatus.BAD_GATEWAY, "Groq도 실패",
-                RateLimitType.MINUTE, 60, null)
+                HttpStatus.BAD_GATEWAY, "Groq 실패", RateLimitType.MINUTE, 60, null)
         );
-
-        when(router.getFallback()).thenReturn(Optional.of(fallbackClient));
-        when(mockAiClient.call(any())).thenThrow(
+        when(geminiClient.call(any())).thenThrow(
             new AiClientException(AiProvider.GEMINI,
                 ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
-                HttpStatus.BAD_GATEWAY, "Gemini rate limit",
-                RateLimitType.MINUTE, 60, null)
+                HttpStatus.BAD_GATEWAY, "Gemini도 실패", RateLimitType.MINUTE, 60, null)
+        );
+        when(vertexClient.call(any())).thenThrow(
+            new AiClientException(AiProvider.VERTEX_AI,
+                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
+                HttpStatus.BAD_GATEWAY, "VertexAI도 실패", RateLimitType.MINUTE, 60, null)
         );
 
-        assertThatThrownBy(() -> pipeline.execute("ai.portfolio.summary.v1", "{}"))
+        assertThatThrownBy(() -> pipeline.execute("ai.interview.followup.generate.v1", "{}"))
             .isInstanceOf(AiClientException.class)
-            .hasMessageContaining("Groq");
+            .hasMessageContaining("VertexAI도 실패");
 
         verify(mockAiClient, times(1)).call(any());
-        verify(fallbackClient, times(1)).call(any());
+        verify(geminiClient, times(1)).call(any());
+        verify(vertexClient, times(1)).call(any());
     }
 
     @Test
     @DisplayName("fallback provider에서도 파싱/검증 재시도가 동작한다")
     void execute_fallbackRetryOnParseFailure() {
-        // Gemini rate limit → Groq에서 1회 파싱 실패 후 2회째 성공
-        AiClient fallbackClient = mock(AiClient.class);
-        when(fallbackClient.getProvider()).thenReturn(AiProvider.GROQ);
-        when(fallbackClient.call(any()))
+        // self_intro: VERTEX_AI 실패 → GEMINI에서 1회 파싱 실패 후 2회째 성공
+        AiClient geminiClient = mock(AiClient.class);
+        when(geminiClient.getProvider()).thenReturn(AiProvider.GEMINI);
+        when(geminiClient.call(any()))
             .thenReturn(response("invalid json"))
             .thenReturn(response("{}"));
 
-        when(router.getFallback()).thenReturn(Optional.of(fallbackClient));
+        when(router.getClient(AiProvider.VERTEX_AI)).thenReturn(mockAiClient);
+        when(router.getClient(AiProvider.GEMINI)).thenReturn(geminiClient);
         when(mockAiClient.call(any())).thenThrow(
-            new AiClientException(AiProvider.GEMINI,
+            new AiClientException(AiProvider.VERTEX_AI,
                 ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE,
-                HttpStatus.BAD_GATEWAY, "Gemini rate limit",
+                HttpStatus.BAD_GATEWAY, "VertexAI rate limit",
                 RateLimitType.MINUTE, 60, null)
         );
         when(mockValidator.validate(any())).thenReturn(ValidationResult.success());
 
-        JsonNode result = pipeline.execute("ai.portfolio.summary.v1", "{}");
+        JsonNode result = pipeline.execute("ai.self_intro.generate.v1", "{}");
 
         assertThat(result).isNotNull();
-        verify(fallbackClient, times(2)).call(any());
+        verify(geminiClient, times(2)).call(any());
+    }
+
+    @Test
+    @DisplayName("400 등 non-rate-limit 오류도 fallbackChain이 있으면 전환한다")
+    void execute_nonRateLimitError_triggersChain() {
+        // self_intro: VERTEX_AI 400 → GEMINI 성공
+        AiClient geminiClient = mock(AiClient.class);
+        when(geminiClient.getProvider()).thenReturn(AiProvider.GEMINI);
+        when(geminiClient.call(any())).thenReturn(response("{}"));
+
+        when(router.getClient(AiProvider.VERTEX_AI)).thenReturn(mockAiClient);
+        when(router.getClient(AiProvider.GEMINI)).thenReturn(geminiClient);
+        when(mockAiClient.call(any())).thenThrow(
+            new AiClientException(AiProvider.VERTEX_AI,
+                ErrorCode.EXTERNAL_SERVICE_TEMPORARILY_UNAVAILABLE, "VertexAI 400 오류")
+        );
+        when(mockValidator.validate(any())).thenReturn(ValidationResult.success());
+
+        JsonNode result = pipeline.execute("ai.self_intro.generate.v1", "{}");
+
+        assertThat(result).isNotNull();
+        verify(geminiClient, times(1)).call(any());
     }
 
     /**
