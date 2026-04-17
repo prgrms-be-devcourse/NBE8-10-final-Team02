@@ -57,7 +57,6 @@ public class GitHubPullRequestCollector {
                     deletions
                     totalCommentsCount
                     author { login __typename }
-                    labels(first: 5) { nodes { name } }
                     reviews { totalCount }
                   }
                 }
@@ -156,13 +155,6 @@ public class GitHubPullRequestCollector {
         boolean hasNextPage = true;
         int fetched = 0;
 
-        // Phase 1 전체 수집 후 라벨 커버리지 계산용
-        int totalPrs = 0;
-        int labeledPrs = 0;
-
-        // 1차 패스: 전체 수집 (라벨 커버리지 계산 위해 raw 저장)
-        List<Map<String, Object>> rawNodes = new ArrayList<>();
-
         while (hasNextPage && fetched < maxFetch) {
             Map<String, Object> vars = new LinkedHashMap<>();
             vars.put("owner", owner);
@@ -200,53 +192,33 @@ public class GitHubPullRequestCollector {
                 String login = (String) author.getOrDefault("login", "");
                 if (!githubLogin.equals(login)) continue;
 
-                rawNodes.add(node);
-                totalPrs++;
-                List<Map<String, Object>> labels = extractLabelNames(node);
-                if (!labels.isEmpty()) labeledPrs++;
+                String authorLogin = (String) author.getOrDefault("login", "");
+                String authorTypename = (String) author.getOrDefault("__typename", "User");
+
+                Map<String, Object> reviews = (Map<String, Object>) node.get("reviews");
+                int reviewCount = reviews != null ? toInt(reviews.get("totalCount")) : 0;
+
+                result.add(new PrPhase1Meta(
+                        (String) node.get("id"),
+                        toInt(node.get("number")),
+                        (String) node.get("title"),
+                        (String) node.getOrDefault("bodyText", ""),
+                        parseInstant(node, "mergedAt"),
+                        parseInstant(node, "createdAt"),
+                        toInt(node.get("additions")),
+                        toInt(node.get("deletions")),
+                        toInt(node.get("totalCommentsCount")),
+                        authorLogin,
+                        authorTypename,
+                        reviewCount
+                ));
 
                 fetched++;
                 if (fetched >= maxFetch) break;
             }
         }
 
-        // 라벨 커버리지: 50% 이상이면 라벨 신뢰도 있음
-        double coverage = totalPrs > 0 ? (double) labeledPrs / totalPrs : 0.0;
-
-        // 2차 패스: PrPhase1Meta로 변환
-        for (Map<String, Object> node : rawNodes) {
-            Map<String, Object> author = (Map<String, Object>) node.get("author");
-            String authorLogin = author != null ? (String) author.getOrDefault("login", "") : "";
-            String authorTypename = author != null ? (String) author.getOrDefault("__typename", "User") : "User";
-
-            List<Map<String, Object>> rawLabels = extractLabelNodes(node);
-            List<String> labelNames = rawLabels.stream()
-                    .map(l -> (String) l.get("name"))
-                    .filter(n -> n != null)
-                    .toList();
-
-            Map<String, Object> reviews = (Map<String, Object>) node.get("reviews");
-            int reviewCount = reviews != null ? toInt(reviews.get("totalCount")) : 0;
-
-            result.add(new PrPhase1Meta(
-                    (String) node.get("id"),
-                    toInt(node.get("number")),
-                    (String) node.get("title"),
-                    (String) node.getOrDefault("bodyText", ""),
-                    parseInstant(node, "mergedAt"),
-                    parseInstant(node, "createdAt"),
-                    toInt(node.get("additions")),
-                    toInt(node.get("deletions")),
-                    toInt(node.get("totalCommentsCount")),
-                    authorLogin,
-                    authorTypename,
-                    labelNames,
-                    reviewCount,
-                    coverage
-            ));
-        }
-
-        log.debug("PRCollector phase1: fetched={}, labeled={}/{}", fetched, labeledPrs, totalPrs);
+        log.debug("PRCollector phase1: fetched={}", fetched);
         return result;
     }
 
@@ -321,18 +293,6 @@ public class GitHubPullRequestCollector {
             );
         }
         return new ArrayList<>(latestByReviewer.values());
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> extractLabelNodes(Map<String, Object> node) {
-        Map<String, Object> labelsMap = (Map<String, Object>) node.get("labels");
-        if (labelsMap == null) return List.of();
-        List<Map<String, Object>> labelNodes = (List<Map<String, Object>>) labelsMap.get("nodes");
-        return labelNodes != null ? labelNodes : List.of();
-    }
-
-    private List<Map<String, Object>> extractLabelNames(Map<String, Object> node) {
-        return extractLabelNodes(node);
     }
 
     @SuppressWarnings("unchecked")

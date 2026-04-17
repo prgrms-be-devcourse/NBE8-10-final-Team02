@@ -6,7 +6,6 @@ import org.springframework.stereotype.Component;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -16,7 +15,7 @@ import java.util.Set;
  *
  * <h3>점수 구성</h3>
  * <pre>
- * (sizeScore + prefixScore + keywordScore + bodyScore + engagement + labelBonus)
+ * (sizeScore + prefixScore + keywordScore + bodyScore + engagement)
  *     × penalty × recency
  * </pre>
  */
@@ -88,13 +87,10 @@ public class ImpactScoreCalculator {
         // engagement: totalComments(봇 포함 ×2) + review(봇 드묾 ×5)
         double engagement = pr.totalCommentsCount() * 2.0 + reviewCnt * 5.0;
 
-        // labelBonus: 라벨 사용 비율 50% 미만 repo는 0
-        double labelBonus = computeLabelBonus(pr.labels(), pr.repoLabelCoverage());
-
         // recency: today=1.0, 2년전=0.0
         double recency = recencyWeight(pr.mergedAt());
 
-        return (sizeScore + prefixScore + keywordScore + bodyScore + engagement + labelBonus)
+        return (sizeScore + prefixScore + keywordScore + bodyScore + engagement)
                 * penalty * recency;
     }
 
@@ -141,18 +137,6 @@ public class ImpactScoreCalculator {
             idx += keyword.length();
         }
         return count;
-    }
-
-    private double computeLabelBonus(List<String> labels, double repoLabelCoverage) {
-        // 라벨 사용 비율 50% 미만 repo는 라벨 신뢰도 없음으로 간주
-        if (repoLabelCoverage < 0.5) return 0;
-        int bonus = 0;
-        for (String label : labels) {
-            String l = label.toLowerCase();
-            if (l.equals("feature") || l.equals("bug")) bonus += 20;
-            else if (l.equals("chore") || l.equals("docs")) bonus -= 20;
-        }
-        return bonus;
     }
 
     /** today=1.0, 2년전=0.0 선형 감쇠 */
