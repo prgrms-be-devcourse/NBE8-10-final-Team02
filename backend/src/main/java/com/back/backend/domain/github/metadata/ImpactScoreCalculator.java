@@ -18,6 +18,14 @@ import java.util.Set;
  * (sizeScore + prefixScore + keywordScore + bodyScore + engagement)
  *     × penalty × recency
  * </pre>
+ *
+ * <h3>labelBonus 제거 이유</h3>
+ * 기존에 {@code labels(first:5)} 수집 → labelBonus(±20)를 ImpactScore에 반영했으나,
+ * GitHub GraphQL 중첩 커넥션 과금 구조상 페이지당 {@code N×5} 포인트가 추가로 소모되었다.
+ * (예: pageSize=100이면 페이지당 100 + 500 = 600 포인트, labels 제거 시 100 포인트)
+ * labelBonus는 repoLabelCoverage &lt; 0.5인 repo에서 항상 0을 반환했고,
+ * 이는 대부분의 개발자 repo에서 사실상 동작하지 않는 신호였다.
+ * 포인트 비용 대비 스코어링 기여도가 없어 제거. (§7.1.6 참조)
  */
 @Component
 public class ImpactScoreCalculator {

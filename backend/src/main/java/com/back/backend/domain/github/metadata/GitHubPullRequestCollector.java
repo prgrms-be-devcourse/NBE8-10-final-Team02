@@ -19,10 +19,25 @@ import java.util.Map;
 /**
  * 지정된 repo에서 사용자가 생성한 MERGED PR과 CHANGES_REQUESTED 리뷰를 GraphQL 2-Phase로 수집한다.
  *
+ * <h3>2-Phase 구조</h3>
+ * <pre>
+ * Phase 1: 경량 헤더 전체 수집 (본문·리뷰 상세 없음)
+ *   → ImpactScore 계산으로 Top-N 선발
+ * Phase 2: 선발된 N개만 nodes(ids:[...]) 배치 1회로 상세 조회
+ *   → GraphQL 포인트 대폭 절감 (300개 개별 조회 → 1회 배치)
+ * </pre>
+ *
+ * <h3>Phase 1 쿼리 설계 — labels 미포함</h3>
+ * labels(first: 5)는 GitHub GraphQL에서 중첩 커넥션으로 곱연산 과금된다.
+ * {@code pullRequests(first:N) { labels(first:5) }} → 페이지당 N + N×5 = N×6 포인트.
+ * labels를 제거하면 페이지당 N 포인트로 83% 절감.
+ * ImpactScore에서 labelBonus는 repoLabelCoverage가 0.5 미만이면 항상 0이었으므로
+ * 실제 스코어링 품질 손실 없음.
+ *
  * <h3>페이징 종료 조건 (이중 안전장치)</h3>
  * <ul>
- *   <li>Time-bound: mergedAt < today - sinceDays (2년)</li>
- *   <li>Hard Cap: 누적 수집 건수 >= maxFetch (300)</li>
+ *   <li>Time-bound: mergedAt &lt; today - sinceDays (2년)</li>
+ *   <li>Hard Cap: 누적 수집 건수 &gt;= maxFetch (300)</li>
  * </ul>
  *
  * <h3>Phase 2 후처리</h3>
