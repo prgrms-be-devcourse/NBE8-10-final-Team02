@@ -19,5 +19,10 @@ app_server_project_dir = "/home/ubuntu/my-project"
 vertex_ai_key_path     = "~/secrets/vertex-ai-key.json"
 extra_ingress_ports    = []
 
+npm_email    = "admin@example.com"
+npm_password = "your-npm-password"
+fe_domain    = "app.example.com"
+be_domain    = "api.example.com"
+
 # 모니터링 서버 (destroy/apply로 재생성)
 monitoring_availability_domain = "aJIE:PHX-AD-2"

@@ -46,6 +46,7 @@ variable "app_server_vcn_ocid" {
   type        = string
 }
 
+
 variable "app_server_project_dir" {
   type    = string
   default = "/home/ubuntu/my-project"
@@ -60,6 +61,23 @@ variable "extra_ingress_ports" {
   description = "서비스별 추가 개방 포트"
   type        = list(number)
   default     = []
+}
+
+variable "npm_email" {
+  type = string
+}
+
+variable "npm_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "fe_domain" {
+  type = string
+}
+
+variable "be_domain" {
+  type = string
 }
 
 # ── 모니터링 서버 ─────────────────────────────────────────────────────────────

@@ -28,6 +28,7 @@ variable "vcn_ocid" {
   type = string
 }
 
+
 variable "admin_cidr" {
   type    = string
   default = "0.0.0.0/0"
@@ -36,4 +37,25 @@ variable "admin_cidr" {
 variable "extra_ingress_ports" {
   type    = list(number)
   default = []
+}
+
+variable "npm_email" {
+  description = "NPM 관리자 이메일"
+  type        = string
+}
+
+variable "npm_password" {
+  description = "NPM 관리자 비밀번호"
+  type        = string
+  sensitive   = true
+}
+
+variable "fe_domain" {
+  description = "프론트엔드 도메인 (예: app.example.com)"
+  type        = string
+}
+
+variable "be_domain" {
+  description = "백엔드 도메인 (예: api.example.com)"
+  type        = string
 }
