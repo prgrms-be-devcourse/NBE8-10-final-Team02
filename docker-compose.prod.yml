@@ -1,0 +1,158 @@
+# PUBLIC IP 161.153.6.164
+# PRIVATE IP 10.0.0.72
+version: '3.8'
+
+services:
+  npm:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: prod-npm
+    restart: always
+    ports:
+      - '80:80'   # HTTP 접속 및 인증용
+      - '443:443' # HTTPS 접속용
+      - '81:81'   # NPM 관리자 대시보드 (여기서 SSL 설정을 합니다)
+    environment:
+      - TZ=Asia/Seoul
+    volumes:
+      - ./docker/npm/data:/data
+      - ./docker/npm/letsencrypt:/etc/letsencrypt
+    networks:
+      - global-net
+
+# 아래 backend와 frontend는 git CI/CD에서 처리. prod서버는 그 외의 것만 켠다.
+#  be_a:
+#    image: ghcr.io/prgrms-be-devcourse/nbe8-10-final-team02-backend:latest
+#    container_name: be_a
+#    expose:
+#      - "8080"
+#    environment:
+#      - SPRING_PROFILES_ACTIVE=prod
+#      - JAVA_OPTS=-Xms512m -Xmx512m -XX:+UseG1GC
+#    networks:
+#      - global-net
+#    deploy: { resources: { limits: { memory: 1G } } }
+#    healthcheck:
+#      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+#      interval: 20s
+#      timeout: 5s
+#      retries: 5
+#    depends_on:
+#      db: { condition: service_healthy }
+#
+#  fe_a:
+#    image: ghcr.io/prgrms-be-devcourse/nbe8-10-final-team02-frontend:latest
+#    container_name: fe_a
+#    expose:
+#      - "3000"
+#    environment:
+#      - NODE_OPTIONS=--max-old-space-size=400
+#    networks:
+#      - global-net
+#    deploy: { resources: { limits: { memory: 512M } } }
+#    healthcheck:
+#      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3000"]
+#      interval: 20s
+#      timeout: 5s
+#      retries: 3
+#    depends_on:
+#      be_a: { condition: service_healthy }
+
+  db:
+    image: postgres:15-alpine
+    container_name: prod-db
+    command: postgres -c shared_buffers=256MB -c max_connections=100
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: appdb
+    ports:
+      - "5432"
+    volumes:
+      - prod-db-data:/var/lib/postgresql/data
+      - ./docker/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - global-net
+    deploy: { resources: { limits: { memory: 1G } } }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d appdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: prod-redis
+    # --requirepass: 보안을 위한 비밀번호 설정 (원하는 비밀번호로 변경하세요)
+    # --appendonly yes: 컨테이너가 재시작되어도 Refresh Token이 날아가지 않게 디스크에 저장
+    command: redis-server --requirepass my-secure-password --appendonly yes --maxmemory 200mb --maxmemory-policy volatile-lru
+    ports:
+      - "6379" # 외부에는 노출하지 않고 global-net 내부에서만 통신하도록 설정
+    volumes:
+      - prod-redis-data:/data
+    networks:
+      - global-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M # Redis는 메모리 기반이므로 한도 설정 필수
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "my-secure-password", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: prod-promtail
+    volumes:
+      - ./docker/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - global-net
+    deploy: { resources: { limits: { memory: 128M } } }
+    restart: always
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: prod-node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100"
+    networks:
+      - global-net
+    deploy: { resources: { limits: { memory: 128M } } }
+    restart: always
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: prod-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://user:password@db:5432/appdb?sslmode=disable"
+    ports:
+      - "9187"
+    networks:
+      - global-net
+    depends_on:
+      db: { condition: service_healthy }
+    deploy: { resources: { limits: { memory: 128M } } }
+    restart: always
+
+networks:
+  global-net:
+    external: true
+
+volumes:
+  prod-db-data:
+  prod-redis-data:

@@ -1,0 +1,23 @@
+# OCI 인증
+tenancy_ocid     = "ocid1.tenancy.oc1..xxxxxxxxxx"
+user_ocid        = "ocid1.user.oc1..xxxxxxxxxx"
+fingerprint      = "xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
+private_key_path = "~/.oci/oci_api_key.pem"
+region           = "us-phoenix-1"
+compartment_ocid = "ocid1.compartment.oc1..xxxxxxxxxx"
+
+# 공통
+repo_url             = "https://github.com/prgrms-be-devcourse/NBE8-10-final-Team02.git"
+ssh_public_key       = "ssh-rsa AAAAB3NzaC1yc2E..."
+ssh_private_key_path = "~/.ssh/id_rsa"
+admin_cidr           = "0.0.0.0/0"
+
+# 주 서버 (고정 IP, 삭제 안 함)
+app_server_ip          = "161.153.6.164"
+app_server_vcn_ocid    = "ocid1.vcn.oc1..xxxxxxxxxx"
+app_server_project_dir = "/home/ubuntu/my-project"
+vertex_ai_key_path     = "~/secrets/vertex-ai-key.json"
+extra_ingress_ports    = []
+
+# 모니터링 서버 (destroy/apply로 재생성)
+monitoring_availability_domain = "aJIE:PHX-AD-2"
