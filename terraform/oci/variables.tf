@@ -80,6 +80,10 @@ variable "be_domain" {
   type = string
 }
 
+variable "grafana_domain" {
+  type = string
+}
+
 # ── 모니터링 서버 ─────────────────────────────────────────────────────────────
 variable "monitoring_availability_domain" {
   description = "모니터링 인스턴스 가용 도메인"

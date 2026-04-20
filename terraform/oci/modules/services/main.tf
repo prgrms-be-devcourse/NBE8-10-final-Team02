@@ -176,6 +176,11 @@ resource "null_resource" "npm_setup" {
       "FE_BODY=$(jq -n --arg d '${var.fe_domain}' --arg h 'fe_a' '{domain_names:[$d],forward_scheme:\"http\",forward_host:$h,forward_port:3000,access_list_id:0,certificate_id:0,ssl_forced:false,caching_enabled:false,block_exploits:true,allow_websocket_upgrade:true,advanced_config:\"\",locations:[],meta:{}}')",
       "if [ -z \"$FE_ID\" ]; then curl -sf -o /dev/null -X POST -H \"Authorization: Bearer $TOKEN\" -H 'Content-Type: application/json' -d \"$FE_BODY\" http://localhost:81/api/nginx/proxy-hosts; else curl -sf -o /dev/null -X PUT -H \"Authorization: Bearer $TOKEN\" -H 'Content-Type: application/json' -d \"$FE_BODY\" http://localhost:81/api/nginx/proxy-hosts/$FE_ID; fi",
 
+      # Grafana proxy host 생성 or 업데이트 (모니터링 서버 IP로 포워딩)
+      "GF_ID=$(curl -sf -H \"Authorization: Bearer $TOKEN\" http://localhost:81/api/nginx/proxy-hosts | jq -r '.[] | select(.domain_names[] == \"${var.grafana_domain}\") | .id')",
+      "GF_BODY=$(jq -n --arg d '${var.grafana_domain}' --arg h '${var.monitoring_ip}' '{domain_names:[$d],forward_scheme:\"http\",forward_host:$h,forward_port:3001,access_list_id:0,certificate_id:0,ssl_forced:false,caching_enabled:false,block_exploits:true,allow_websocket_upgrade:false,advanced_config:\"\",locations:[],meta:{}}')",
+      "if [ -z \"$GF_ID\" ]; then curl -sf -o /dev/null -X POST -H \"Authorization: Bearer $TOKEN\" -H 'Content-Type: application/json' -d \"$GF_BODY\" http://localhost:81/api/nginx/proxy-hosts; else curl -sf -o /dev/null -X PUT -H \"Authorization: Bearer $TOKEN\" -H 'Content-Type: application/json' -d \"$GF_BODY\" http://localhost:81/api/nginx/proxy-hosts/$GF_ID; fi",
+
       "echo '✅ NPM proxy host 설정 완료 (SSL은 NPM UI에서 최초 1회 설정)'"
     ]
   }

@@ -54,6 +54,8 @@ module "services" {
   npm_password     = var.npm_password
   fe_domain        = var.fe_domain
   be_domain        = var.be_domain
+  grafana_domain   = var.grafana_domain
+  monitoring_ip    = module.monitoring.public_ip
   admin_cidr          = var.admin_cidr
   extra_ingress_ports = var.extra_ingress_ports
 }

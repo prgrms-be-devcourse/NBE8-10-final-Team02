@@ -59,3 +59,13 @@ variable "be_domain" {
   description = "백엔드 도메인 (예: api.example.com)"
   type        = string
 }
+
+variable "grafana_domain" {
+  description = "Grafana 도메인 (예: grafana.example.com)"
+  type        = string
+}
+
+variable "monitoring_ip" {
+  description = "모니터링 서버 퍼블릭 IP (Grafana proxy host forward 대상)"
+  type        = string
+}
