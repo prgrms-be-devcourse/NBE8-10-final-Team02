@@ -46,6 +46,11 @@ variable "app_server_vcn_ocid" {
   type        = string
 }
 
+variable "app_server_default_security_list_ocid" {
+  description = "주 서버 Default Security List OCID"
+  type        = string
+}
+
 variable "app_server_instance_ocid" {
   description = "주 서버 인스턴스 OCID (Rebuild용)"
   type        = string

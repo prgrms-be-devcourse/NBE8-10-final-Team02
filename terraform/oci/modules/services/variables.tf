@@ -33,6 +33,11 @@ variable "vcn_ocid" {
   type = string
 }
 
+variable "default_security_list_ocid" {
+  description = "Default Security List OCID (import용)"
+  type        = string
+}
+
 
 variable "admin_cidr" {
   type    = string
