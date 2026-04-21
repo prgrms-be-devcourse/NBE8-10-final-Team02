@@ -223,7 +223,7 @@ export default function ApplicationDetailPage() {
     router.push(`/applications/${applicationId}/generate`);
   }
 
-  function mergeEmphasisPoint(memo: string, emphasisPoint: string | null): string | null {
+  function mergeEmphasisPoint(memo: string, emphasisPoint: string | null | undefined): string | null {
     const hasPoint = emphasisPoint != null && emphasisPoint.trim().length > 0;
     if (hasPoint) return `공통: ${memo} / 문항별: ${emphasisPoint!.trim()}`;
     return memo;
