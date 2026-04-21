@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
 /**
  * AiClientRouter 빈을 등록
  * ai.provider 값과 등록된 AiClient 구현체 목록을 조합하여 라우터를 생성
- * ai.fallback-provider가 설정되면 기본 provider 실패 시 대체 provider로 자동 전환
+ * fallback chain은 각 PromptTemplate.RetryPolicy.fallbackChain에 per-template으로 정의됨
  */
 @Configuration
 public class AiClientConfig {
@@ -17,11 +17,8 @@ public class AiClientConfig {
     @Bean
     public AiClientRouter aiClientRouter(
         List<AiClient> clients,
-        @Value("${ai.provider}") String provider,
-        @Value("${ai.fallback-provider:}") String fallbackProvider // 빈 문자열이면 fallback 비활성화
+        @Value("${ai.provider}") String provider
     ) {
-        AiProvider defaultProv = AiProvider.fromValue(provider);
-        AiProvider fallbackProv = fallbackProvider.isBlank() ? null : AiProvider.fromValue(fallbackProvider);
-        return new AiClientRouter(clients, defaultProv, fallbackProv);
+        return new AiClientRouter(clients, AiProvider.fromValue(provider));
     }
 }

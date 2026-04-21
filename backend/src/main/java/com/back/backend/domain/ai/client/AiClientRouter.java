@@ -4,7 +4,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -17,18 +16,15 @@ public class AiClientRouter {
 
     private final Map<AiProvider, AiClient> clients;
     private final AiProvider defaultProvider;
-    private final AiProvider fallbackProvider; // null이면 fallback 비활성화
 
     /**
-     * @param clients          등록된 모든 AiClient 구현체 목록, Spring이 자동 주입
-     * @param defaultProvider  application.yml의 ai.provider 값
-     * @param fallbackProvider application.yml의 ai.fallback-provider 값 (null 허용)
+     * @param clients         등록된 모든 AiClient 구현체 목록, Spring이 자동 주입
+     * @param defaultProvider application.yml의 ai.provider 값
      */
-    public AiClientRouter(List<AiClient> clients, AiProvider defaultProvider, AiProvider fallbackProvider) {
+    public AiClientRouter(List<AiClient> clients, AiProvider defaultProvider) {
         this.clients = clients.stream()
             .collect(Collectors.toMap(AiClient::getProvider, Function.identity()));
         this.defaultProvider = defaultProvider;
-        this.fallbackProvider = fallbackProvider;
     }
 
     /**
@@ -36,17 +32,6 @@ public class AiClientRouter {
      */
     public AiClient getDefault() {
         return getClient(defaultProvider);
-    }
-
-    /**
-     * fallback provider의 AiClient를 반환
-     * 설정되지 않았으면 빈 Optional 반환
-     */
-    public Optional<AiClient> getFallback() {
-        if (fallbackProvider == null) {
-            return Optional.empty();
-        }
-        return Optional.of(getClient(fallbackProvider));
     }
 
     /**

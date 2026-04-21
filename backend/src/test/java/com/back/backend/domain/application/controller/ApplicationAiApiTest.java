@@ -32,6 +32,7 @@ import java.time.Instant;
 import java.util.concurrent.Executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -74,7 +75,7 @@ class ApplicationAiApiTest extends ApiTestBase {
             ApplicationToneOption.FORMAL, ApplicationLengthOption.MEDIUM, "프로젝트 경험");
         persistDocument(user, application, "이력서 내용입니다.");
 
-        given(aiPipeline.execute(eq(TEMPLATE_ID), anyString()))
+        given(aiPipeline.executeWithMaxTokens(eq(TEMPLATE_ID), anyString(), anyInt()))
             .willReturn(OBJECT_MAPPER.readTree("""
                 {
                   "answers": [
@@ -108,7 +109,7 @@ class ApplicationAiApiTest extends ApiTestBase {
         persistQuestion(application, 1, "지원 동기", "기존 답변", null, null, null);
         persistQuestion(application, 2, "프로젝트 경험", null, null, null, null);
 
-        given(aiPipeline.execute(eq(TEMPLATE_ID), anyString()))
+        given(aiPipeline.executeWithMaxTokens(eq(TEMPLATE_ID), anyString(), anyInt()))
             .willReturn(OBJECT_MAPPER.readTree("""
                 {
                   "answers": [
