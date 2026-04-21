@@ -33,6 +33,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -158,7 +159,7 @@ class SelfIntroGenerateServiceTest {
             assertThat(result.generatedCount()).isEqualTo(0);
             assertThat(result.allQuestions()).hasSize(1);
             assertThat(answered.getGeneratedAnswer()).isEqualTo("기존 답변");
-            verify(aiPipeline, never()).execute(anyString(), anyString());
+            verify(aiPipeline, never()).executeWithMaxTokens(anyString(), anyString(), anyInt());
             verifyNoInteractions(applicationStatusService);
         }
     }
@@ -241,7 +242,7 @@ class SelfIntroGenerateServiceTest {
 
             assertThat(result.generatedCount()).isEqualTo(1);
             assertThat(q.getGeneratedAnswer()).isEqualTo("답변");
-            verify(aiPipeline).execute(eq(TEMPLATE_ID), anyString());
+            verify(aiPipeline).executeWithMaxTokens(eq(TEMPLATE_ID), anyString(), anyInt());
         }
     }
 
@@ -298,7 +299,7 @@ class SelfIntroGenerateServiceTest {
     }
 
     private void givenAiResponse(String json) throws Exception {
-        given(aiPipeline.execute(eq(TEMPLATE_ID), anyString()))
+        given(aiPipeline.executeWithMaxTokens(eq(TEMPLATE_ID), anyString(), anyInt()))
             .willReturn(objectMapper.readTree(json));
     }
 

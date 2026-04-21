@@ -257,7 +257,7 @@ class InterviewCompletionFollowupManualTest {
                 properties
         );
 
-        AiClientRouter router = new AiClientRouter(List.of(geminiClient), AiProvider.GEMINI, null);
+        AiClientRouter router = new AiClientRouter(List.of(geminiClient), AiProvider.GEMINI);
         PromptTemplateRegistry templateRegistry = PromptTemplateRegistry.createDefault();
         PromptLoader promptLoader = new PromptLoader();
         JsonSchemaValidator jsonSchemaValidator = new JsonSchemaValidator(OBJECT_MAPPER);

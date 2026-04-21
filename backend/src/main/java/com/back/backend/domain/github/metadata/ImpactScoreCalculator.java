@@ -6,7 +6,6 @@ import org.springframework.stereotype.Component;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -16,9 +15,17 @@ import java.util.Set;
  *
  * <h3>점수 구성</h3>
  * <pre>
- * (sizeScore + prefixScore + keywordScore + bodyScore + engagement + labelBonus)
+ * (sizeScore + prefixScore + keywordScore + bodyScore + engagement)
  *     × penalty × recency
  * </pre>
+ *
+ * <h3>labelBonus 제거 이유</h3>
+ * 기존에 {@code labels(first:5)} 수집 → labelBonus(±20)를 ImpactScore에 반영했으나,
+ * GitHub GraphQL 중첩 커넥션 과금 구조상 페이지당 {@code N×5} 포인트가 추가로 소모되었다.
+ * (예: pageSize=100이면 페이지당 100 + 500 = 600 포인트, labels 제거 시 100 포인트)
+ * labelBonus는 repoLabelCoverage &lt; 0.5인 repo에서 항상 0을 반환했고,
+ * 이는 대부분의 개발자 repo에서 사실상 동작하지 않는 신호였다.
+ * 포인트 비용 대비 스코어링 기여도가 없어 제거. (§7.1.6 참조)
  */
 @Component
 public class ImpactScoreCalculator {
@@ -88,13 +95,10 @@ public class ImpactScoreCalculator {
         // engagement: totalComments(봇 포함 ×2) + review(봇 드묾 ×5)
         double engagement = pr.totalCommentsCount() * 2.0 + reviewCnt * 5.0;
 
-        // labelBonus: 라벨 사용 비율 50% 미만 repo는 0
-        double labelBonus = computeLabelBonus(pr.labels(), pr.repoLabelCoverage());
-
         // recency: today=1.0, 2년전=0.0
         double recency = recencyWeight(pr.mergedAt());
 
-        return (sizeScore + prefixScore + keywordScore + bodyScore + engagement + labelBonus)
+        return (sizeScore + prefixScore + keywordScore + bodyScore + engagement)
                 * penalty * recency;
     }
 
@@ -141,18 +145,6 @@ public class ImpactScoreCalculator {
             idx += keyword.length();
         }
         return count;
-    }
-
-    private double computeLabelBonus(List<String> labels, double repoLabelCoverage) {
-        // 라벨 사용 비율 50% 미만 repo는 라벨 신뢰도 없음으로 간주
-        if (repoLabelCoverage < 0.5) return 0;
-        int bonus = 0;
-        for (String label : labels) {
-            String l = label.toLowerCase();
-            if (l.equals("feature") || l.equals("bug")) bonus += 20;
-            else if (l.equals("chore") || l.equals("docs")) bonus -= 20;
-        }
-        return bonus;
     }
 
     /** today=1.0, 2년전=0.0 선형 감쇠 */

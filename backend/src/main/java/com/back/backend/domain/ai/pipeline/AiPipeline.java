@@ -19,6 +19,8 @@ import org.springframework.http.HttpStatus;
 
 import java.util.List;
 
+import java.util.List;
+
 /**
  * AI 파이프라인 오케스트레이터
  * 템플릿 조회 → 프롬프트 로딩 → AiRequest 생성 → AiClient 호출 → JSON 파싱 → 검증 → 결과 반환
@@ -83,8 +85,8 @@ public class AiPipeline {
      * <p>배치 템플릿처럼 provider별로 출력 토큰을 동적으로 설정해야 할 때 사용.
      * 템플릿의 나머지 설정(temperature, retryPolicy 등)은 그대로 유지된다.
      *
-     * @param templateId       사용할 프롬프트 템플릿 ID
-     * @param payload          AI에 전달할 입력 데이터
+     * @param templateId        사용할 프롬프트 템플릿 ID
+     * @param payload           AI에 전달할 입력 데이터
      * @param maxTokensOverride 이 호출에만 적용할 출력 토큰 상한
      * @return 파싱 및 검증을 통과한 AI 응답 JsonNode
      */
@@ -101,23 +103,9 @@ public class AiPipeline {
             overrideTemplate.temperature(), overrideTemplate.maxTokens()
         );
 
-        return concurrencyLimiter.executeWithLimit(() -> {
-            try {
-                return executeWithClient(resolveClient(overrideTemplate), request, overrideTemplate, validator, templateId);
-            } catch (AiClientException e) {
-                // allowFallback=false이면 fallback 사용 안 함 (repo 분석은 Vertex/Gemini만)
-                if (e.getRateLimitType() == null || !overrideTemplate.retryPolicy().allowFallback()) {
-                    throw e;
-                }
-                return router.getFallback()
-                    .map(fallbackClient -> {
-                        log.warn("[Fallback] provider({}) rate limit → fallback provider({})로 전환. 원인: {}",
-                            e.getProvider(), fallbackClient.getProvider(), e.getMessage());
-                        return executeWithClient(fallbackClient, request, overrideTemplate, validator, templateId);
-                    })
-                    .orElseThrow(() -> e);
-            }
-        });
+        return concurrencyLimiter.executeWithLimit(() ->
+            executeWithFallbackChain(resolveClient(overrideTemplate), request, overrideTemplate, validator, templateId)
+        );
     }
 
     /**
@@ -143,30 +131,19 @@ public class AiPipeline {
             template.temperature(), template.maxTokens()
         );
 
-        return concurrencyLimiter.executeWithLimit(() -> {
-            try {
-                return executeWithClient(resolveClient(template), request, template, validator, templateId);
-            } catch (AiClientException e) {
-                return router.getFallback()
-                    .map(fallbackClient -> {
-                        log.warn("[Fallback] provider({}) 실패 → fallback provider({})로 전환. 원인: {}",
-                            e.getProvider(), fallbackClient.getProvider(), e.getMessage());
-                        return executeWithClient(fallbackClient, request, template, validator, templateId);
-                    })
-                    .orElseThrow(() -> e);
-            }
-        });
+        return concurrencyLimiter.executeWithLimit(() ->
+            executeWithFallbackChain(resolveClient(template), request, template, validator, templateId)
+        );
     }
 
     /**
      * AI 파이프라인 실행
-     * 기본 provider 호출 실패(AiClientException) 시 fallback provider로 자동 전환
      *
      * @param templateId 사용할 프롬프트 템플릿 ID
      * @param payload    AI에 전달할 입력 데이터 (JSON 문자열)
      * @return 파싱 및 검증을 통과한 AI 응답 JsonNode
      * @throws ServiceException  maxRetries 초과 시
-     * @throws AiClientException AI 호출 실패 시 (fallback도 실패하면 전파)
+     * @throws AiClientException AI 호출 실패 시 (chain 전체 소진 시 전파)
      */
     public JsonNode execute(String templateId, String payload) {
         PromptTemplate template = templateRegistry.get(templateId);
@@ -176,33 +153,52 @@ public class AiPipeline {
         String developerPrompt = promptLoader.load(template.developerPromptFile());
 
         AiRequest request = new AiRequest(
-            systemPrompt,
-            developerPrompt,
-            payload,
-            template.temperature(),
-            template.maxTokens()
+            systemPrompt, developerPrompt, payload,
+            template.temperature(), template.maxTokens()
         );
 
-        // 동시성 제한 하에서 AI 호출 실행
-        return concurrencyLimiter.executeWithLimit(() -> {
-            // 템플릿의 preferredProvider 또는 기본 provider로 시도
-            try {
-                return executeWithClient(resolveClient(template), request, template, validator, templateId);
-            } catch (AiClientException e) {
-                // rate limit(429)일 때만 fallback provider로 전환
-                // 그 외(빈 응답, 타임아웃, API 오류 등)는 즉시 전파
-                if (e.getRateLimitType() == null) {
-                    throw e;
-                }
-                return router.getFallback()
-                    .map(fallbackClient -> {
-                        log.warn("[Fallback] provider({}) rate limit → fallback provider({})로 전환. 원인: {}",
-                            e.getProvider(), fallbackClient.getProvider(), e.getMessage());
-                        return executeWithClient(fallbackClient, request, template, validator, templateId);
-                    })
-                    .orElseThrow(() -> e); // fallback 미설정 시 원래 예외 그대로 전파
+        return concurrencyLimiter.executeWithLimit(() ->
+            executeWithFallbackChain(resolveClient(template), request, template, validator, templateId)
+        );
+    }
+
+    /**
+     * preferred provider 실패 시 템플릿의 fallbackChain을 순서대로 시도
+     * fallbackChain이 비어있으면 즉시 예외 전파
+     * 어떤 예외 종류든(400, 429, 5xx) fallback 발동 — chain 전체 소진 시 마지막 예외 전파
+     */
+    private JsonNode executeWithFallbackChain(
+        AiClient primary,
+        AiRequest request,
+        PromptTemplate template,
+        AiResponseValidator validator,
+        String templateId
+    ) {
+        List<AiProvider> chain = template.retryPolicy().fallbackChain();
+
+        try {
+            return executeWithClient(primary, request, template, validator, templateId);
+        } catch (AiClientException e) {
+            if (chain.isEmpty()) {
+                throw e;
             }
-        });
+            log.warn("[Fallback] provider({}) 실패 → fallback chain {} 시도. 원인: {}",
+                e.getProvider(), chain, e.getMessage());
+        }
+
+        AiClientException lastException = null;
+        for (AiProvider fallbackProvider : chain) {
+            try {
+                AiClient fallbackClient = router.getClient(fallbackProvider);
+                log.info("[Fallback] provider({}) 시도", fallbackProvider);
+                return executeWithClient(fallbackClient, request, template, validator, templateId);
+            } catch (AiClientException e) {
+                log.warn("[Fallback] provider({}) 실패. 원인: {}", e.getProvider(), e.getMessage());
+                lastException = e;
+            }
+        }
+
+        throw lastException;
     }
 
     /**

@@ -10,7 +10,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -153,21 +152,12 @@ class ImpactScoreCalculatorTest {
     class LabelCoverage {
 
         @Test
-        @DisplayName("repoLabelCoverage < 0.5이면 라벨 보너스 무시")
-        void score_ignoreLabelBonus_whenCoverageIsLow() {
-            PrPhase1Meta withLabel   = pr().labels(List.of("feature")).repoLabelCoverage(0.3).build();
-            PrPhase1Meta withoutLabel = pr().labels(List.of()).repoLabelCoverage(0.3).build();
+        @DisplayName("labelBonus 제거 — 라벨 유무와 무관하게 점수 동일")
+        void score_labelHasNoEffect_afterLabelBonusRemoval() {
+            PrPhase1Meta withLabel   = pr().build();
+            PrPhase1Meta withoutLabel = pr().build();
 
             assertThat(calculator.score(withLabel)).isEqualTo(calculator.score(withoutLabel));
-        }
-
-        @Test
-        @DisplayName("repoLabelCoverage >= 0.5이면 feature 라벨 보너스 적용")
-        void score_applyLabelBonus_whenCoverageIsHigh() {
-            PrPhase1Meta withLabel   = pr().labels(List.of("feature")).repoLabelCoverage(0.8).build();
-            PrPhase1Meta withoutLabel = pr().labels(List.of()).repoLabelCoverage(0.8).build();
-
-            assertThat(calculator.score(withLabel)).isGreaterThan(calculator.score(withoutLabel));
         }
     }
 
@@ -192,9 +182,7 @@ class ImpactScoreCalculatorTest {
         private int totalCommentsCount = 2;
         private String authorLogin = "user";
         private String authorTypename = "User";
-        private List<String> labels = List.of();
         private int reviewTotalCount = 1;
-        private double repoLabelCoverage = 0.3;
 
         Builder title(String v)               { title = v; return this; }
         Builder bodyText(String v)            { bodyText = v; return this; }
@@ -204,14 +192,12 @@ class ImpactScoreCalculatorTest {
         Builder reviewTotalCount(int v)       { reviewTotalCount = v; return this; }
         Builder authorLogin(String v)         { authorLogin = v; return this; }
         Builder authorTypename(String v)      { authorTypename = v; return this; }
-        Builder labels(List<String> v)        { labels = v; return this; }
-        Builder repoLabelCoverage(double v)   { repoLabelCoverage = v; return this; }
 
         PrPhase1Meta build() {
             return new PrPhase1Meta(
                     id, number, title, bodyText, mergedAt, createdAt,
                     additions, deletions, totalCommentsCount,
-                    authorLogin, authorTypename, labels, reviewTotalCount, repoLabelCoverage);
+                    authorLogin, authorTypename, reviewTotalCount);
         }
     }
 }

@@ -2,6 +2,8 @@ package com.back.backend.domain.ai.template;
 
 import com.back.backend.domain.ai.client.AiProvider;
 
+import java.util.List;
+
 /**
  * 프롬프트 템플릿 정의
  * 각 AI 기능(포트폴리오 요약, 자소서 생성 등)마다 하나의 템플릿이 존재
@@ -58,11 +60,14 @@ public record PromptTemplate(
 
     public record RetryPolicy(
         int maxRetries,
-        boolean allowFallback
+        List<AiProvider> fallbackChain
     ) {
         public RetryPolicy {
             if (maxRetries < 0) {
                 throw new IllegalArgumentException("maxRetries는 0 이상이어야 합니다");
+            }
+            if (fallbackChain == null) {
+                fallbackChain = List.of();
             }
         }
     }

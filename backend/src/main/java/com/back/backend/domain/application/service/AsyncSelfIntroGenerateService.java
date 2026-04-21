@@ -20,9 +20,11 @@ import java.util.concurrent.Executor;
  * 클라이언트는 GET .../generate-answers/status 폴링으로 완료 여부를 확인한다.</p>
  */
 @Service
+@SuppressWarnings("deprecation")
 public class AsyncSelfIntroGenerateService {
 
     private static final Logger log = LoggerFactory.getLogger(AsyncSelfIntroGenerateService.class);
+
 
     private final SelfIntroGenerateService selfIntroGenerateService;
     private final ApplicationAiGenerationJobStore jobStore;
