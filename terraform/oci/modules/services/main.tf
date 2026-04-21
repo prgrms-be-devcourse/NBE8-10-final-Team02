@@ -223,6 +223,16 @@ resource "null_resource" "npm_setup" {
       "echo '✅ NPM proxy host 설정 완료 (SSL은 NPM UI에서 최초 1회 설정)'"
     ]
   }
+}
+
+# ── Step 5: 인스턴스 Rebuild (destroy 시만 실행) ─────────────────────────────────
+resource "null_resource" "instance_rebuild" {
+  depends_on = [null_resource.npm_setup]
+
+  triggers = {
+    instance_ocid     = var.instance_ocid
+    compartment_ocid = var.compartment_ocid
+  }
 
   provisioner "local-exec" {
     when = destroy
@@ -231,13 +241,13 @@ resource "null_resource" "npm_setup" {
 
       # 인스턴스 중지
       oci compute instance instance-action \
-        --instance-id "${var.instance_ocid}" \
+        --instance-id "${self.triggers.instance_ocid}" \
         --action STOP \
         --wait-for-state STOPPED
 
       # 부트 볼륨 OCID 가져오기
       BOOT_VOLUME_ID=$(oci compute boot-volume-attachment list \
-        --instance-id "${var.instance_ocid}" \
+        --instance-id "${self.triggers.instance_ocid}" \
         --query "data[?lifecycleState=='ATTACHED'].bootVolumeId | [0]" \
         --raw-output)
 
@@ -249,7 +259,7 @@ resource "null_resource" "npm_setup" {
 
       # 인스턴스 생성 시 사용한 이미지 OCID 가져오기
       SOURCE_IMAGE_ID=$(oci compute instance get \
-        --instance-id "${var.instance_ocid}" \
+        --instance-id "${self.triggers.instance_ocid}" \
         --query "data.source-details.source-type=='image' && data.source-details.source-id" \
         --raw-output)
 
@@ -266,9 +276,9 @@ resource "null_resource" "npm_setup" {
 
       # 새 부트 볼륨 생성
       NEW_BOOT_VOLUME_ID=$(oci compute boot-volume create \
-        --compartment-id "${var.compartment_ocid}" \
+        --compartment-id "${self.triggers.compartment_ocid}" \
         --availability-domain $(oci compute instance get \
-          --instance-id "${var.instance_ocid}" \
+          --instance-id "${self.triggers.instance_ocid}" \
           --query "data.availability-domain" \
           --raw-output) \
         --size-in-gbs "$BOOT_VOLUME_SIZE_GB" \
@@ -278,7 +288,7 @@ resource "null_resource" "npm_setup" {
 
       # 인스턴스 시작 (자동으로 새 부트 볼륨 연결됨)
       oci compute instance instance-action \
-        --instance-id "${var.instance_ocid}" \
+        --instance-id "${self.triggers.instance_ocid}" \
         --action START \
         --wait-for-state RUNNING
 
