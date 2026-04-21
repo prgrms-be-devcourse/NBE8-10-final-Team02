@@ -81,6 +81,9 @@ resource "null_resource" "prepare" {
       "sudo mkdir -p /home/ubuntu/secrets /data/repos /app/uploads ${var.project_dir}",
       "sudo chown -R ubuntu:ubuntu /home/ubuntu/secrets /data/repos /app/uploads ${var.project_dir}",
 
+      # Docker 미설치 시 설치 (Rebuild instance 후 재적용 대응)
+      "if ! command -v docker &>/dev/null; then curl -fsSL https://get.docker.com | sudo sh && sudo usermod -aG docker ubuntu && echo '✅ Docker 설치 완료'; fi",
+
       # OCI Ubuntu 기본 iptables 규칙에 포트 추가
       "sudo apt-get install -y iptables-persistent 2>/dev/null || true",
       "for port in 22 80 443 81 ${join(" ", var.extra_ingress_ports)}; do sudo iptables -C INPUT -m state --state NEW -p tcp --dport $port -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport $port -j ACCEPT; done",
@@ -129,16 +132,16 @@ resource "null_resource" "deploy" {
       private_key = file(pathexpand(var.ssh_private_key_path))
     }
     inline = [
-      "docker rm -f $(docker ps -aq) 2>/dev/null || true",
-      "docker volume prune -f",
-      "docker image prune -af",
+      "sudo docker rm -f $(sudo docker ps -aq) 2>/dev/null || true",
+      "sudo docker volume prune -f",
+      "sudo docker image prune -af",
       "sudo rm -rf /data/repos/* /app/uploads/*",
       "rm -rf ${var.project_dir}/repo ${var.project_dir}/docker-compose.prod.yml",
-      "docker network create global-net 2>/dev/null || true",
+      "sudo docker network create global-net 2>/dev/null || true",
       "git clone ${var.repo_url} ${var.project_dir}/repo",
       "cp ${var.project_dir}/repo/docker-compose.prod.yml ${var.project_dir}/docker-compose.prod.yml",
       "cp -rn ${var.project_dir}/repo/docker/ ${var.project_dir}/docker/ 2>/dev/null || true",
-      "cd ${var.project_dir} && docker compose -f docker-compose.prod.yml up -d npm db redis node-exporter postgres-exporter promtail",
+      "cd ${var.project_dir} && sudo docker compose -f docker-compose.prod.yml up -d npm db redis node-exporter postgres-exporter promtail",
       "echo '✅ 주 서버 서비스 기동 완료'"
     ]
   }
@@ -152,8 +155,8 @@ resource "null_resource" "deploy" {
       private_key = self.triggers.ssh_private_key
     }
     inline = [
-      "docker compose -f ${self.triggers.project_dir}/docker-compose.prod.yml down 2>/dev/null || true",
-      "docker volume prune -f",
+      "sudo docker compose -f ${self.triggers.project_dir}/docker-compose.prod.yml down 2>/dev/null || true",
+      "sudo docker volume prune -f",
       "echo '✅ 주 서버 서비스 중단 완료. NPM SSL 설정은 유지됩니다.'"
     ]
   }

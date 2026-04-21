@@ -146,7 +146,7 @@ resource "null_resource" "update_promtail" {
   provisioner "remote-exec" {
     inline = [
       "sed -i 's|http://[^:]*:3100|http://${oci_core_instance.monitoring.public_ip}:3100|g' ${var.app_server_project_dir}/docker/promtail-config.yml",
-      "docker restart prod-promtail",
+      "sudo docker restart prod-promtail",
       "echo '✅ promtail → Loki: ${oci_core_instance.monitoring.public_ip}:3100'"
     ]
   }
