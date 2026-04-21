@@ -44,28 +44,40 @@ resource "oci_core_security_list" "monitoring" {
     description = "SSH"
     protocol    = "6"
     source      = var.admin_cidr
-    tcp_options { min = 22; max = 22 }
+    tcp_options {
+      min = 22
+      max = 22
+    }
   }
 
   ingress_security_rules {
     description = "Prometheus UI"
     protocol    = "6"
     source      = var.admin_cidr
-    tcp_options { min = 9090; max = 9090 }
+    tcp_options {
+      min = 9090
+      max = 9090
+    }
   }
 
   ingress_security_rules {
     description = "Grafana UI"
     protocol    = "6"
     source      = var.admin_cidr
-    tcp_options { min = 3001; max = 3001 }
+    tcp_options {
+      min = 3001
+      max = 3001
+    }
   }
 
   ingress_security_rules {
     description = "Loki (주 서버에서만)"
     protocol    = "6"
     source      = "${var.app_server_ip}/32"
-    tcp_options { min = 3100; max = 3100 }
+    tcp_options {
+      min = 3100
+      max = 3100
+    }
   }
 
   egress_security_rules {

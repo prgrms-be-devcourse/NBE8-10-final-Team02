@@ -8,28 +8,40 @@ resource "oci_core_security_list" "service" {
     description = "SSH"
     protocol    = "6"
     source      = var.admin_cidr
-    tcp_options { min = 22; max = 22 }
+    tcp_options {
+      min = 22
+      max = 22
+    }
   }
 
   ingress_security_rules {
     description = "HTTP"
     protocol    = "6"
     source      = "0.0.0.0/0"
-    tcp_options { min = 80; max = 80 }
+    tcp_options {
+      min = 80
+      max = 80
+    }
   }
 
   ingress_security_rules {
     description = "HTTPS"
     protocol    = "6"
     source      = "0.0.0.0/0"
-    tcp_options { min = 443; max = 443 }
+    tcp_options {
+      min = 443
+      max = 443
+    }
   }
 
   ingress_security_rules {
     description = "NPM UI"
     protocol    = "6"
     source      = var.admin_cidr
-    tcp_options { min = 81; max = 81 }
+    tcp_options {
+      min = 81
+      max = 81
+    }
   }
 
   dynamic "ingress_security_rules" {
@@ -103,17 +115,19 @@ resource "null_resource" "deploy" {
   depends_on = [null_resource.upload_secrets]
 
   triggers = {
-    repo_url = var.repo_url
-  }
-
-  connection {
-    type        = "ssh"
-    host        = var.server_ip
-    user        = "ubuntu"
-    private_key = file(pathexpand(var.ssh_private_key_path))
+    repo_url        = var.repo_url
+    server_ip       = var.server_ip
+    ssh_private_key = file(pathexpand(var.ssh_private_key_path))
+    project_dir     = var.project_dir
   }
 
   provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      host        = var.server_ip
+      user        = "ubuntu"
+      private_key = file(pathexpand(var.ssh_private_key_path))
+    }
     inline = [
       "docker rm -f $(docker ps -aq) 2>/dev/null || true",
       "docker volume prune -f",
@@ -131,8 +145,14 @@ resource "null_resource" "deploy" {
 
   provisioner "remote-exec" {
     when = destroy
+    connection {
+      type        = "ssh"
+      host        = self.triggers.server_ip
+      user        = "ubuntu"
+      private_key = self.triggers.ssh_private_key
+    }
     inline = [
-      "docker compose -f ${var.project_dir}/docker-compose.prod.yml down 2>/dev/null || true",
+      "docker compose -f ${self.triggers.project_dir}/docker-compose.prod.yml down 2>/dev/null || true",
       "docker volume prune -f",
       "echo '✅ 주 서버 서비스 중단 완료. NPM SSL 설정은 유지됩니다.'"
     ]
