@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    oci = {
+      source  = "oracle/oci"
+      version = "~> 6.0"
+    }
+  }
+}
+
 # ── 보안 규칙 ─────────────────────────────────────────────────────────────────
 resource "oci_core_security_list" "service" {
   compartment_id = var.compartment_ocid
