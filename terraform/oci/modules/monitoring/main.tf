@@ -128,7 +128,6 @@ resource "oci_core_instance" "monitoring" {
     ssh_authorized_keys = var.ssh_public_key
     user_data = base64encode(templatefile("${path.module}/user_data.sh.tpl", {
       project_dir = var.project_dir
-      repo_url    = var.repo_url
     }))
   }
 
@@ -137,9 +136,47 @@ resource "oci_core_instance" "monitoring" {
   }
 }
 
+# ── 모니터링 서버 파일 업로드 + 서비스 기동 ───────────────────────────────────────
+resource "null_resource" "deploy_monitoring" {
+  depends_on = [oci_core_instance.monitoring]
+
+  triggers = {
+    instance_id           = oci_core_instance.monitoring.id
+    docker_compose_hash   = filemd5("${path.root}/../../docker-compose.prod-monitoring.yml")
+  }
+
+  connection {
+    type        = "ssh"
+    host        = oci_core_instance.monitoring.public_ip
+    user        = "ubuntu"
+    private_key = file(pathexpand(var.ssh_private_key_path))
+  }
+
+  provisioner "remote-exec" {
+    inline = ["cloud-init status --wait"]
+  }
+
+  provisioner "file" {
+    source      = "${path.root}/../../docker-compose.prod-monitoring.yml"
+    destination = "${var.project_dir}/docker-compose.prod-monitoring.yml"
+  }
+
+  provisioner "file" {
+    source      = "${path.root}/../../docker"
+    destination = var.project_dir
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "cd ${var.project_dir} && sudo docker compose -f docker-compose.prod-monitoring.yml up -d",
+      "echo '✅ 모니터링 서비스 기동 완료'"
+    ]
+  }
+}
+
 # ── 주 서버 promtail-config.yml Loki URL 자동 업데이트 ─────────────────────────
 resource "null_resource" "update_promtail" {
-  depends_on = [oci_core_instance.monitoring]
+  depends_on = [null_resource.deploy_monitoring]
 
   triggers = {
     monitoring_ip = oci_core_instance.monitoring.public_ip

@@ -2,7 +2,7 @@
 set -euo pipefail
 exec > >(tee /var/log/user_data.log | logger -t user_data) 2>&1
 
-echo "=== [1/4] Docker 설치 ==="
+echo "=== [1/3] Docker 설치 ==="
 apt-get update -y
 apt-get install -y ca-certificates curl gnupg git
 
@@ -23,19 +23,9 @@ systemctl enable docker
 systemctl start docker
 usermod -aG docker ubuntu
 
-echo "=== [2/4] 네트워크 및 디렉터리 생성 ==="
+echo "=== [2/3] 네트워크 및 디렉터리 생성 ==="
 docker network create global-net || true
 mkdir -p ${project_dir}
 chown ubuntu:ubuntu ${project_dir}
 
-echo "=== [3/4] 레포 클론 ==="
-sudo -u ubuntu git clone ${repo_url} ${project_dir}/repo
-
-cp ${project_dir}/repo/docker-compose.prod-monitoring.yml ${project_dir}/docker-compose.prod-monitoring.yml
-cp -r ${project_dir}/repo/docker/ ${project_dir}/docker/ 2>/dev/null || true
-
-echo "=== [4/4] 모니터링 서비스 기동 ==="
-cd ${project_dir}
-docker compose -f docker-compose.prod-monitoring.yml up -d
-
-echo "=== 완료 ==="
+echo "=== [3/3] 완료 (파일 업로드 및 서비스 기동은 Terraform이 처리) ==="

@@ -31,6 +31,7 @@ module "monitoring" {
   admin_cidr          = var.admin_cidr
 
   app_server_ip                   = var.app_server_ip
+  ssh_private_key_path            = var.ssh_private_key_path
   app_server_ssh_private_key_path = var.ssh_private_key_path
   app_server_project_dir          = var.app_server_project_dir
 }

@@ -44,6 +44,12 @@ variable "app_server_ip" {
   type = string
 }
 
+variable "ssh_private_key_path" {
+  description = "모니터링 서버 SSH 접속용 개인키 경로"
+  type        = string
+  default     = "~/.ssh/id_rsa"
+}
+
 variable "app_server_ssh_private_key_path" {
   type    = string
   default = "~/.ssh/id_rsa"

@@ -101,12 +101,13 @@ resource "null_resource" "prepare" {
   }
 }
 
-# ── Step 2: 시크릿 파일 업로드 ────────────────────────────────────────────────
+# ── Step 2: 파일 업로드 (시크릿 + 서비스 설정) ────────────────────────────────
 resource "null_resource" "upload_secrets" {
   depends_on = [null_resource.prepare]
 
   triggers = {
-    repo_url = var.repo_url
+    docker_compose_hash = filemd5("${path.root}/../../docker-compose.prod.yml")
+    vertex_ai_key_path  = var.vertex_ai_key_path
   }
 
   connection {
@@ -119,6 +120,16 @@ resource "null_resource" "upload_secrets" {
   provisioner "file" {
     source      = pathexpand(var.vertex_ai_key_path)
     destination = "/home/ubuntu/secrets/vertex-ai-key.json"
+  }
+
+  provisioner "file" {
+    source      = "${path.root}/../../docker-compose.prod.yml"
+    destination = "${var.project_dir}/docker-compose.prod.yml"
+  }
+
+  provisioner "file" {
+    source      = "${path.root}/../../docker"
+    destination = var.project_dir
   }
 }
 
@@ -145,11 +156,7 @@ resource "null_resource" "deploy" {
       "sudo docker volume prune -f",
       "sudo docker image prune -af",
       "sudo rm -rf /data/repos/* /app/uploads/*",
-      "rm -rf ${var.project_dir}/repo ${var.project_dir}/docker-compose.prod.yml",
       "sudo docker network create global-net 2>/dev/null || true",
-      "git clone ${var.repo_url} ${var.project_dir}/repo",
-      "cp ${var.project_dir}/repo/docker-compose.prod.yml ${var.project_dir}/docker-compose.prod.yml",
-      "cp -rn ${var.project_dir}/repo/docker/ ${var.project_dir}/docker/ 2>/dev/null || true",
       "cd ${var.project_dir} && sudo docker compose -f docker-compose.prod.yml up -d npm db redis node-exporter postgres-exporter promtail",
       "echo '✅ 주 서버 서비스 기동 완료'"
     ]
