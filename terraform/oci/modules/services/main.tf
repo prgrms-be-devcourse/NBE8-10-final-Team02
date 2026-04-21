@@ -223,4 +223,66 @@ resource "null_resource" "npm_setup" {
       "echo '✅ NPM proxy host 설정 완료 (SSL은 NPM UI에서 최초 1회 설정)'"
     ]
   }
+
+  provisioner "local-exec" {
+    when = destroy
+    command = <<-EOT
+      echo "🔄 주 서버 인스턴스 Rebuild 시작..."
+
+      # 인스턴스 중지
+      oci compute instance instance-action \
+        --instance-id "${var.instance_ocid}" \
+        --action STOP \
+        --wait-for-state STOPPED
+
+      # 부트 볼륨 OCID 가져오기
+      BOOT_VOLUME_ID=$(oci compute boot-volume-attachment list \
+        --instance-id "${var.instance_ocid}" \
+        --query "data[?lifecycleState=='ATTACHED'].bootVolumeId | [0]" \
+        --raw-output)
+
+      # 부트 볼륨 크기 가져오기
+      BOOT_VOLUME_SIZE_GB=$(oci compute boot-volume get \
+        --boot-volume-id "$BOOT_VOLUME_ID" \
+        --query "data.size-in-gbs" \
+        --raw-output)
+
+      # 인스턴스 생성 시 사용한 이미지 OCID 가져오기
+      SOURCE_IMAGE_ID=$(oci compute instance get \
+        --instance-id "${var.instance_ocid}" \
+        --query "data.source-details.source-type=='image' && data.source-details.source-id" \
+        --raw-output)
+
+      # 부트 볼륨 분리
+      oci compute boot-volume-attachment detach \
+        --boot-volume-attachment-id "$BOOT_VOLUME_ID" \
+        --force \
+        --wait-for-state DETACHED
+
+      # 부트 볼륨 삭제
+      oci compute boot-volume delete \
+        --boot-volume-id "$BOOT_VOLUME_ID" \
+        --force
+
+      # 새 부트 볼륨 생성
+      NEW_BOOT_VOLUME_ID=$(oci compute boot-volume create \
+        --compartment-id "${var.compartment_ocid}" \
+        --availability-domain $(oci compute instance get \
+          --instance-id "${var.instance_ocid}" \
+          --query "data.availability-domain" \
+          --raw-output) \
+        --size-in-gbs "$BOOT_VOLUME_SIZE_GB" \
+        --source-details "{'sourceType':'image','sourceId':'$SOURCE_IMAGE_ID'}" \
+        --query "data.id" \
+        --raw-output)
+
+      # 인스턴스 시작 (자동으로 새 부트 볼륨 연결됨)
+      oci compute instance instance-action \
+        --instance-id "${var.instance_ocid}" \
+        --action START \
+        --wait-for-state RUNNING
+
+      echo "✅ 주 서버 인스턴스 Rebuild 완료"
+    EOT
+  }
 }

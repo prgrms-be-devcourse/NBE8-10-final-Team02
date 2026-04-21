@@ -46,6 +46,10 @@ variable "app_server_vcn_ocid" {
   type        = string
 }
 
+variable "app_server_instance_ocid" {
+  description = "주 서버 인스턴스 OCID (Rebuild용)"
+  type        = string
+}
 
 variable "app_server_project_dir" {
   type    = string

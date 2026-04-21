@@ -20,6 +20,11 @@ variable "vertex_ai_key_path" {
   type = string
 }
 
+variable "instance_ocid" {
+  description = "인스턴스 OCID (Rebuild용)"
+  type        = string
+}
+
 variable "compartment_ocid" {
   type = string
 }

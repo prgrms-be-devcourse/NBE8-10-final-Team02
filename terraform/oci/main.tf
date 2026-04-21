@@ -48,6 +48,7 @@ module "services" {
   repo_url             = var.repo_url
   project_dir          = var.app_server_project_dir
   vertex_ai_key_path   = var.vertex_ai_key_path
+  instance_ocid        = var.app_server_instance_ocid
 
   compartment_ocid = var.compartment_ocid
   vcn_ocid         = var.app_server_vcn_ocid

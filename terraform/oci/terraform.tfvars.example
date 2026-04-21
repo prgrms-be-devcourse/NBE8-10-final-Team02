@@ -13,9 +13,10 @@ ssh_private_key_path = "~/.ssh/id_rsa"
 admin_cidr           = "0.0.0.0/0"
 
 # 주 서버 (고정 IP, 삭제 안 함)
-app_server_ip          = "161.153.6.164"
-app_server_vcn_ocid    = "ocid1.vcn.oc1..xxxxxxxxxx"
-app_server_project_dir = "/home/ubuntu/my-project"
+app_server_ip             = "161.153.6.164"
+app_server_vcn_ocid       = "ocid1.vcn.oc1..xxxxxxxxxx"
+app_server_instance_ocid  = "ocid1.instance.oc1..xxxxxxxxxx"
+app_server_project_dir    = "/home/ubuntu/my-project"
 vertex_ai_key_path     = "~/secrets/vertex-ai-key.json"
 extra_ingress_ports    = []
 
