@@ -8,11 +8,6 @@ terraform {
 }
 
 # ── 보안 규칙 ─────────────────────────────────────────────────────────────────
-import {
-  to = oci_core_security_list.service
-  id = var.default_security_list_ocid
-}
-
 resource "oci_core_security_list" "service" {
   compartment_id = var.compartment_ocid
   vcn_id         = var.vcn_ocid
