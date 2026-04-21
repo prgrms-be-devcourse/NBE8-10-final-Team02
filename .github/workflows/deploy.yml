@@ -129,6 +129,11 @@ jobs:
           script: |
             set -e
 
+            # jq 설치 확인
+            if ! command -v jq &> /dev/null; then
+              sudo apt-get install -y jq
+            fi
+
             # 서버에서 Base64 디코딩하여 .env-prod 파일 생성
             echo "$DOT_ENV_B64" | base64 --decode > .env-prod
 
