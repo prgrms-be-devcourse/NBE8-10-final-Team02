@@ -218,6 +218,10 @@ resource "null_resource" "instance_rebuild" {
     interpreter = ["bash", "-c"]
     command     = <<-EOT
       set -e
+      trap '
+        echo "❌ Rebuild 실패 — 인스턴스 강제 기동 시도..."
+        oci compute instance action --instance-id "${self.triggers.instance_ocid}" --action START 2>/dev/null || true
+      ' ERR
       echo "🔄 주 서버 인스턴스 Rebuild 시작..."
 
       # 1. 현재 인스턴스의 소스 이미지 OCID 추출
@@ -263,7 +267,8 @@ resource "null_resource" "instance_rebuild" {
         --wait-for-state RUNNING
       echo "✅ 인스턴스 재시작 완료"
 
-      # 6. 분리된 구형 부트 볼륨 삭제 (과금 방지)
+      # 6. 분리된 구형 부트 볼륨 삭제 (과금 방지, OCI detach 완료 대기)
+      sleep 30
       if [ -n "$OLD_BOOT_VOLUME_ID" ] && [ "$OLD_BOOT_VOLUME_ID" != "null" ]; then
         oci bv boot-volume delete \
           --boot-volume-id "$OLD_BOOT_VOLUME_ID" \
