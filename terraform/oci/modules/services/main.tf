@@ -129,6 +129,7 @@ resource "null_resource" "deploy" {
       "sudo docker image prune -af",
       "sudo rm -rf /data/repos/* /app/uploads/*",
       "sudo docker network create global-net 2>/dev/null || true",
+      "sudo rm -f ${var.project_dir}/docker/npm/data/database.sqlite",
       "cd ${var.project_dir} && sudo docker compose -f docker-compose.prod.yml up -d npm db redis node-exporter postgres-exporter promtail",
       "echo '✅ 주 서버 서비스 기동 완료'"
     ]
@@ -220,6 +221,12 @@ resource "null_resource" "instance_rebuild" {
         --instance-id "${self.triggers.instance_ocid}" \
         --query 'data."source-details"."image-id"' \
         --raw-output)
+
+      if [ -z "$SOURCE_IMAGE_ID" ] || [ "$SOURCE_IMAGE_ID" == "null" ]; then
+        echo "❌ 오류: 소스 이미지 ID를 가져오지 못했습니다. Rebuild를 중단합니다."
+        exit 1
+      fi
+
       echo "✅ 소스 이미지 OCID: $SOURCE_IMAGE_ID"
 
       # 2. 인스턴스 중지 (부트 볼륨 교체는 STOPPED 상태에서만 가능)
@@ -237,10 +244,10 @@ resource "null_resource" "instance_rebuild" {
         --raw-output)
       echo "✅ 기존 부트 볼륨 OCID: $OLD_BOOT_VOLUME_ID"
 
-      # 4. 부트 볼륨 교체 (OCI가 새 볼륨 생성 → 교체 → 구형 볼륨 분리를 원자적으로 처리)
-      oci compute instance update \
+      # 4. 부트 볼륨 교체 (다형성 지원 전용 명령 사용 — instance update의 --source-details는 image 타입 미지원)
+      oci compute instance update-instance-update-instance-source-via-image-details \
         --instance-id "${self.triggers.instance_ocid}" \
-        --source-details '{"sourceType":"image","imageId":"'"$SOURCE_IMAGE_ID"'"}' \
+        --source-details-image-id "$SOURCE_IMAGE_ID" \
         --force \
         --wait-for-state STOPPED
       echo "✅ 부트 볼륨 교체 완료"
