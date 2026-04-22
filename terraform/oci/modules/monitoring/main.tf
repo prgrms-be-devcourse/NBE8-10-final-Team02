@@ -168,6 +168,10 @@ resource "null_resource" "deploy_monitoring" {
 
   provisioner "remote-exec" {
     inline = [
+      "sudo apt-get install -y iptables-persistent 2>/dev/null || true",
+      "for port in 22 3001 9090 3100; do sudo iptables -C INPUT -m state --state NEW -p tcp --dport $port -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport $port -j ACCEPT; done",
+      "sudo netfilter-persistent save 2>/dev/null || true",
+      "if [ ! -f /swapfile ]; then sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile && echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab && echo '✅ Swap 1G 설정 완료'; fi",
       "cd ${var.project_dir} && sudo docker compose -f docker-compose.prod-monitoring.yml up -d",
       "echo '✅ 모니터링 서비스 기동 완료'"
     ]

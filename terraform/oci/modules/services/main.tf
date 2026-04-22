@@ -10,10 +10,12 @@ terraform {
 # ── 보안 규칙 (null_resource: destroy 시 OCI API 호출 없이 state만 제거됨) ────
 locals {
   base_ingress_rules = [
-    { description = "SSH",     protocol = "6", source = var.admin_cidr, sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 22,  max = 22  } } },
-    { description = "HTTP",    protocol = "6", source = "0.0.0.0/0",    sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 80,  max = 80  } } },
-    { description = "HTTPS",   protocol = "6", source = "0.0.0.0/0",    sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 443, max = 443 } } },
-    { description = "NPM UI",  protocol = "6", source = var.admin_cidr, sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 81,  max = 81  } } },
+    { description = "SSH",           protocol = "6", source = var.admin_cidr,               sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 22,   max = 22   } } },
+    { description = "HTTP",          protocol = "6", source = "0.0.0.0/0",                  sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 80,   max = 80   } } },
+    { description = "HTTPS",         protocol = "6", source = "0.0.0.0/0",                  sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 443,  max = 443  } } },
+    { description = "NPM UI",        protocol = "6", source = var.admin_cidr,               sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 81,   max = 81   } } },
+    { description = "Node Exporter", protocol = "6", source = "${var.monitoring_ip}/32",    sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 9100, max = 9100 } } },
+    { description = "PG Exporter",   protocol = "6", source = "${var.monitoring_ip}/32",    sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 9187, max = 9187 } } },
   ]
   extra_ingress_rules = [for p in var.extra_ingress_ports : {
     description = "extra port ${p}", protocol = "6", source = "0.0.0.0/0", sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = p, max = p } }
@@ -67,8 +69,9 @@ resource "null_resource" "prepare" {
 
       # OCI Ubuntu 기본 iptables 규칙에 포트 추가
       "sudo apt-get install -y iptables-persistent 2>/dev/null || true",
-      "for port in 22 80 443 81 ${join(" ", var.extra_ingress_ports)}; do sudo iptables -C INPUT -m state --state NEW -p tcp --dport $port -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport $port -j ACCEPT; done",
+      "for port in 22 80 443 81 9100 9187 ${join(" ", var.extra_ingress_ports)}; do sudo iptables -C INPUT -m state --state NEW -p tcp --dport $port -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport $port -j ACCEPT; done",
       "sudo netfilter-persistent save 2>/dev/null || true",
+      "if [ ! -f /swapfile ]; then sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile && echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab && echo '✅ Swap 2G 설정 완료'; fi",
     ]
   }
 }

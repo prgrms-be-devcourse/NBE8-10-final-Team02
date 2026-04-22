@@ -15,7 +15,7 @@ services:
       - "9090:9090"
     networks:
       - global-net
-    deploy: { resources: { limits: { memory: 512M } } }
+    deploy: { resources: { limits: { memory: 256M } } }
     restart: always
 
   loki:
@@ -47,7 +47,7 @@ services:
     depends_on:
       - prometheus
       - loki
-    deploy: { resources: { limits: { memory: 256M } } }
+    deploy: { resources: { limits: { memory: 384M } } }
     restart: always
 
 networks:
