@@ -224,11 +224,11 @@ resource "null_resource" "instance_rebuild" {
       ' ERR
       echo "🔄 주 서버 인스턴스 Rebuild 시작..."
 
-      # 1. 현재 인스턴스의 소스 이미지 OCID 추출
-      SOURCE_IMAGE_ID=$(oci compute instance get \
-        --instance-id "${self.triggers.instance_ocid}" \
-        --query 'data."source-details"."image-id"' \
-        --raw-output)
+      # 1. 현재 인스턴스의 소스 이미지 OCID + 가용 도메인 추출
+      INSTANCE_INFO=$(oci compute instance get \
+        --instance-id "${self.triggers.instance_ocid}")
+      SOURCE_IMAGE_ID=$(echo "$INSTANCE_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin)['data']; print(d.get('source-details',{}).get('image-id',''))")
+      AVAILABILITY_DOMAIN=$(echo "$INSTANCE_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['availability-domain'])")
 
       if [ -z "$SOURCE_IMAGE_ID" ] || [ "$SOURCE_IMAGE_ID" == "null" ]; then
         echo "❌ 오류: 소스 이미지 ID를 가져오지 못했습니다. Rebuild를 중단합니다."
@@ -248,6 +248,7 @@ resource "null_resource" "instance_rebuild" {
       OLD_BOOT_VOLUME_ID=$(oci compute boot-volume-attachment list \
         --instance-id "${self.triggers.instance_ocid}" \
         --compartment-id "${self.triggers.compartment_ocid}" \
+        --availability-domain "$AVAILABILITY_DOMAIN" \
         --query 'data[0]."boot-volume-id"' \
         --raw-output)
       echo "✅ 기존 부트 볼륨 OCID: $OLD_BOOT_VOLUME_ID"
@@ -260,11 +261,22 @@ resource "null_resource" "instance_rebuild" {
         --wait-for-state STOPPED
       echo "✅ 부트 볼륨 교체 완료"
 
-      # 5. 인스턴스 재시작
-      oci compute instance action \
-        --instance-id "${self.triggers.instance_ocid}" \
-        --action START \
-        --wait-for-state RUNNING
+      # 5. 인스턴스 재시작 (볼륨 교체 후 OCI 내부 처리 완료 대기 후 START)
+      echo "⏳ OCI 내부 처리 완료 대기 중..."
+      for i in $(seq 1 20); do
+        STATE=$(oci compute instance get \
+          --instance-id "${self.triggers.instance_ocid}" \
+          --query 'data."lifecycle-state"' --raw-output 2>/dev/null || echo "UNKNOWN")
+        echo "  현재 상태: $STATE ($i/20)"
+        if [ "$STATE" = "STOPPED" ]; then
+          oci compute instance action \
+            --instance-id "${self.triggers.instance_ocid}" \
+            --action START \
+            --wait-for-state RUNNING && break
+          echo "  START 실패 (아직 수정 중), 15초 후 재시도..."
+        fi
+        sleep 15
+      done
       echo "✅ 인스턴스 재시작 완료"
 
       # 6. 분리된 구형 부트 볼륨 삭제 (과금 방지, OCI detach 완료 대기)
