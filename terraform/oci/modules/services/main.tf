@@ -129,7 +129,8 @@ resource "null_resource" "deploy" {
       "sudo docker image prune -af",
       "sudo rm -rf /data/repos/* /app/uploads/*",
       "sudo docker network create global-net 2>/dev/null || true",
-      "sudo rm -f ${var.project_dir}/docker/npm/data/database.sqlite",
+      "sudo find ${var.project_dir}/docker/npm/data -mindepth 1 -maxdepth 1 -not -name 'nginx' -exec rm -rf {} +",
+      "sudo rm -rf ${var.project_dir}/docker/npm/letsencrypt/*",
       "cd ${var.project_dir} && sudo docker compose -f docker-compose.prod.yml up -d npm db redis node-exporter postgres-exporter promtail",
       "echo '✅ 주 서버 서비스 기동 완료'"
     ]
