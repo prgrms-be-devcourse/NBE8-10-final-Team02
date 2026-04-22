@@ -7,72 +7,40 @@ terraform {
   }
 }
 
-# ── 보안 규칙 ─────────────────────────────────────────────────────────────────
-resource "oci_core_security_list" "service" {
-  compartment_id = var.compartment_ocid
-  vcn_id         = var.vcn_ocid
-  display_name   = "Default Security List for boot-vcn"
+# ── 보안 규칙 (null_resource: destroy 시 OCI API 호출 없이 state만 제거됨) ────
+locals {
+  base_ingress_rules = [
+    { description = "SSH",     protocol = "6", source = var.admin_cidr, sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 22,  max = 22  } } },
+    { description = "HTTP",    protocol = "6", source = "0.0.0.0/0",    sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 80,  max = 80  } } },
+    { description = "HTTPS",   protocol = "6", source = "0.0.0.0/0",    sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 443, max = 443 } } },
+    { description = "NPM UI",  protocol = "6", source = var.admin_cidr, sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 81,  max = 81  } } },
+  ]
+  extra_ingress_rules = [for p in var.extra_ingress_ports : {
+    description = "extra port ${p}", protocol = "6", source = "0.0.0.0/0", sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = p, max = p } }
+  }]
+  egress_rules = [
+    { destination = "0.0.0.0/0", destinationType = "CIDR_BLOCK", protocol = "all", isStateless = false }
+  ]
+  all_ingress_rules = jsonencode(concat(local.base_ingress_rules, local.extra_ingress_rules))
+  all_egress_rules  = jsonencode(local.egress_rules)
+}
 
-  lifecycle {
-    prevent_destroy = true
+resource "null_resource" "security_rules" {
+  triggers = {
+    security_list_id = var.default_security_list_ocid
+    ingress_rules    = local.all_ingress_rules
+    egress_rules     = local.all_egress_rules
   }
 
-  ingress_security_rules {
-    description = "SSH"
-    protocol    = "6"
-    source      = var.admin_cidr
-    tcp_options {
-      min = 22
-      max = 22
-    }
-  }
-
-  ingress_security_rules {
-    description = "HTTP"
-    protocol    = "6"
-    source      = "0.0.0.0/0"
-    tcp_options {
-      min = 80
-      max = 80
-    }
-  }
-
-  ingress_security_rules {
-    description = "HTTPS"
-    protocol    = "6"
-    source      = "0.0.0.0/0"
-    tcp_options {
-      min = 443
-      max = 443
-    }
-  }
-
-  ingress_security_rules {
-    description = "NPM UI"
-    protocol    = "6"
-    source      = var.admin_cidr
-    tcp_options {
-      min = 81
-      max = 81
-    }
-  }
-
-  dynamic "ingress_security_rules" {
-    for_each = var.extra_ingress_ports
-    content {
-      description = "extra port ${ingress_security_rules.value}"
-      protocol    = "6"
-      source      = "0.0.0.0/0"
-      tcp_options {
-        min = ingress_security_rules.value
-        max = ingress_security_rules.value
-      }
-    }
-  }
-
-  egress_security_rules {
-    destination = "0.0.0.0/0"
-    protocol    = "all"
+  provisioner "local-exec" {
+    interpreter = ["bash", "-c"]
+    command = <<-EOT
+      oci network security-list update \
+        --security-list-id "${var.default_security_list_ocid}" \
+        --ingress-security-rules '${local.all_ingress_rules}' \
+        --egress-security-rules '${local.all_egress_rules}' \
+        --force
+    EOT
   }
 }
 
@@ -230,71 +198,67 @@ resource "null_resource" "npm_setup" {
 }
 
 # ── Step 5: 인스턴스 Rebuild (destroy 시만 실행) ─────────────────────────────────
+# Replace Boot Volume API를 사용해 OCI 백엔드가 한 번에 처리:
+# 이미지 OCID 추출 → STOP → 구형 볼륨 OCID 백업 → 볼륨 교체 → START → 구형 볼륨 삭제
 resource "null_resource" "instance_rebuild" {
   depends_on = [null_resource.npm_setup]
 
   triggers = {
-    instance_ocid     = var.instance_ocid
+    instance_ocid    = var.instance_ocid
     compartment_ocid = var.compartment_ocid
   }
 
   provisioner "local-exec" {
-    when = destroy
-    command = <<-EOT
+    when        = destroy
+    interpreter = ["bash", "-c"]
+    command     = <<-EOT
+      set -e
       echo "🔄 주 서버 인스턴스 Rebuild 시작..."
 
-      # 인스턴스 중지
-      oci compute instance instance-action \
+      # 1. 현재 인스턴스의 소스 이미지 OCID 추출
+      SOURCE_IMAGE_ID=$(oci compute instance get \
+        --instance-id "${self.triggers.instance_ocid}" \
+        --query 'data."source-details"."image-id"' \
+        --raw-output)
+      echo "✅ 소스 이미지 OCID: $SOURCE_IMAGE_ID"
+
+      # 2. 인스턴스 중지 (부트 볼륨 교체는 STOPPED 상태에서만 가능)
+      oci compute instance action \
         --instance-id "${self.triggers.instance_ocid}" \
         --action STOP \
         --wait-for-state STOPPED
+      echo "✅ 인스턴스 중지 완료"
 
-      # 부트 볼륨 OCID 가져오기
-      BOOT_VOLUME_ID=$(oci compute boot-volume-attachment list \
+      # 3. 기존 부트 볼륨 OCID 백업 (뒷정리용)
+      OLD_BOOT_VOLUME_ID=$(oci compute boot-volume-attachment list \
         --instance-id "${self.triggers.instance_ocid}" \
-        --query "data[?lifecycleState=='ATTACHED'].bootVolumeId | [0]" \
-        --raw-output)
-
-      # 부트 볼륨 크기 가져오기
-      BOOT_VOLUME_SIZE_GB=$(oci compute boot-volume get \
-        --boot-volume-id "$BOOT_VOLUME_ID" \
-        --query "data.size-in-gbs" \
-        --raw-output)
-
-      # 인스턴스 생성 시 사용한 이미지 OCID 가져오기
-      SOURCE_IMAGE_ID=$(oci compute instance get \
-        --instance-id "${self.triggers.instance_ocid}" \
-        --query "data.source-details.source-type=='image' && data.source-details.source-id" \
-        --raw-output)
-
-      # 부트 볼륨 분리
-      oci compute boot-volume-attachment detach \
-        --boot-volume-attachment-id "$BOOT_VOLUME_ID" \
-        --force \
-        --wait-for-state DETACHED
-
-      # 부트 볼륨 삭제
-      oci compute boot-volume delete \
-        --boot-volume-id "$BOOT_VOLUME_ID" \
-        --force
-
-      # 새 부트 볼륨 생성
-      NEW_BOOT_VOLUME_ID=$(oci compute boot-volume create \
         --compartment-id "${self.triggers.compartment_ocid}" \
-        --availability-domain $(oci compute instance get \
-          --instance-id "${self.triggers.instance_ocid}" \
-          --query "data.availability-domain" \
-          --raw-output) \
-        --size-in-gbs "$BOOT_VOLUME_SIZE_GB" \
-        --source-details "{'sourceType':'image','sourceId':'$SOURCE_IMAGE_ID'}" \
-        --query "data.id" \
+        --query 'data[0]."boot-volume-id"' \
         --raw-output)
+      echo "✅ 기존 부트 볼륨 OCID: $OLD_BOOT_VOLUME_ID"
 
-      # 인스턴스 시작 (자동으로 새 부트 볼륨 연결됨)
-      oci compute instance instance-action \
+      # 4. 부트 볼륨 교체 (OCI가 새 볼륨 생성 → 교체 → 구형 볼륨 분리를 원자적으로 처리)
+      oci compute instance update \
+        --instance-id "${self.triggers.instance_ocid}" \
+        --source-details '{"sourceType":"image","imageId":"'"$SOURCE_IMAGE_ID"'"}' \
+        --force \
+        --wait-for-state STOPPED
+      echo "✅ 부트 볼륨 교체 완료"
+
+      # 5. 인스턴스 재시작
+      oci compute instance action \
         --instance-id "${self.triggers.instance_ocid}" \
         --action START \
         --wait-for-state RUNNING
+      echo "✅ 인스턴스 재시작 완료"
+
+      # 6. 분리된 구형 부트 볼륨 삭제 (과금 방지)
+      if [ -n "$OLD_BOOT_VOLUME_ID" ] && [ "$OLD_BOOT_VOLUME_ID" != "null" ]; then
+        oci bv boot-volume delete \
+          --boot-volume-id "$OLD_BOOT_VOLUME_ID" \
+          --force
+        echo "✅ 구형 부트 볼륨 삭제 완료"
+      fi
 
       echo "✅ 주 서버 인스턴스 Rebuild 완료"
     EOT

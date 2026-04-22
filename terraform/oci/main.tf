@@ -12,11 +12,6 @@ terraform {
   }
 }
 
-import {
-  to = module.services.oci_core_security_list.service
-  id = var.app_server_default_security_list_ocid
-}
-
 provider "oci" {
   tenancy_ocid     = var.tenancy_ocid
   user_ocid        = var.user_ocid
