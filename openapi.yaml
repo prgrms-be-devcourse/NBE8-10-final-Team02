@@ -944,6 +944,30 @@ components:
       - generatedCount
       - regenerate
       - answers
+    QuestionSetJobStatus:
+      type: object
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - PENDING
+          - IN_PROGRESS
+          - COMPLETED
+          - FAILED
+        questionSetId:
+          type: integer
+          format: int64
+          nullable: true
+          description: COMPLETED 시 채워진다
+        error:
+          type: string
+          nullable: true
+      required:
+      - jobId
+      - status
     InterviewQuestionSetSummary:
       type: object
       properties:
@@ -3034,8 +3058,8 @@ paths:
               - difficultyLevel
               - questionTypes
       responses:
-        '201':
-          description: 생성 성공
+        '202':
+          description: 생성 작업 접수 (비동기 처리 시작)
           content:
             application/json:
               schema:
@@ -3045,7 +3069,7 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    $ref: '#/components/schemas/InterviewQuestionSetSummary'
+                    $ref: '#/components/schemas/QuestionSetJobStatus'
                   meta:
                     $ref: '#/components/schemas/Meta'
                 required:
@@ -3053,19 +3077,21 @@ paths:
                 - data
                 - meta
               examples:
-                questionSetCreateSuccess:
+                questionSetAccepted:
                   value:
                     success: true
                     data:
-                      questionSetId: 701
-                      applicationId: 401
-                      title: 네이버 백엔드 예상 질문 세트
-                      questionCount: 5
-                      difficultyLevel: medium
-                      createdAt: '2026-03-17T10:34:00Z'
+                      jobId: 550e8400-e29b-41d4-a716-446655440000
+                      status: PENDING
+                      questionSetId: null
+                      error: null
                     meta: *id001
-      description: 지원 단위를 기준으로 면접 질문 세트를 생성한다. 서버는 질문 수 불일치, schema violation, malformed
-        JSON에 대해 최대 2회 재시도한다. 질문 수는 최대 20개다.
+      description: >
+        면접 질문 세트 AI 생성을 비동기로 시작한다. 202를 즉시 반환하고
+        실제 생성은 백그라운드에서 진행된다.
+        진행 상황은 GET /interview/question-sets/status/{jobId}로 폴링한다.
+        COMPLETED 상태가 되면 응답의 questionSetId로 세트를 조회할 수 있다.
+        서버는 질문 수 불일치, schema violation, malformed JSON에 대해 최대 2회 재시도한다.
     get:
       tags:
       - Interview
@@ -3103,6 +3129,56 @@ paths:
                       difficultyLevel: medium
                       createdAt: '2026-03-17T10:34:00Z'
                     meta: *id002
+  /interview/question-sets/status/{jobId}:
+    get:
+      tags:
+      - Interview
+      summary: 면접 질문 세트 생성 작업 상태 조회
+      parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 작업 상태
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/QuestionSetJobStatus'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+              examples:
+                completed:
+                  value:
+                    success: true
+                    data:
+                      jobId: 550e8400-e29b-41d4-a716-446655440000
+                      status: COMPLETED
+                      questionSetId: 701
+                      error: null
+                    meta: *id001
+                pending:
+                  value:
+                    success: true
+                    data:
+                      jobId: 550e8400-e29b-41d4-a716-446655440000
+                      status: IN_PROGRESS
+                      questionSetId: null
+                      error: null
+                    meta: *id001
+      description: >
+        POST /interview/question-sets 제출 후 jobId로 진행 상태를 폴링한다.
+        COMPLETED 시 questionSetId가 채워진다.
+        TTL(15분) 만료 후에는 data: null을 반환한다.
   /interview/question-sets/{questionSetId}:
     get:
       tags:
