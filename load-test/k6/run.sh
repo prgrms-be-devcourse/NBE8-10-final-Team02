@@ -32,6 +32,7 @@ TEST_JWT_TOKEN="${TEST_JWT_TOKEN:-}"
 LOAD_TEST_KEY="${LOAD_TEST_KEY:-}"
 K6_OUT="${K6_OUT:-}"
 PROMETHEUS_URL="${PROMETHEUS_URL:-}"
+DASHBOARD="${DASHBOARD:-}"   # DASHBOARD=1 이면 로컬 웹 대시보드 (http://localhost:5665)
 
 # ── 시나리오 파일 선택 ────────────────────────────────────────────────────
 case "$SCENARIO" in
@@ -106,6 +107,11 @@ if [ -n "$PROMETHEUS_URL" ]; then
   # (systemTags에서 url을 제외하는 것과 이중으로 방어)
   export K6_PROMETHEUS_RW_TAGS_AS_LABELS="name,type,size,status,method,scenario"
   echo "=== Prometheus remote write: $PROMETHEUS_URL ==="
+fi
+
+if [ -n "$DASHBOARD" ]; then
+  K6_ARGS+=(--out web-dashboard)
+  echo "=== 웹 대시보드: http://localhost:5665 ==="
 fi
 
 K6_ARGS+=("$SCRIPT")

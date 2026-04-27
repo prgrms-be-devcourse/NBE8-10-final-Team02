@@ -15,7 +15,7 @@ output "app_url" {
 
 output "ssh_command" {
   description = "SSH 접속 명령"
-  value       = "ssh -i ${var.ssh_public_key_path} ec2-user@${aws_instance.load_test.public_ip}"
+  value       = "ssh -i ${replace(var.ssh_public_key_path, ".pub", "")} ec2-user@${aws_instance.load_test.public_ip}"
 }
 
 output "health_check_url" {

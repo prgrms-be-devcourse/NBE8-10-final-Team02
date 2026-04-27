@@ -7,68 +7,42 @@ terraform {
   }
 }
 
-# ── 보안 규칙 ─────────────────────────────────────────────────────────────────
-resource "oci_core_security_list" "service" {
-  compartment_id = var.compartment_ocid
-  vcn_id         = var.vcn_ocid
-  display_name   = "service-security-list"
+# ── 보안 규칙 (null_resource: destroy 시 OCI API 호출 없이 state만 제거됨) ────
+locals {
+  base_ingress_rules = [
+    { description = "SSH",           protocol = "6", source = var.admin_cidr,               sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 22,   max = 22   } } },
+    { description = "HTTP",          protocol = "6", source = "0.0.0.0/0",                  sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 80,   max = 80   } } },
+    { description = "HTTPS",         protocol = "6", source = "0.0.0.0/0",                  sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 443,  max = 443  } } },
+    { description = "NPM UI",        protocol = "6", source = var.admin_cidr,               sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 81,   max = 81   } } },
+    { description = "Node Exporter", protocol = "6", source = "${var.monitoring_ip}/32",    sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 9100, max = 9100 } } },
+    { description = "PG Exporter",   protocol = "6", source = "${var.monitoring_ip}/32",    sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = 9187, max = 9187 } } },
+  ]
+  extra_ingress_rules = [for p in var.extra_ingress_ports : {
+    description = "extra port ${p}", protocol = "6", source = "0.0.0.0/0", sourceType = "CIDR_BLOCK", isStateless = false, tcpOptions = { destinationPortRange = { min = p, max = p } }
+  }]
+  egress_rules = [
+    { destination = "0.0.0.0/0", destinationType = "CIDR_BLOCK", protocol = "all", isStateless = false }
+  ]
+  all_ingress_rules = jsonencode(concat(local.base_ingress_rules, local.extra_ingress_rules))
+  all_egress_rules  = jsonencode(local.egress_rules)
+}
 
-  ingress_security_rules {
-    description = "SSH"
-    protocol    = "6"
-    source      = var.admin_cidr
-    tcp_options {
-      min = 22
-      max = 22
-    }
+resource "null_resource" "security_rules" {
+  triggers = {
+    security_list_id = var.default_security_list_ocid
+    ingress_rules    = local.all_ingress_rules
+    egress_rules     = local.all_egress_rules
   }
 
-  ingress_security_rules {
-    description = "HTTP"
-    protocol    = "6"
-    source      = "0.0.0.0/0"
-    tcp_options {
-      min = 80
-      max = 80
-    }
-  }
-
-  ingress_security_rules {
-    description = "HTTPS"
-    protocol    = "6"
-    source      = "0.0.0.0/0"
-    tcp_options {
-      min = 443
-      max = 443
-    }
-  }
-
-  ingress_security_rules {
-    description = "NPM UI"
-    protocol    = "6"
-    source      = var.admin_cidr
-    tcp_options {
-      min = 81
-      max = 81
-    }
-  }
-
-  dynamic "ingress_security_rules" {
-    for_each = var.extra_ingress_ports
-    content {
-      description = "extra port ${ingress_security_rules.value}"
-      protocol    = "6"
-      source      = "0.0.0.0/0"
-      tcp_options {
-        min = ingress_security_rules.value
-        max = ingress_security_rules.value
-      }
-    }
-  }
-
-  egress_security_rules {
-    destination = "0.0.0.0/0"
-    protocol    = "all"
+  provisioner "local-exec" {
+    interpreter = ["bash", "-c"]
+    command = <<-EOT
+      oci network security-list update \
+        --security-list-id "${var.default_security_list_ocid}" \
+        --ingress-security-rules '${local.all_ingress_rules}' \
+        --egress-security-rules '${local.all_egress_rules}' \
+        --force
+    EOT
   }
 }
 
@@ -95,8 +69,9 @@ resource "null_resource" "prepare" {
 
       # OCI Ubuntu 기본 iptables 규칙에 포트 추가
       "sudo apt-get install -y iptables-persistent 2>/dev/null || true",
-      "for port in 22 80 443 81 ${join(" ", var.extra_ingress_ports)}; do sudo iptables -C INPUT -m state --state NEW -p tcp --dport $port -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport $port -j ACCEPT; done",
+      "for port in 22 80 443 81 9100 9187 ${join(" ", var.extra_ingress_ports)}; do sudo iptables -C INPUT -m state --state NEW -p tcp --dport $port -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport $port -j ACCEPT; done",
       "sudo netfilter-persistent save 2>/dev/null || true",
+      "if [ ! -f /swapfile ]; then sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile && echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab && echo '✅ Swap 2G 설정 완료'; fi",
     ]
   }
 }
@@ -157,6 +132,8 @@ resource "null_resource" "deploy" {
       "sudo docker image prune -af",
       "sudo rm -rf /data/repos/* /app/uploads/*",
       "sudo docker network create global-net 2>/dev/null || true",
+      "sudo find ${var.project_dir}/docker/npm/data -mindepth 1 -maxdepth 1 -not -name 'nginx' -exec rm -rf {} +",
+      "sudo rm -rf ${var.project_dir}/docker/npm/letsencrypt/*",
       "cd ${var.project_dir} && sudo docker compose -f docker-compose.prod.yml up -d npm db redis node-exporter postgres-exporter promtail",
       "echo '✅ 주 서버 서비스 기동 완료'"
     ]
@@ -226,71 +203,90 @@ resource "null_resource" "npm_setup" {
 }
 
 # ── Step 5: 인스턴스 Rebuild (destroy 시만 실행) ─────────────────────────────────
+# Replace Boot Volume API를 사용해 OCI 백엔드가 한 번에 처리:
+# 이미지 OCID 추출 → STOP → 구형 볼륨 OCID 백업 → 볼륨 교체 → START → 구형 볼륨 삭제
 resource "null_resource" "instance_rebuild" {
   depends_on = [null_resource.npm_setup]
 
   triggers = {
-    instance_ocid     = var.instance_ocid
+    instance_ocid    = var.instance_ocid
     compartment_ocid = var.compartment_ocid
   }
 
   provisioner "local-exec" {
-    when = destroy
-    command = <<-EOT
+    when        = destroy
+    interpreter = ["bash", "-c"]
+    command     = <<-EOT
+      set -e
+      trap '
+        echo "❌ Rebuild 실패 — 인스턴스 강제 기동 시도..."
+        oci compute instance action --instance-id "${self.triggers.instance_ocid}" --action START 2>/dev/null || true
+      ' ERR
       echo "🔄 주 서버 인스턴스 Rebuild 시작..."
 
-      # 인스턴스 중지
-      oci compute instance instance-action \
+      # 1. 현재 인스턴스의 소스 이미지 OCID + 가용 도메인 추출
+      INSTANCE_INFO=$(oci compute instance get \
+        --instance-id "${self.triggers.instance_ocid}")
+      SOURCE_IMAGE_ID=$(echo "$INSTANCE_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin)['data']; print(d.get('source-details',{}).get('image-id',''))")
+      AVAILABILITY_DOMAIN=$(echo "$INSTANCE_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['availability-domain'])")
+
+      if [ -z "$SOURCE_IMAGE_ID" ] || [ "$SOURCE_IMAGE_ID" == "null" ]; then
+        echo "❌ 오류: 소스 이미지 ID를 가져오지 못했습니다. Rebuild를 중단합니다."
+        exit 1
+      fi
+
+      echo "✅ 소스 이미지 OCID: $SOURCE_IMAGE_ID"
+
+      # 2. 인스턴스 중지 (부트 볼륨 교체는 STOPPED 상태에서만 가능)
+      oci compute instance action \
         --instance-id "${self.triggers.instance_ocid}" \
         --action STOP \
         --wait-for-state STOPPED
+      echo "✅ 인스턴스 중지 완료"
 
-      # 부트 볼륨 OCID 가져오기
-      BOOT_VOLUME_ID=$(oci compute boot-volume-attachment list \
+      # 3. 기존 부트 볼륨 OCID 백업 (뒷정리용)
+      OLD_BOOT_VOLUME_ID=$(oci compute boot-volume-attachment list \
         --instance-id "${self.triggers.instance_ocid}" \
-        --query "data[?lifecycleState=='ATTACHED'].bootVolumeId | [0]" \
-        --raw-output)
-
-      # 부트 볼륨 크기 가져오기
-      BOOT_VOLUME_SIZE_GB=$(oci compute boot-volume get \
-        --boot-volume-id "$BOOT_VOLUME_ID" \
-        --query "data.size-in-gbs" \
-        --raw-output)
-
-      # 인스턴스 생성 시 사용한 이미지 OCID 가져오기
-      SOURCE_IMAGE_ID=$(oci compute instance get \
-        --instance-id "${self.triggers.instance_ocid}" \
-        --query "data.source-details.source-type=='image' && data.source-details.source-id" \
-        --raw-output)
-
-      # 부트 볼륨 분리
-      oci compute boot-volume-attachment detach \
-        --boot-volume-attachment-id "$BOOT_VOLUME_ID" \
-        --force \
-        --wait-for-state DETACHED
-
-      # 부트 볼륨 삭제
-      oci compute boot-volume delete \
-        --boot-volume-id "$BOOT_VOLUME_ID" \
-        --force
-
-      # 새 부트 볼륨 생성
-      NEW_BOOT_VOLUME_ID=$(oci compute boot-volume create \
         --compartment-id "${self.triggers.compartment_ocid}" \
-        --availability-domain $(oci compute instance get \
-          --instance-id "${self.triggers.instance_ocid}" \
-          --query "data.availability-domain" \
-          --raw-output) \
-        --size-in-gbs "$BOOT_VOLUME_SIZE_GB" \
-        --source-details "{'sourceType':'image','sourceId':'$SOURCE_IMAGE_ID'}" \
-        --query "data.id" \
+        --availability-domain "$AVAILABILITY_DOMAIN" \
+        --query 'data[0]."boot-volume-id"' \
         --raw-output)
+      echo "✅ 기존 부트 볼륨 OCID: $OLD_BOOT_VOLUME_ID"
 
-      # 인스턴스 시작 (자동으로 새 부트 볼륨 연결됨)
-      oci compute instance instance-action \
+      # 4. 부트 볼륨 교체 (다형성 지원 전용 명령 사용 — instance update의 --source-details는 image 타입 미지원)
+      oci compute instance update-instance-update-instance-source-via-image-details \
         --instance-id "${self.triggers.instance_ocid}" \
-        --action START \
-        --wait-for-state RUNNING
+        --source-details-image-id "$SOURCE_IMAGE_ID" \
+        --force \
+        --wait-for-state STOPPED
+      echo "✅ 부트 볼륨 교체 완료"
+
+      # 5. 인스턴스 재시작 (볼륨 교체 후 OCI 내부 처리 완료 대기 후 START)
+      echo "⏳ OCI 내부 처리 완료 대기 중..."
+      for i in $(seq 1 20); do
+        STATE=$(oci compute instance get \
+          --instance-id "${self.triggers.instance_ocid}" \
+          --query 'data."lifecycle-state"' --raw-output 2>/dev/null || echo "UNKNOWN")
+        echo "  현재 상태: $STATE ($i/20)"
+        if [ "$STATE" = "STOPPED" ]; then
+          oci compute instance action \
+            --instance-id "${self.triggers.instance_ocid}" \
+            --action START \
+            --wait-for-state RUNNING && break
+          echo "  START 실패 (아직 수정 중), 15초 후 재시도..."
+        fi
+        sleep 15
+      done
+      echo "✅ 인스턴스 재시작 완료"
+
+      # 6. 분리된 구형 부트 볼륨 삭제 (과금 방지, OCI detach 완료 대기)
+      sleep 30
+      if [ -n "$OLD_BOOT_VOLUME_ID" ] && [ "$OLD_BOOT_VOLUME_ID" != "null" ]; then
+        oci bv boot-volume delete \
+          --boot-volume-id "$OLD_BOOT_VOLUME_ID" \
+          --force
+        echo "✅ 구형 부트 볼륨 삭제 완료"
+      fi
 
       echo "✅ 주 서버 인스턴스 Rebuild 완료"
     EOT

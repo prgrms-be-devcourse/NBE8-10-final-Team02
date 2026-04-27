@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "instance_type" {
   description = "EC2 인스턴스 타입"
   type        = string
-  default     = "t3.small"
+  default     = "t4g.small"
 }
 
 variable "app_image" {

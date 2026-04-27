@@ -19,7 +19,7 @@ systemctl start docker
 
 # docker compose v2 플러그인
 mkdir -p /usr/local/lib/docker/cli-plugins
-curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
+curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
      -o /usr/local/lib/docker/cli-plugins/docker-compose
 chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
@@ -143,7 +143,7 @@ if [ -n "${ghcr_token}" ]; then
   echo "${ghcr_token}" | docker login ghcr.io -u x-access-token --password-stdin
 fi
 
-docker compose --env-file .env up -d
+docker compose up -d
 
 echo "=== 헬스체크 대기 (최대 120초) ==="
 for i in $(seq 1 24); do

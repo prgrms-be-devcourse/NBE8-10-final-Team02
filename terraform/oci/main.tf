@@ -50,8 +50,9 @@ module "services" {
   vertex_ai_key_path   = var.vertex_ai_key_path
   instance_ocid        = var.app_server_instance_ocid
 
-  compartment_ocid = var.compartment_ocid
-  vcn_ocid         = var.app_server_vcn_ocid
+  compartment_ocid           = var.compartment_ocid
+  vcn_ocid                   = var.app_server_vcn_ocid
+  default_security_list_ocid = var.app_server_default_security_list_ocid
   npm_email        = var.npm_email
   npm_password     = var.npm_password
   fe_domain        = var.fe_domain

@@ -1,5 +1,4 @@
-# PUBLIC IP 161.153.6.164
-# PRIVATE IP 10.0.0.72
+# PUBLIC IP 158.101.8.21
 version: '3.8'
 
 services:
