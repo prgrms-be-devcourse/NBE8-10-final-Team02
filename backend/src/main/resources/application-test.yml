@@ -18,12 +18,8 @@ spring:
   flyway:
     enabled: true
 
-  # CI(GitHub Actions)에서는 test.yml의 services.redis가 localhost:6379로 Redis를 실행함.
-  # 로컬에서는 Docker로 띄운 Redis가 동일 포트에서 실행 중이어야 함.
-  data:
-    redis:
-      host: localhost
-      port: 6379
+  # Redis 연결은 TestcontainersConfiguration의 @ServiceConnection이 동적으로 주입함.
+  # (TestcontainersConfiguration.redisContainer → @ServiceConnection → 랜덤 포트 자동 설정)
 
   # github는 redirectionUrl 하나밖에 지원을 안하기 때문에 LOCAL ID,SECRET이 따로 필요
   security:

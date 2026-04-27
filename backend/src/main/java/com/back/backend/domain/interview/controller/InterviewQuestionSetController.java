@@ -55,6 +55,8 @@ public class InterviewQuestionSetController {
     ) {
         long userId = currentUserResolver.resolveUserId(authentication);
 
+        asyncInterviewQuestionsGenerateService.validateOwnership(userId, request.applicationId());
+
         String jobId = asyncInterviewQuestionsGenerateService.submitAsync(
             userId,
             request.applicationId(),

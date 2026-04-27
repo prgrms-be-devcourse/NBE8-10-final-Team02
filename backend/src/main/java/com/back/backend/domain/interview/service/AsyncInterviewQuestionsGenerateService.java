@@ -1,11 +1,15 @@
 package com.back.backend.domain.interview.service;
 
 import com.back.backend.domain.ai.service.InterviewQuestionsGenerateService;
+import com.back.backend.domain.application.repository.ApplicationRepository;
 import com.back.backend.domain.interview.dto.response.QuestionSetSummaryResponse;
 import com.back.backend.domain.interview.entity.DifficultyLevel;
+import com.back.backend.global.exception.ErrorCode;
+import com.back.backend.global.exception.ServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -26,16 +30,32 @@ public class AsyncInterviewQuestionsGenerateService {
 
     private final InterviewQuestionsGenerateService interviewQuestionsGenerateService;
     private final InterviewQuestionSetJobStore jobStore;
+    private final ApplicationRepository applicationRepository;
     private final Executor aiTaskExecutor;
 
     public AsyncInterviewQuestionsGenerateService(
             InterviewQuestionsGenerateService interviewQuestionsGenerateService,
             InterviewQuestionSetJobStore jobStore,
+            ApplicationRepository applicationRepository,
             @Qualifier("aiTaskExecutor") Executor aiTaskExecutor
     ) {
         this.interviewQuestionsGenerateService = interviewQuestionsGenerateService;
         this.jobStore = jobStore;
+        this.applicationRepository = applicationRepository;
         this.aiTaskExecutor = aiTaskExecutor;
+    }
+
+    /**
+     * applicationId가 userId에게 속하는지 검증한다.
+     * 비동기 제출 전에 호출하여 잘못된 작업이 큐에 들어가지 않도록 한다.
+     */
+    public void validateOwnership(long userId, long applicationId) {
+        applicationRepository.findByIdAndUserId(applicationId, userId)
+                .orElseThrow(() -> new ServiceException(
+                        ErrorCode.APPLICATION_NOT_FOUND,
+                        HttpStatus.NOT_FOUND,
+                        "지원 준비를 찾을 수 없습니다."
+                ));
     }
 
     /**
