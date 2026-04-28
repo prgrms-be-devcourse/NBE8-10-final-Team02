@@ -19,7 +19,7 @@ systemctl start docker
 
 # docker compose v2 플러그인
 mkdir -p /usr/local/lib/docker/cli-plugins
-curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
+curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
      -o /usr/local/lib/docker/cli-plugins/docker-compose
 chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
@@ -113,6 +113,46 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: lt-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-remote-write-receiver'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - lt-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.7
+    container_name: lt-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_USERS_DEFAULT_THEME=dark
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - lt-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 networks:
   lt-net:
 
@@ -135,7 +175,33 @@ ${app_env_content}
 APP_ENV_EOF
 chmod 600 /opt/load-test/app.env
 
-echo "=== [5/5] 컨테이너 기동 ==="
+echo "=== [5/5] 모니터링 설정 파일 생성 ==="
+
+cat > /opt/load-test/prometheus.yml << 'PROM_EOF'
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'spring-boot'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['app:8080']
+PROM_EOF
+
+mkdir -p /opt/load-test/grafana/provisioning/datasources
+cat > /opt/load-test/grafana/provisioning/datasources/prometheus.yml << 'GF_DS_EOF'
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+GF_DS_EOF
+
+echo "=== [6/6] 컨테이너 기동 ==="
 cd /opt/load-test
 
 # ghcr.io 인증 (PAT이 있을 때만)

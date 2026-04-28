@@ -29,7 +29,7 @@ export const options = {
     'http_req_failed':  ['rate<0.20'],
   },
   // url을 systemTags에서 제외 → 동적 ID가 Prometheus 레이블로 올라가지 않아 high cardinality 방지
-  systemTags: ['status', 'method', 'name', 'check', 'error', 'error_code', 'scenario'],
+  systemTags: ['status', 'method', 'name', 'url', 'expected_response', 'check', 'error', 'error_code', 'scenario'],
   http: {
     timeout: '120s',
   },

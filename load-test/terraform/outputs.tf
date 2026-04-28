@@ -22,3 +22,13 @@ output "health_check_url" {
   description = "헬스체크 URL"
   value       = "http://${aws_instance.load_test.public_ip}:8080/actuator/health"
 }
+
+output "grafana_url" {
+  description = "Grafana 대시보드 URL (admin/admin)"
+  value       = "http://${aws_instance.load_test.public_ip}:3000"
+}
+
+output "prometheus_url" {
+  description = "Prometheus URL"
+  value       = "http://${aws_instance.load_test.public_ip}:9090"
+}

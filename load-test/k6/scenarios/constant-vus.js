@@ -48,7 +48,7 @@ export const options = {
     'api_error_rate':                     ['rate<0.05'],
     'http_req_failed':                    ['rate<0.05'],
   },
-  systemTags: ['status', 'method', 'name', 'check', 'error', 'error_code', 'scenario'],
+  systemTags: ['status', 'method', 'name', 'url', 'expected_response', 'check', 'error', 'error_code', 'scenario'],
   http: {
     timeout: '30s',
   },
@@ -186,7 +186,7 @@ function pollUntilDone(pollFn, maxAttempts, label) {
     attempts++;
 
     const pollRes = pollFn();
-    if (!assertResponse(pollRes, [200], 300)) continue;
+    if (pollRes.status !== 200) continue;
 
     let data = null;
     try { data = JSON.parse(pollRes.body).data; } catch { continue; }

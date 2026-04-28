@@ -27,7 +27,7 @@ data "aws_ami" "al2023" {
 
   filter {
     name   = "name"
-    values = ["al2023-ami-2023*-kernel-*-arm64"]
+    values = ["al2023-ami-2023*-kernel-*-x86_64"]
   }
 
   filter {
@@ -59,6 +59,22 @@ resource "aws_security_group" "load_test" {
   ingress {
     from_port   = 8080
     to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = [var.k6_runner_cidr]
+  }
+
+  # Grafana
+  ingress {
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = [var.k6_runner_cidr]
+  }
+
+  # Prometheus
+  ingress {
+    from_port   = 9090
+    to_port     = 9090
     protocol    = "tcp"
     cidr_blocks = [var.k6_runner_cidr]
   }
