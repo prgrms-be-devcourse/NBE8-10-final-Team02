@@ -52,6 +52,8 @@ PAIRS=(
   "after-sema:8f66311:세마포어 도입(이후)"
   "before-async:97110fd~1:비동기 전환(이전)"
   "after-async:97110fd:비동기 전환(이후)"
+  "final-sema-2:231fd0a:최종 결과물(세마포어 2):2"
+  "final-sema-20:231fd0a:최종 결과물(세마포어 20):20"
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -73,8 +75,8 @@ require_cmd() {
 }
 
 parse_pair() {
-  # "label:commit:desc" → label / commit / desc
-  IFS=: read -r PAIR_LABEL PAIR_COMMIT PAIR_DESC <<< "$1"
+  # "label:commit:desc[:sema]" → label / commit / desc / sema(optional)
+  IFS=: read -r PAIR_LABEL PAIR_COMMIT PAIR_DESC PAIR_SEMA <<< "$1"
 }
 
 # 임시 worktree 정리 (오류 시에도 실행)
@@ -122,6 +124,13 @@ build_one() {
   mkdir -p "$WORKTREE_BASE"
   git -C "$REPO_ROOT" worktree add "$worktree" "$commit" --detach
   ACTIVE_WORKTREES+=("$worktree")
+
+  # 세마포어 값 override (PAIR_SEMA가 있을 때만)
+  if [[ -n "${PAIR_SEMA:-}" ]]; then
+    local yml="$worktree/backend/src/main/resources/application-load-test.yml"
+    sed -i "s/max-concurrent-calls: [0-9]*/max-concurrent-calls: $PAIR_SEMA/" "$yml"
+    log "[$label] 세마포어 override → $PAIR_SEMA (application-load-test.yml)"
+  fi
 
   log "[$label] docker build → $tag"
   docker build \
@@ -373,7 +382,7 @@ print_metric() {
 # ═══════════════════════════════════════════════════════════════════════════
 # 메인
 # ═══════════════════════════════════════════════════════════════════════════
-LABELS="before-tx | after-tx | before-sema | after-sema | before-async | after-async"
+LABELS="before-tx | after-tx | before-sema | after-sema | before-async | after-async | final-sema-2 | final-sema-20"
 
 usage() {
   cat <<EOF
