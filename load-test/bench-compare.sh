@@ -36,7 +36,7 @@ RESULTS_DIR="$SCRIPT_DIR/results"
 WORKTREE_BASE="${TMPDIR:-/tmp}/lt-bench-$$"
 
 K6_SCENARIO="${K6_SCENARIO:-ramp-up}"
-K6_VUS="${K6_VUS:-30}"
+K6_VUS="${K6_VUS:-20}"
 K6_DURATION="${K6_DURATION:-2m}"
 TEST_JWT_TOKEN="${TEST_JWT_TOKEN:-}"
 LOAD_TEST_KEY="${LOAD_TEST_KEY:-}"
@@ -175,8 +175,8 @@ do_build_one() {
 run_one_test() {
   local label="$1" desc="$2"
   local tag="$GHCR_REPO:bench-$label"
-  local summary_file="$RESULTS_DIR/${label}-summary.json"
-  local raw_file="$RESULTS_DIR/${label}-raw.json"
+  local summary_file="$RESULTS_DIR/${label}-vus${K6_VUS}-summary.json"
+  local raw_file="$RESULTS_DIR/${label}-vus${K6_VUS}-raw.json"
 
   log "[$label] 시작: $desc"
 
@@ -244,6 +244,7 @@ run_one_test() {
     K6_PROMETHEUS_RW_SERVER_URL="http://${ec2_ip}:9090/api/v1/write" \
     K6_PROMETHEUS_RW_NATIVE_HISTOGRAM_ENABLED="true" \
     K6_PROMETHEUS_RW_PUSH_INTERVAL="5s" \
+    K6_PROMETHEUS_RW_STALE_MARKERS="true" \
     k6 "${k6_args[@]}" "$scenario_file"
   ) || err "[$label] k6 실행 중 오류 (결과가 불완전할 수 있음)"
 
@@ -320,8 +321,10 @@ do_report() {
 
     for comp in "${comparisons[@]}"; do
       IFS=: read -r before after title <<< "$comp"
-      local bf_file="$RESULTS_DIR/${before}-summary.json"
-      local af_file="$RESULTS_DIR/${after}-summary.json"
+      local bf_file="$RESULTS_DIR/${before}-vus${K6_VUS}-summary.json"
+      local af_file="$RESULTS_DIR/${after}-vus${K6_VUS}-summary.json"
+      [[ ! -f "$bf_file" ]] && bf_file="$RESULTS_DIR/${before}-summary.json"
+      [[ ! -f "$af_file" ]] && af_file="$RESULTS_DIR/${after}-summary.json"
 
       echo ""
       echo "── $title ─────────────────────────────────────────────"
