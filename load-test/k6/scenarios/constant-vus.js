@@ -38,8 +38,9 @@ const QS_POLL_MAX_WAIT_S   = 240;
 const QS_POLL_MAX_ATTEMPTS = Math.ceil(QS_POLL_MAX_WAIT_S / POLL_INTERVAL_S);
 
 export const options = {
-  vus:      VUS,
-  duration: DURATION,
+  vus:          VUS,
+  duration:     DURATION,
+  gracefulStop: '60s',
   thresholds: {
     'http_req_duration{type:write}':      ['p(95)<2000'],
     'http_req_duration{type:ai-accept}':  ['p(95)<95000'], // 세마포어 대기(최대 90s) 포함

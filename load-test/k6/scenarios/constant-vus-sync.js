@@ -30,8 +30,9 @@ const POLL_MAX_WAIT_S   = 60;      // 최대 대기 (초) — Stub ~17s 기준 �
 const POLL_MAX_ATTEMPTS = Math.ceil(POLL_MAX_WAIT_S / POLL_INTERVAL_S);
 
 export const options = {
-  vus:      VUS,
-  duration: DURATION,
+  vus:          VUS,
+  duration:     DURATION,
+  gracefulStop: '60s',
   thresholds: {
     'http_req_duration{type:write}':        ['p(95)<2000'],
     'http_req_duration{type:ai-accept}':    ['p(95)<500'],   // 동기 시나리오: 202 즉시 반환 기준
