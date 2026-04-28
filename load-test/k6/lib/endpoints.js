@@ -31,7 +31,8 @@ export const ENDPOINTS = {
   csQuestions: `${BASE_URL}/api/v1/practice/questions`,
 
   // ── 면접 질문 세트 ────────────────────────────────────────────────────
-  questionSets: `${BASE_URL}/api/v1/interview/question-sets`,
+  questionSets:          `${BASE_URL}/api/v1/interview/question-sets`,
+  questionSetJobStatus:  (jobId) => `${BASE_URL}/api/v1/interview/question-sets/status/${jobId}`,
 
   // ── 면접 세션 ─────────────────────────────────────────────────────────
   interviewSessions:              `${BASE_URL}/api/v1/interview/sessions`,

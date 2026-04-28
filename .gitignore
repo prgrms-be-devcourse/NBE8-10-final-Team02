@@ -32,6 +32,7 @@ Thumbs.db
 .terraform.lock.hcl
 *.tfvars
 *.terraform.tfstate
+*.backup
 
 # Docker / Persistence Data
 # MinIO나 DB 데이터가 로컬에 저장될 경우를 대비

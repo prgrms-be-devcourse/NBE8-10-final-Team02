@@ -5,8 +5,11 @@ import com.back.backend.domain.interview.dto.request.AddInterviewQuestionRequest
 import com.back.backend.domain.interview.dto.request.CreateQuestionSetRequest;
 import com.back.backend.domain.interview.dto.response.InterviewQuestionResponse;
 import com.back.backend.domain.interview.dto.response.QuestionSetDetailResponse;
+import com.back.backend.domain.interview.dto.response.QuestionSetJobStatusResponse;
 import com.back.backend.domain.interview.dto.response.QuestionSetSummaryResponse;
 import com.back.backend.domain.interview.entity.DifficultyLevel;
+import com.back.backend.domain.interview.service.AsyncInterviewQuestionsGenerateService;
+import com.back.backend.domain.interview.service.InterviewQuestionSetJobStore;
 import com.back.backend.domain.interview.service.InterviewQuestionSetService;
 import com.back.backend.global.response.ApiResponse;
 import com.back.backend.global.security.auth.CurrentUserResolver;
@@ -33,17 +36,28 @@ public class InterviewQuestionSetController {
 
     private final InterviewQuestionSetService interviewQuestionSetService;
     private final InterviewQuestionsGenerateService interviewQuestionsGenerateService;
+    private final AsyncInterviewQuestionsGenerateService asyncInterviewQuestionsGenerateService;
+    private final InterviewQuestionSetJobStore interviewQuestionSetJobStore;
     private final CurrentUserResolver currentUserResolver;
 
+    /**
+     * 면접 질문 세트 AI 생성을 비동기로 시작한다.
+     *
+     * 즉시 202 Accepted를 반환하고, 실제 생성은 백그라운드에서 진행된다.
+     * 진행 상황은 GET /question-sets/status/{jobId} 폴링으로 확인한다.
+     * COMPLETED 시 응답의 questionSetId로 GET /question-sets/{questionSetId} 호출 가능.
+     */
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<QuestionSetSummaryResponse> createQuestionSet(
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ApiResponse<QuestionSetJobStatusResponse> createQuestionSet(
         Authentication authentication,
         @RequestBody CreateQuestionSetRequest request
     ) {
         long userId = currentUserResolver.resolveUserId(authentication);
 
-        QuestionSetSummaryResponse response = interviewQuestionsGenerateService.generate(
+        asyncInterviewQuestionsGenerateService.validateOwnership(userId, request.applicationId());
+
+        String jobId = asyncInterviewQuestionsGenerateService.submitAsync(
             userId,
             request.applicationId(),
             request.title(),
@@ -52,6 +66,28 @@ public class InterviewQuestionSetController {
             request.questionTypes()
         );
 
+        QuestionSetJobStatusResponse response = interviewQuestionSetJobStore.get(userId, jobId)
+                .map(QuestionSetJobStatusResponse::from)
+                .orElseGet(() -> QuestionSetJobStatusResponse.pending(jobId));
+
+        return ApiResponse.success(response);
+    }
+
+    /**
+     * 면접 질문 세트 AI 생성 진행 상태를 조회한다.
+     *
+     * COMPLETED 시 questionSetId가 채워진다.
+     * TTL 만료 또는 미요청이면 data: null 반환.
+     */
+    @GetMapping("/status/{jobId}")
+    public ApiResponse<QuestionSetJobStatusResponse> getQuestionSetJobStatus(
+        Authentication authentication,
+        @PathVariable String jobId
+    ) {
+        long userId = currentUserResolver.resolveUserId(authentication);
+        QuestionSetJobStatusResponse response = interviewQuestionSetJobStore.get(userId, jobId)
+                .map(QuestionSetJobStatusResponse::from)
+                .orElse(null);
         return ApiResponse.success(response);
     }
 
