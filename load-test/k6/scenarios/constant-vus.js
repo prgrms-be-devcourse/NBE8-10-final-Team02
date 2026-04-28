@@ -30,11 +30,11 @@ const DURATION = __ENV.DURATION || '3m';
 const POLL_INTERVAL_S = 2;
 
 // 자소서: Stub ~17s 기준
-const SELF_INTRO_POLL_MAX_WAIT_S   = 60;
+const SELF_INTRO_POLL_MAX_WAIT_S   = 180;
 const SELF_INTRO_POLL_MAX_ATTEMPTS = Math.ceil(SELF_INTRO_POLL_MAX_WAIT_S / POLL_INTERVAL_S);
 
-// 면접 질문: Stub ~8s 기준 + 세마포어 대기(최대 90s) 포함
-const QS_POLL_MAX_WAIT_S   = 120;
+// 면접 질문: Stub ~8s 기준 + 세마포어 대기 포함
+const QS_POLL_MAX_WAIT_S   = 240;
 const QS_POLL_MAX_ATTEMPTS = Math.ceil(QS_POLL_MAX_WAIT_S / POLL_INTERVAL_S);
 
 export const options = {

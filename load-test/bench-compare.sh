@@ -42,6 +42,7 @@ TEST_JWT_TOKEN="${TEST_JWT_TOKEN:-}"
 LOAD_TEST_KEY="${LOAD_TEST_KEY:-}"
 KEEP_RAW="${KEEP_RAW:-0}"
 GHCR_TOKEN="${GHCR_TOKEN:-}"
+SSH_KEY_PATH="${SSH_KEY_PATH:-~/.ssh/my-key}"
 
 # 비교 쌍 정의: "레이블:커밋ref:설명"
 # before → after 순서 유지 (같은 쌍은 연속으로)
@@ -52,8 +53,8 @@ PAIRS=(
   "after-sema:8f66311:세마포어 도입(이후)"
   "before-async:97110fd~1:비동기 전환(이전)"
   "after-async:97110fd:비동기 전환(이후)"
-  "final-sema-2:231fd0a:최종 결과물(세마포어 2):2"
-  "final-sema-20:231fd0a:최종 결과물(세마포어 20):20"
+  "final-sema-2:2d6f0a5:최종 결과물(세마포어 2):2"
+  "final-sema-20:2d6f0a5:최종 결과물(세마포어 20):20"
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -179,16 +180,23 @@ run_one_test() {
 
   log "[$label] 시작: $desc"
 
-  # ── terraform apply ──────────────────────────────────────────────────
-  log "[$label] terraform apply (image=$tag)"
-  (
-    cd "$TERRAFORM_DIR"
-    terraform apply -auto-approve \
-      -var="app_image=$tag"
-  )
+  # ── EC2 기동 or 이미지 교체 ──────────────────────────────────────────
+  local ec2_ip
+  ec2_ip="$(cd "$TERRAFORM_DIR" && terraform output -raw public_ip 2>/dev/null || true)"
+
+  if [[ -z "$ec2_ip" ]]; then
+    log "[$label] EC2 없음 → terraform apply (image=$tag)"
+    (cd "$TERRAFORM_DIR" && terraform apply -auto-approve -var="app_image=$tag")
+    ec2_ip="$(cd "$TERRAFORM_DIR" && terraform output -raw public_ip)"
+  else
+    log "[$label] 기존 EC2($ec2_ip) 이미지 교체 → $tag"
+    local key="${SSH_KEY_PATH/#\~/$HOME}"
+    ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=10 ec2-user@"$ec2_ip" \
+      "cd /opt/load-test && sudo sed -i 's|APP_IMAGE=.*|APP_IMAGE=$tag|' .env && sudo docker compose pull app && sudo docker compose up -d app"
+  fi
 
   local app_url
-  app_url="$(cd "$TERRAFORM_DIR" && terraform output -raw app_url)"
+  app_url="http://${ec2_ip}:8080"
   log "[$label] EC2 URL: $app_url"
   log "[$label] Grafana:  $(cd "$TERRAFORM_DIR" && terraform output -raw grafana_url 2>/dev/null || echo 'N/A')"
 
