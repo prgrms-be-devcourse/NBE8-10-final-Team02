@@ -177,8 +177,17 @@ run_one_test() {
   local tag="$GHCR_REPO:bench-$label"
   local scenario_suffix=""
   [[ "$K6_SCENARIO" != "constant-vus" ]] && scenario_suffix="-${K6_SCENARIO}"
-  local summary_file="$RESULTS_DIR/${label}-vus${K6_VUS}${scenario_suffix}-summary.json"
-  local raw_file="$RESULTS_DIR/${label}-vus${K6_VUS}${scenario_suffix}-raw.json"
+
+  local instance_suffix=""
+  local _itype
+  _itype=$(grep -E 'default\s*=\s*"t[0-9]' "$TERRAFORM_DIR/variables.tf" | grep -o '"t[^"]*"' | tr -d '"' | head -1)
+  case "$_itype" in
+    t3.small|t4g.small) instance_suffix="" ;;
+    *) instance_suffix="-$(echo "$_itype" | cut -d. -f2)" ;;
+  esac
+
+  local summary_file="$RESULTS_DIR/${label}-vus${K6_VUS}${scenario_suffix}${instance_suffix}-summary.json"
+  local raw_file="$RESULTS_DIR/${label}-vus${K6_VUS}${scenario_suffix}${instance_suffix}-raw.json"
 
   log "[$label] 시작: $desc"
 
@@ -321,10 +330,20 @@ do_report() {
       "before-async:after-async:비동기 전환"
     )
 
+    local _ritype
+    _ritype=$(grep -E 'default\s*=\s*"t[0-9]' "$TERRAFORM_DIR/variables.tf" | grep -o '"t[^"]*"' | tr -d '"' | head -1)
+    local _rinstance_suffix=""
+    case "$_ritype" in
+      t3.small|t4g.small) _rinstance_suffix="" ;;
+      *) _rinstance_suffix="-$(echo "$_ritype" | cut -d. -f2)" ;;
+    esac
+
     for comp in "${comparisons[@]}"; do
       IFS=: read -r before after title <<< "$comp"
-      local bf_file="$RESULTS_DIR/${before}-vus${K6_VUS}-summary.json"
-      local af_file="$RESULTS_DIR/${after}-vus${K6_VUS}-summary.json"
+      local bf_file="$RESULTS_DIR/${before}-vus${K6_VUS}${_rinstance_suffix}-summary.json"
+      local af_file="$RESULTS_DIR/${after}-vus${K6_VUS}${_rinstance_suffix}-summary.json"
+      [[ ! -f "$bf_file" ]] && bf_file="$RESULTS_DIR/${before}-vus${K6_VUS}-summary.json"
+      [[ ! -f "$af_file" ]] && af_file="$RESULTS_DIR/${after}-vus${K6_VUS}-summary.json"
       [[ ! -f "$bf_file" ]] && bf_file="$RESULTS_DIR/${before}-summary.json"
       [[ ! -f "$af_file" ]] && af_file="$RESULTS_DIR/${after}-summary.json"
 
