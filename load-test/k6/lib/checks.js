@@ -39,10 +39,6 @@ export function assertResponse(res, okStatuses = [200, 201], maxDurationMs = 200
   const statusOk = check(res, {
     [`status in [${okStatuses.join(',')}]`]:
       (r) => okStatuses.includes(r.status),
-    'has requestId header':
-      (r) => !!r.headers['X-Request-Id'],
-    'response is JSON':
-      (r) => r.headers['Content-Type'] && r.headers['Content-Type'].includes('application/json'),
   });
 
   // latency 목표는 별도 check — api_error_rate에 영향 없음

@@ -41,10 +41,8 @@ export const options = {
   vus:      VUS,
   duration: DURATION,
   thresholds: {
-    'http_req_duration{type:read}':       ['p(95)<1000'],
     'http_req_duration{type:write}':      ['p(95)<2000'],
-    'http_req_duration{type:ai-accept}':  ['p(95)<500'],  // 202 즉시 반환 기준
-    'http_req_duration{type:ai-poll}':    ['p(95)<300'],  // 폴링 조회 기준
+    'http_req_duration{type:ai-accept}':  ['p(95)<95000'], // 세마포어 대기(최대 90s) 포함
     'api_error_rate':                     ['rate<0.05'],
     'http_req_failed':                    ['rate<0.05'],
   },

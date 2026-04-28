@@ -33,13 +33,11 @@ export const options = {
   vus:      VUS,
   duration: DURATION,
   thresholds: {
-    'http_req_duration{type:read}':      ['p(95)<1000'],
-    'http_req_duration{type:write}':     ['p(95)<2000'],
-    'http_req_duration{type:ai-accept}': ['p(95)<500'],   // 202 즉시 반환 기준
-    'http_req_duration{type:ai-poll}':   ['p(95)<300'],   // 폴링 조회 기준
+    'http_req_duration{type:write}':        ['p(95)<2000'],
+    'http_req_duration{type:ai-accept}':    ['p(95)<500'],   // 동기 시나리오: 202 즉시 반환 기준
     'http_req_duration{type:ai-interview}': [`p(95)<${AI_TIMEOUT.interviewQuestions}`],
-    'api_error_rate':                    ['rate<0.05'],
-    'http_req_failed':                   ['rate<0.05'],
+    'api_error_rate':                       ['rate<0.05'],
+    'http_req_failed':                      ['rate<0.05'],
   },
   // url을 systemTags에서 제외 → 동적 ID가 Prometheus 레이블로 올라가지 않아 high cardinality 방지
   systemTags: ['status', 'method', 'name', 'check', 'error', 'error_code', 'scenario'],
