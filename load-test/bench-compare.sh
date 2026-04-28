@@ -175,8 +175,10 @@ do_build_one() {
 run_one_test() {
   local label="$1" desc="$2"
   local tag="$GHCR_REPO:bench-$label"
-  local summary_file="$RESULTS_DIR/${label}-vus${K6_VUS}-summary.json"
-  local raw_file="$RESULTS_DIR/${label}-vus${K6_VUS}-raw.json"
+  local scenario_suffix=""
+  [[ "$K6_SCENARIO" != "constant-vus" ]] && scenario_suffix="-${K6_SCENARIO}"
+  local summary_file="$RESULTS_DIR/${label}-vus${K6_VUS}${scenario_suffix}-summary.json"
+  local raw_file="$RESULTS_DIR/${label}-vus${K6_VUS}${scenario_suffix}-raw.json"
 
   log "[$label] 시작: $desc"
 
