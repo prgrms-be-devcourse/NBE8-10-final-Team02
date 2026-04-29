@@ -14,7 +14,9 @@ COPY build.gradle.kts .
 COPY settings.gradle.kts .
 
 # 의존성 다운로드 (소스 코드가 변경되어도 이 단계는 캐시가 유지되어 빌드가 훨씬 빨라집니다)
-RUN chmod +x gradlew && ./gradlew dependencies --no-daemon
+RUN chmod +x gradlew && ./gradlew dependencies --no-daemon \
+      -Dorg.gradle.internal.http.connectionTimeout=15000 \
+      -Dorg.gradle.internal.http.socketTimeout=15000
 
 # 실제 소스 코드 복사
 COPY src src
@@ -51,7 +53,7 @@ RUN microdnf install -y git python3 python3-pip nodejs tar curl tesseract tesser
       tree-sitter tree-sitter-kotlin tree-sitter-go \
       tree-sitter-rust tree-sitter-c tree-sitter-cpp && \
     curl -sSfL \
-      "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_arm64.tar.gz" \
+      "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
       | tar -xz -C /usr/local/bin gitleaks && \
     chmod +x /usr/local/bin/gitleaks
 

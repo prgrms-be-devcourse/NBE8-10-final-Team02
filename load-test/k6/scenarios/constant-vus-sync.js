@@ -1,9 +1,9 @@
 /**
  * constant-vus.js — AI Stub 집중 부하 시나리오
  *
- * 목적: Stub 지연 하에서 Hikari 커넥션 풀 및 세마포어 병목 측정.
+ * 목적: Stub 지연 하에서 Hikari 커넥션 풀 및 스레드 한계 측정.
  *       각 VU가 자소서 생성 → 면접 질문 생성을 반복.
- *       가상 스레드 ON 환경에서 세마포어 고갈 지점 확인.
+ *       가상 스레드 ON 환경에서 DB 커넥션 풀 고갈 지점 확인.
  *
  * 실행:
  *   VUS=20 DURATION=3m BASE_URL=http://<IP>:8080 TEST_JWT_TOKEN=<token> TEST_API_KEY=<apiKey> ./run.sh constant
@@ -11,11 +11,9 @@
  * 주의: AI Stub이 활성화된 load-test profile 서버에서만 실행.
  *       Stub 지연: 자소서 ~17s(Gemini), 면접질문 ~8s(Gemini)
  *
- * 비동기 AI 생성 흐름 (202 + polling):
- *   POST generate-answers          → 202 Accepted (즉시 반환)
- *   GET  generate-answers/status   → COMPLETED/FAILED 확인
- *   POST question-sets             → 202 Accepted (즉시 반환)
- *   GET  question-sets/status/{jobId} → COMPLETED/FAILED 확인
+ * 자소서 AI 생성 흐름 (202 + polling):
+ *   POST generate-answers → 202 Accepted (즉시 반환)
+ *   GET  generate-answers/status 폴링 → COMPLETED/FAILED 확인
  */
 import http from 'k6/http';
 import { sleep } from 'k6';
@@ -26,30 +24,26 @@ import { assertResponse, AI_TIMEOUT } from '../lib/checks.js';
 const VUS      = parseInt(__ENV.VUS || '10');
 const DURATION = __ENV.DURATION || '3m';
 
-// 폴링 설정
-const POLL_INTERVAL_S = 2;
-
-// 자소서: Stub ~17s 기준
-const SELF_INTRO_POLL_MAX_WAIT_S   = 180;
-const SELF_INTRO_POLL_MAX_ATTEMPTS = Math.ceil(SELF_INTRO_POLL_MAX_WAIT_S / POLL_INTERVAL_S);
-
-// 면접 질문: Stub ~8s 기준 + 세마포어 대기 포함
-const QS_POLL_MAX_WAIT_S   = 240;
-const QS_POLL_MAX_ATTEMPTS = Math.ceil(QS_POLL_MAX_WAIT_S / POLL_INTERVAL_S);
+// 자소서 폴링 설정
+const POLL_INTERVAL_S   = 2;       // 폴링 간격 (초)
+const POLL_MAX_WAIT_S   = 60;      // 최대 대기 (초) — Stub ~17s 기준 여유 있게
+const POLL_MAX_ATTEMPTS = Math.ceil(POLL_MAX_WAIT_S / POLL_INTERVAL_S);
 
 export const options = {
   vus:          VUS,
   duration:     DURATION,
   gracefulStop: '60s',
   thresholds: {
-    'http_req_duration{type:write}':      ['p(95)<2000'],
-    'http_req_duration{type:ai-accept}':  ['p(95)<95000'], // 세마포어 대기(최대 90s) 포함
-    'api_error_rate':                     ['rate<0.05'],
-    'http_req_failed':                    ['rate<0.05'],
+    'http_req_duration{type:write}':        ['p(95)<2000'],
+    'http_req_duration{type:ai-accept}':    ['p(95)<500'],   // 동기 시나리오: 202 즉시 반환 기준
+    'http_req_duration{type:ai-interview}': [`p(95)<${AI_TIMEOUT.interviewQuestions}`],
+    'api_error_rate':                       ['rate<0.05'],
+    'http_req_failed':                      ['rate<0.05'],
   },
-  systemTags: ['status', 'method', 'name', 'url', 'expected_response', 'check', 'error', 'error_code', 'scenario'],
+  // url을 systemTags에서 제외 → 동적 ID가 Prometheus 레이블로 올라가지 않아 high cardinality 방지
+  systemTags: ['status', 'method', 'name', 'check', 'error', 'error_code', 'scenario'],
   http: {
-    timeout: '30s',
+    timeout: '30s',  // 각 요청 타임아웃 (폴링은 짧게, AI 직접 호출 없으므로 30s로 충분)
   },
 };
 
@@ -125,16 +119,54 @@ export default function ({ token, apiKey }) {
   );
   if (!assertResponse(selfIntroRes, [202], 500)) {
     console.error(`[VU${__VU}] Step3 자소서생성 제출 실패: ${selfIntroRes.status} ${selfIntroRes.body}`);
+    // 제출 실패해도 면접 질문 생성은 시도
   } else {
-    pollUntilDone(
-      () => http.get(ENDPOINTS.generateAnswersStatus(appId), { headers: headers, tags: { type: 'ai-poll', name: 'generate_answers_status' } }),
-      SELF_INTRO_POLL_MAX_ATTEMPTS,
-      `Step3 자소서생성`
-    );
+    // 폴링: COMPLETED 또는 FAILED까지 대기
+    let attempts = 0;
+    let completed = false;
+
+    while (attempts < POLL_MAX_ATTEMPTS) {
+      sleep(POLL_INTERVAL_S);
+      attempts++;
+
+      const pollRes = http.get(
+        ENDPOINTS.generateAnswersStatus(appId),
+        { headers: headers, tags: { type: 'ai-poll', name: 'generate_answers_status' } }
+      );
+
+      if (!assertResponse(pollRes, [200], 300)) {
+        continue; // 일시 오류 → 재시도
+      }
+
+      let jobData = null;
+      try {
+        jobData = JSON.parse(pollRes.body).data;
+      } catch {
+        continue;
+      }
+
+      if (!jobData) continue;
+
+      if (jobData.status === 'COMPLETED') {
+        completed = true;
+        break;
+      }
+
+      if (jobData.status === 'FAILED') {
+        console.error(`[VU${__VU}] Step3 자소서생성 실패(FAILED): ${jobData.error}`);
+        break;
+      }
+
+      // PENDING / IN_PROGRESS → 계속 폴링
+    }
+
+    if (!completed && attempts >= POLL_MAX_ATTEMPTS) {
+      console.warn(`[VU${__VU}] Step3 자소서생성 폴링 타임아웃 (${POLL_MAX_WAIT_S}s 초과)`);
+    }
   }
 
-  // ── Step 4: 면접 질문 AI 생성 (202 즉시 반환 + 폴링) ───────────────────
-  const qsSubmitRes = http.post(
+  // ── Step 4: 면접 질문 AI 생성 (Stub: ~8s) ──────────────────────────────
+  const interviewRes = http.post(
     ENDPOINTS.questionSets,
     JSON.stringify({
       applicationId: appId,
@@ -143,25 +175,9 @@ export default function ({ token, apiKey }) {
       difficultyLevel: 'medium',
       questionTypes: ['technical_cs', 'behavioral'],
     }),
-    { headers: headers, tags: { type: 'ai-accept', name: 'post_question_sets_submit' } }
+    { headers: headers, tags: { type: 'ai-interview', name: 'post_question_sets' }, timeout: '120s' }
   );
-
-  if (!assertResponse(qsSubmitRes, [202], 500)) {
-    console.error(`[VU${__VU}] Step4 면접질문생성 제출 실패: ${qsSubmitRes.status} ${qsSubmitRes.body}`);
-  } else {
-    let jobId = null;
-    try {
-      jobId = JSON.parse(qsSubmitRes.body).data?.jobId;
-    } catch { /* ignore */ }
-
-    if (jobId) {
-      pollUntilDone(
-        () => http.get(ENDPOINTS.questionSetJobStatus(jobId), { headers: headers, tags: { type: 'ai-poll', name: 'question_set_status' } }),
-        QS_POLL_MAX_ATTEMPTS,
-        `Step4 면접질문생성`
-      );
-    }
-  }
+  assertResponse(interviewRes, [200, 201], AI_TIMEOUT.interviewQuestions);
 
   // ── Step 5: Cleanup ─────────────────────────────────────────────────────
   http.del(ENDPOINTS.application(appId), null, {
@@ -170,32 +186,4 @@ export default function ({ token, apiKey }) {
   });
 
   sleep(0.5);
-}
-
-/**
- * COMPLETED 또는 FAILED가 될 때까지 폴링한다.
- * @param {Function} pollFn  - 호출 시 http response를 반환하는 함수
- * @param {number}   maxAttempts
- * @param {string}   label   - 로그용 라벨
- */
-function pollUntilDone(pollFn, maxAttempts, label) {
-  let attempts = 0;
-  while (attempts < maxAttempts) {
-    sleep(POLL_INTERVAL_S);
-    attempts++;
-
-    const pollRes = pollFn();
-    if (pollRes.status !== 200) continue;
-
-    let data = null;
-    try { data = JSON.parse(pollRes.body).data; } catch { continue; }
-    if (!data) continue;
-
-    if (data.status === 'COMPLETED') return;
-    if (data.status === 'FAILED') {
-      console.error(`[VU${__VU}] ${label} FAILED: ${data.error}`);
-      return;
-    }
-  }
-  console.warn(`[VU${__VU}] ${label} 폴링 타임아웃 (${maxAttempts * POLL_INTERVAL_S}s 초과)`);
 }
