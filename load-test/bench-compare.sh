@@ -244,7 +244,8 @@ run_one_test() {
   [[ -n "$TEST_JWT_TOKEN" ]] && k6_args+=(-e "TEST_JWT_TOKEN=$TEST_JWT_TOKEN")
   [[ -n "$LOAD_TEST_KEY"  ]] && k6_args+=(-e "LOAD_TEST_KEY=$LOAD_TEST_KEY")
   [[ "$KEEP_RAW" == "1"  ]] && k6_args+=(--out "json=$raw_file")
-  k6_args+=(--out "web-dashboard=open=false")
+  k6_args+=(--out "web-dashboard=open=falsep
+  ")
   k6_args+=(--out experimental-prometheus-rw)
 
   local ec2_ip
@@ -312,64 +313,138 @@ wait_healthy() {
 # ═══════════════════════════════════════════════════════════════════════════
 # Phase 3: 결과 비교 리포트 출력
 # ═══════════════════════════════════════════════════════════════════════════
+
+# 결과 파일 경로 해결 — 여러 패턴을 순서대로 시도
+# 인자: label vus [instance_suffix]
+resolve_result() {
+  local label="$1" vus="$2" inst="${3:-}"
+  local f
+  # vus + instance
+  [[ -n "$inst" ]] && f="$RESULTS_DIR/${label}-vus${vus}-${inst}-summary.json" && [[ -f "$f" ]] && echo "$f" && return
+  # vus + sync scenario
+  f="$RESULTS_DIR/${label}-vus${vus}-constant-vus-sync-summary.json" && [[ -f "$f" ]] && echo "$f" && return
+  # vus only
+  f="$RESULTS_DIR/${label}-vus${vus}-summary.json"                   && [[ -f "$f" ]] && echo "$f" && return
+  # no vus (legacy)
+  f="$RESULTS_DIR/${label}-summary.json"                             && [[ -f "$f" ]] && echo "$f" && return
+  echo ""
+}
+
+report_header() {
+  printf "  %-26s %12s %12s %10s\n" "지표" "이전" "이후" "개선"
+  printf "  %-26s %12s %12s %10s\n" "──────────────────────────" "──────────" "──────────" "──────────"
+}
+
+report_metrics() {
+  local bf="$1" af="$2"
+  print_metric "$bf" "$af" '.metrics.http_req_duration["p(95)"]' "p95 응답시간 (ms)"  "ms" "lower"
+  print_metric "$bf" "$af" '.metrics.http_req_duration.avg'       "평균 응답시간 (ms)"  "ms" "lower"
+  print_metric "$bf" "$af" '.metrics.http_req_failed.rate'         "에러율"             "%" "lower" "100"
+  print_metric "$bf" "$af" '.metrics.http_reqs.rate'               "처리량 (req/s)"     ""  "higher"
+  print_metric "$bf" "$af" '.metrics.iterations.rate'              "iteration/s"        ""  "higher"
+}
+
 do_report() {
   step "Phase 3: 결과 비교 리포트"
-
+  require_cmd jq
   local report_file="$RESULTS_DIR/report.txt"
 
   {
     echo ""
-    echo "════════════════════════════════════════════════════════════"
-    echo "          부하테스트 아키텍처 비교 결과"
-    echo "  시나리오: $K6_SCENARIO | VUS: $K6_VUS | duration: $K6_DURATION"
-    echo "════════════════════════════════════════════════════════════"
+    echo "════════════════════════════════════════════════════════════════"
+    echo "                  부하테스트 결과 리포트"
+    echo "════════════════════════════════════════════════════════════════"
 
-    local comparisons=(
-      "before-tx:after-tx:AI 트랜잭션 분리"
-      "before-sema:after-sema:세마포어 도입"
-      "before-async:after-async:비동기 전환"
+    # ── Section 1: 아키텍처 개선 (VUS=20) ──────────────────────────
+    local arch_vus=20
+    local arch_seq=(
+      "before-tx:AI 트랜잭션 분리 전"
+      "after-tx:AI 트랜잭션 분리 후"
+      "after-sema:세마포어 도입 후"
+      "after-async:비동기 전환 후"
+      "final-sema-2:Virtual Thread + Sema=2"
+      "final-sema-20:Sema 2→20"
     )
 
-    local _ritype
-    _ritype=$(grep -E 'default\s*=\s*"t[0-9]' "$TERRAFORM_DIR/variables.tf" | grep -o '"t[^"]*"' | tr -d '"' | head -1)
-    local _rinstance_suffix=""
-    case "$_ritype" in
-      t3.small|t4g.small) _rinstance_suffix="" ;;
-      *) _rinstance_suffix="-$(echo "$_ritype" | cut -d. -f2)" ;;
-    esac
+    echo ""
+    echo "┌──────────────────────────────────────────────────────────────┐"
+    printf "│  %-62s│\n" "  1. 아키텍처 개선 순서 (VUS=${arch_vus})"
+    echo "└──────────────────────────────────────────────────────────────┘"
 
-    for comp in "${comparisons[@]}"; do
-      IFS=: read -r before after title <<< "$comp"
-      local bf_file="$RESULTS_DIR/${before}-vus${K6_VUS}${_rinstance_suffix}-summary.json"
-      local af_file="$RESULTS_DIR/${after}-vus${K6_VUS}${_rinstance_suffix}-summary.json"
-      [[ ! -f "$bf_file" ]] && bf_file="$RESULTS_DIR/${before}-vus${K6_VUS}-summary.json"
-      [[ ! -f "$af_file" ]] && af_file="$RESULTS_DIR/${after}-vus${K6_VUS}-summary.json"
-      [[ ! -f "$bf_file" ]] && bf_file="$RESULTS_DIR/${before}-summary.json"
-      [[ ! -f "$af_file" ]] && af_file="$RESULTS_DIR/${after}-summary.json"
-
-      echo ""
-      echo "── $title ─────────────────────────────────────────────"
-
-      if [[ ! -f "$bf_file" || ! -f "$af_file" ]]; then
-        echo "  결과 파일 없음 (테스트가 완료되지 않았을 수 있음)"
-        echo "    before: $bf_file"
-        echo "    after:  $af_file"
+    local prev_arch_file="" prev_arch_label=""
+    for entry in "${arch_seq[@]}"; do
+      IFS=: read -r lbl title <<< "$entry"
+      local cur_file
+      cur_file=$(resolve_result "$lbl" "$arch_vus")
+      if [[ -z "$cur_file" ]]; then
+        echo "  [$lbl] 파일 없음 — 스킵"
         continue
       fi
-
-      printf "  %-22s %12s %12s %10s\n" "지표" "이전(before)" "이후(after)" "개선"
-      printf "  %-22s %12s %12s %10s\n" "──────────────────────" "──────────" "──────────" "──────────"
-
-      print_metric "$bf_file" "$af_file" '.metrics.http_req_duration["p(95)"]' "p95 응답시간 (ms)" "ms" "lower"
-      print_metric "$bf_file" "$af_file" '.metrics.http_req_duration.avg'       "평균 응답시간 (ms)" "ms" "lower"
-      print_metric "$bf_file" "$af_file" '.metrics.http_req_failed.rate'         "에러율"            "%"  "lower" "100"
-      print_metric "$bf_file" "$af_file" '.metrics.http_reqs.rate'               "처리량 (req/s)"    ""   "higher"
+      if [[ -n "$prev_arch_file" ]]; then
+        echo ""
+        echo "── ${prev_arch_label} → ${title} ──────────────────────────────"
+        report_header
+        report_metrics "$prev_arch_file" "$cur_file"
+      else
+        echo ""
+        echo "── ${title} (baseline) ──────────────────────────────────────"
+      fi
+      prev_arch_file="$cur_file"
+      prev_arch_label="$title"
     done
 
+    # ── Section 2: 부하 확장성 (final-sema-20) ──────────────────────
+    local scale_label="final-sema-20"
+    local scale_vus_list=(20 50 100 150)
+
     echo ""
-    echo "════════════════════════════════════════════════════════════"
+    echo "┌──────────────────────────────────────────────────────────────┐"
+    printf "│  %-62s│\n" "  2. 부하 확장성 (${scale_label})"
+    echo "└──────────────────────────────────────────────────────────────┘"
+
+    local prev_scale_file="" prev_scale_vus=""
+    for vus in "${scale_vus_list[@]}"; do
+      local cur_file
+      cur_file=$(resolve_result "$scale_label" "$vus")
+      if [[ -z "$cur_file" ]]; then
+        continue
+      fi
+      if [[ -n "$prev_scale_file" ]]; then
+        echo ""
+        echo "── VUS ${prev_scale_vus} → ${vus} ──────────────────────────────────────────"
+        report_header
+        report_metrics "$prev_scale_file" "$cur_file"
+      else
+        echo ""
+        echo "── VUS ${vus} (baseline) ─────────────────────────────────────────"
+      fi
+      prev_scale_file="$cur_file"
+      prev_scale_vus="$vus"
+    done
+
+    # ── Section 3: 인스턴스 업그레이드 (VUS=100) ────────────────────
+    local inst_label="final-sema-20" inst_vus=100
+    local small_file medium_file
+    small_file=$(resolve_result "$inst_label" "$inst_vus")
+    medium_file=$(resolve_result "$inst_label" "$inst_vus" "medium")
+
+    echo ""
+    echo "┌──────────────────────────────────────────────────────────────┐"
+    printf "│  %-62s│\n" "  3. 인스턴스 업그레이드 (VUS=${inst_vus})"
+    echo "└──────────────────────────────────────────────────────────────┘"
+    echo ""
+    echo "── t3.small → t3.medium ─────────────────────────────────────"
+    if [[ -z "$small_file" || -z "$medium_file" ]]; then
+      echo "  파일 없음 (small: ${small_file:-없음}, medium: ${medium_file:-없음})"
+    else
+      report_header
+      report_metrics "$small_file" "$medium_file"
+    fi
+
+    echo ""
+    echo "════════════════════════════════════════════════════════════════"
     echo "결과 파일 위치: $RESULTS_DIR"
-    echo "════════════════════════════════════════════════════════════"
+    echo "════════════════════════════════════════════════════════════════"
     echo ""
   } | tee "$report_file"
 
